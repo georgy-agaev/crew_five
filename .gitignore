@@ -1,6 +1,7 @@
 # Prompt drafts
 prompts/*
 !prompts/.gitkeep
+!prompts/template.md
 
 # Dependencies
 node_modules
