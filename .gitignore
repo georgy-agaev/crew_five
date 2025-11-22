@@ -1,3 +1,7 @@
+# Prompt drafts
+prompts/*
+!prompts/.gitkeep
+
 # Dependencies
 node_modules
 pnpm-debug.log*

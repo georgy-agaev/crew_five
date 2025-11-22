@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2] - 2025-11-22
+### Added
+- Created `prompts/` folder for prompt drafts and ignored its contents (tracked placeholder only) to keep credentials and prompt iterations out of git.
+
 ## [0.1.1] - 2025-11-22
 ### Added
 - Initialized git repository on `main` and added a repo-appropriate `.gitignore`.
