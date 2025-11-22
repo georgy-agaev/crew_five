@@ -33,10 +33,16 @@ This repo tracks specs and planning artifacts for the AI SDR GTM System. It keep
   - Install deps: `pnpm install`
   - Run tests: `pnpm test`
   - Segment creation: `pnpm cli segment:create --name "Fintech" --locale en --filter '{"field":"employees.role","operator":"eq","value":"CTO"}'`
-  - Segment snapshot: `pnpm cli segment:snapshot --segment-id <id> [--segment-version 2]`
-  - Campaign creation: `pnpm cli campaign:create --name "Q1 Push" --segment-id <id> --segment-version 1 --snapshot-mode refresh`
+  - Segment snapshot: `pnpm cli segment:snapshot --segment-id <id> [--segment-version 2] [--allow-empty] [--max-contacts 5000]`
+  - Campaign creation: `pnpm cli campaign:create --name "Q1 Push" --segment-id <id> --segment-version 1 --snapshot-mode refresh [--allow-empty] [--max-contacts 5000]`
+  - Campaign update: `pnpm cli campaign:update --campaign-id <id> [--prompt-pack-id <id>] [--schedule <json>] [--throttle <json>]`
   - Draft generation: `pnpm cli draft:generate --campaign-id <id>`
   Ensure `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` env vars are present (see `.env.example` once added).
 
 ### Segment Filter Definition
-Segments store `filter_definition` as an array of clauses, e.g. `[{"field":"employees.role","operator":"eq","value":"CTO"}]`. Supported operators today are `eq` and `ilike`; snapshotting fails fast if an unsupported operator is encountered. Campaign creation enforces that a snapshot exists by using `--snapshot-mode reuse|refresh` (default `reuse`) and `--bump-segment-version` when an operator wants an entirely new version.
+Segments store `filter_definition` as an array of clauses, e.g.
+`[{"field":"employees.role","operator":"eq","value":"CTO"}]`. Supported operators now:
+`eq`, `in`, `not_in`, `gte`, `lte`. Unknown fields/operators and empty filter lists are
+rejected. Only `employees.*` or `companies.*` fields are allowed. Snapshotting fails if no
+contacts match unless `--allow-empty` is passed; a guardrail caps snapshots at 5000 contacts
+by default (override with `--max-contacts`).

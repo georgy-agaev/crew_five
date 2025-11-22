@@ -1,10 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export interface SegmentFilterCondition {
-  field: string;
-  operator: 'eq' | 'ilike';
-  value: string | number | boolean;
-}
+import type { FilterClause } from '../filters';
+import { buildContactQuery } from '../filters';
 
 export interface ContactSnapshotRow {
   contact_id: string;
@@ -20,53 +17,11 @@ export interface SegmentInput {
   createdBy?: string;
 }
 
-export function parseSegmentFilters(definition: unknown): SegmentFilterCondition[] {
-  if (!Array.isArray(definition)) {
-    throw new Error('filter_definition must be an array of filter clauses');
-  }
-
-  return definition.map((clause, idx) => {
-    if (
-      !clause ||
-      typeof clause !== 'object' ||
-      typeof (clause as any).field !== 'string' ||
-      typeof (clause as any).operator !== 'string'
-    ) {
-      throw new Error(`Invalid filter clause at index ${idx}`);
-    }
-
-    const { field, operator, value } = clause as {
-      field: string;
-      operator: string;
-      value: any;
-    };
-
-    if (operator !== 'eq' && operator !== 'ilike') {
-      throw new Error(`Unsupported operator: ${operator}`);
-    }
-
-    return { field, operator, value } as SegmentFilterCondition;
-  });
-}
-
 export async function fetchContactsForSegment(
   client: SupabaseClient,
-  filters: SegmentFilterCondition[]
+  filters: FilterClause[]
 ): Promise<any[]> {
-  let query: any = client
-    .from('employees')
-    .select(
-      'id, company_id, full_name, work_email, position, company:companies(id, company_name, segment)'
-    );
-
-  for (const filter of filters) {
-    if (filter.operator === 'eq') {
-      query = query.eq(filter.field, filter.value);
-    } else {
-      query = query.ilike(filter.field, String(filter.value));
-    }
-  }
-
+  const query = buildContactQuery(client, filters);
   const { data, error } = await query;
 
   if (error) {

@@ -8,6 +8,8 @@
 - `CHANGELOG.md` captures versioned changes; `README.md` is the entry point for repo orientation.
 - Prompt-pack drafts live at the root (`Cold_*.md`); keep Interactive Coach and Pipeline Express copies in sync.
 - When current documentation is needed for external APIs/libraries, fetch it via Context7 (`resolve-library-id` + `get-library-docs`) instead of relying solely on model training data.
+- When addressing problems or decisions, always propose at least three options (or combinations).
+- Prompts are kept in `prompts/` (ignored except for `prompts/template.md`); store working drafts there, never commit secrets, and keep tracked templates sanitized.
 
 ## Build, Test, and Development Commands
 - Install deps: `pnpm install`

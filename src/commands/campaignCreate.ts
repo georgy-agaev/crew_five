@@ -16,6 +16,8 @@ interface CampaignCreateOptions {
   dataQualityMode?: 'strict' | 'graceful';
   snapshotMode?: 'reuse' | 'refresh';
   bumpSegmentVersion?: boolean;
+  allowEmpty?: boolean;
+  maxContacts?: number;
 }
 
 export async function campaignCreateHandler(
@@ -34,6 +36,8 @@ export async function campaignCreateHandler(
     segmentVersion: options.segmentVersion,
     mode: snapshotMode,
     bumpVersion: options.bumpSegmentVersion,
+    allowEmpty: options.allowEmpty,
+    maxContacts: options.maxContacts,
   });
 
   return createCampaign(client, {

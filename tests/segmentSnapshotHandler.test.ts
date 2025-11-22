@@ -17,6 +17,8 @@ describe('segmentSnapshotHandler', () => {
       segmentId: 'segment-1',
       segmentVersion: undefined,
       mode: 'refresh',
+      allowEmpty: undefined,
+      maxContacts: undefined,
     });
     expect(result.count).toBe(5);
   });

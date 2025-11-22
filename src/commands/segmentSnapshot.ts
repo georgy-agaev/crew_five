@@ -5,6 +5,8 @@ import { ensureSegmentSnapshot } from '../services/segmentSnapshotWorkflow';
 interface SegmentSnapshotOptions {
   segmentId: string;
   segmentVersion?: number;
+  allowEmpty?: boolean;
+  maxContacts?: number;
 }
 
 export async function segmentSnapshotHandler(
@@ -15,5 +17,7 @@ export async function segmentSnapshotHandler(
     segmentId: options.segmentId,
     segmentVersion: options.segmentVersion,
     mode: 'refresh',
+    allowEmpty: options.allowEmpty,
+    maxContacts: options.maxContacts,
   });
 }

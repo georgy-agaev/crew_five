@@ -36,7 +36,7 @@ describe('createProgram', () => {
     });
   });
 
-  it('wires the segment:snapshot command', async () => {
+  it('wires the segment:snapshot command with guardrail flags', async () => {
     const snapshotHandler = vi.fn();
     const program = createProgram({
       supabaseClient: {} as any,
@@ -46,6 +46,7 @@ describe('createProgram', () => {
         campaignCreate: vi.fn(),
         draftGenerate: vi.fn(),
         segmentSnapshot: snapshotHandler,
+        campaignUpdate: vi.fn(),
       } as any,
     });
 
@@ -55,9 +56,17 @@ describe('createProgram', () => {
       'segment:snapshot',
       '--segment-id',
       'segment-1',
+      '--allow-empty',
+      '--max-contacts',
+      '1000',
     ]);
 
-    expect(snapshotHandler).toHaveBeenCalledWith({}, { segmentId: 'segment-1', segmentVersion: undefined });
+    expect(snapshotHandler).toHaveBeenCalledWith({}, {
+      segmentId: 'segment-1',
+      segmentVersion: undefined,
+      allowEmpty: true,
+      maxContacts: 1000,
+    });
   });
 
   it('passes snapshot options to campaign:create handler', async () => {
@@ -70,6 +79,7 @@ describe('createProgram', () => {
         campaignCreate: campaignHandler,
         draftGenerate: vi.fn(),
         segmentSnapshot: vi.fn(),
+        campaignUpdate: vi.fn(),
       },
     });
 
@@ -86,6 +96,8 @@ describe('createProgram', () => {
       '--snapshot-mode',
       'refresh',
       '--bump-segment-version',
+      '--max-contacts',
+      '500',
     ]);
 
     expect(campaignHandler).toHaveBeenCalledWith({}, {
@@ -99,6 +111,44 @@ describe('createProgram', () => {
       dataQualityMode: undefined,
       snapshotMode: 'refresh',
       bumpSegmentVersion: true,
+      allowEmpty: false,
+      maxContacts: 500,
+    });
+  });
+
+  it('wires the campaign:update command with allowed fields only', async () => {
+    const campaignUpdateHandler = vi.fn();
+    const program = createProgram({
+      supabaseClient: {} as any,
+      aiClient: {} as any,
+      handlers: {
+        segmentCreate: vi.fn(),
+        campaignCreate: vi.fn(),
+        draftGenerate: vi.fn(),
+        segmentSnapshot: vi.fn(),
+        campaignUpdate: campaignUpdateHandler,
+      },
+    });
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:update',
+      '--campaign-id',
+      'camp-1',
+      '--prompt-pack-id',
+      'prompt-2',
+      '--schedule',
+      '{"cron":"0 9 * * *"}',
+      '--throttle',
+      '{"per_hour":100}',
+    ]);
+
+    expect(campaignUpdateHandler).toHaveBeenCalledWith({}, {
+      campaignId: 'camp-1',
+      promptPackId: 'prompt-2',
+      schedule: '{"cron":"0 9 * * *"}',
+      throttle: '{"per_hour":100}',
     });
   });
 });

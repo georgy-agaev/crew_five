@@ -1,11 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import {
-  fetchContactsForSegment,
-  getSegmentById,
-  parseSegmentFilters,
-  setSegmentVersion,
-} from './segments';
+import { parseSegmentFilters } from '../filters';
+import { fetchContactsForSegment, getSegmentById, setSegmentVersion } from './segments';
 import { createSegmentSnapshot } from './segmentSnapshot';
 
 export interface SnapshotOptions {
@@ -13,6 +9,8 @@ export interface SnapshotOptions {
   mode: 'reuse' | 'refresh';
   segmentVersion?: number;
   bumpVersion?: boolean;
+  allowEmpty?: boolean;
+  maxContacts?: number;
 }
 
 export interface SnapshotResult {
@@ -48,25 +46,38 @@ export async function ensureSegmentSnapshot(
   options: SnapshotOptions
 ): Promise<SnapshotResult> {
   const segment = await getSegmentById(client, options.segmentId);
+  const maxContacts = options.maxContacts ?? 5000;
   let targetVersion = options.segmentVersion ?? segment.version ?? 1;
 
-  if (options.segmentVersion !== undefined && options.segmentVersion !== segment.version) {
-    targetVersion = await setSegmentVersion(client, options.segmentId, options.segmentVersion);
-  } else if (options.bumpVersion) {
+  if (options.bumpVersion) {
     targetVersion = await setSegmentVersion(client, options.segmentId, (segment.version ?? 1) + 1);
+  } else if (options.segmentVersion !== undefined && options.segmentVersion !== segment.version) {
+    targetVersion = await setSegmentVersion(client, options.segmentId, options.segmentVersion);
   }
 
   if (options.mode === 'refresh') {
-    const result = await refreshSnapshot(client, segment.filter_definition, targetVersion, segment.id);
+    const result = await refreshSnapshot(client, segment.filter_definition, targetVersion, segment.id, {
+      allowEmpty: options.allowEmpty,
+      maxContacts,
+    });
     return { version: result.segmentVersion, count: result.inserted };
   }
 
   const existing = await snapshotExists(client, options.segmentId, targetVersion);
   if (existing.exists) {
+    if (existing.count > maxContacts) {
+      throw new Error(`Segment size ${existing.count} exceeds max ${maxContacts}`);
+    }
+    if (!options.allowEmpty && existing.count === 0) {
+      throw new Error('No contacts matched the segment filters; snapshot is empty.');
+    }
     return { version: targetVersion, count: existing.count };
   }
 
-  const result = await refreshSnapshot(client, segment.filter_definition, targetVersion, segment.id);
+  const result = await refreshSnapshot(client, segment.filter_definition, targetVersion, segment.id, {
+    allowEmpty: options.allowEmpty,
+    maxContacts,
+  });
   return { version: result.segmentVersion, count: result.inserted };
 }
 
@@ -74,9 +85,19 @@ async function refreshSnapshot(
   client: SupabaseClient,
   filterDefinition: unknown,
   version: number,
-  segmentId: string
+  segmentId: string,
+  options: { allowEmpty?: boolean; maxContacts?: number }
 ) {
   const filters = parseSegmentFilters(filterDefinition);
   const contacts = await fetchContactsForSegment(client, filters);
+
+  if (!options.allowEmpty && contacts.length === 0) {
+    throw new Error('No contacts matched the segment filters; snapshot is empty.');
+  }
+
+  if (options.maxContacts !== undefined && contacts.length > options.maxContacts) {
+    throw new Error(`Contact count ${contacts.length} exceeds max ${options.maxContacts}`);
+  }
+
   return createSegmentSnapshot(client, { id: segmentId, version }, contacts);
 }

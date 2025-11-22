@@ -2,6 +2,7 @@ import { Command } from 'commander';
 
 import { loadEnv } from './config/env';
 import { campaignCreateHandler } from './commands/campaignCreate';
+import { campaignUpdateHandler } from './commands/campaignUpdate';
 import { draftGenerateHandler } from './commands/draftGenerate';
 import { segmentCreateHandler } from './commands/segmentCreate';
 import { segmentSnapshotHandler } from './commands/segmentSnapshot';
@@ -11,6 +12,7 @@ import { initSupabaseClient } from './services/supabaseClient';
 interface CliHandlers {
   segmentCreate: typeof segmentCreateHandler;
   campaignCreate: typeof campaignCreateHandler;
+  campaignUpdate: typeof campaignUpdateHandler;
   draftGenerate: typeof draftGenerateHandler;
   segmentSnapshot: typeof segmentSnapshotHandler;
 }
@@ -24,6 +26,7 @@ interface CliDependencies {
 const defaultHandlers: CliHandlers = {
   segmentCreate: segmentCreateHandler,
   campaignCreate: campaignCreateHandler,
+  campaignUpdate: campaignUpdateHandler,
   draftGenerate: draftGenerateHandler,
   segmentSnapshot: segmentSnapshotHandler,
 };
@@ -68,6 +71,8 @@ export function createProgram(deps: CliDependencies) {
     .option('--data-quality-mode <dataQualityMode>', 'strict')
     .option('--snapshot-mode <snapshotMode>', 'reuse')
     .option('--bump-segment-version', 'Increment segment version before snapshot')
+    .option('--allow-empty', 'Allow zero-contact snapshots')
+    .option('--max-contacts <maxContacts>', 'Maximum contacts allowed in a snapshot')
     .action(async (options) => {
       await handlers.campaignCreate(deps.supabaseClient, {
         name: options.name,
@@ -82,6 +87,8 @@ export function createProgram(deps: CliDependencies) {
         dataQualityMode: options.dataQualityMode,
         snapshotMode: options.snapshotMode,
         bumpSegmentVersion: Boolean(options.bumpSegmentVersion),
+        allowEmpty: Boolean(options.allowEmpty),
+        maxContacts: options.maxContacts ? Number(options.maxContacts) : undefined,
       });
     });
 
@@ -98,10 +105,29 @@ export function createProgram(deps: CliDependencies) {
     .command('segment:snapshot')
     .requiredOption('--segment-id <segmentId>')
     .option('--segment-version <segmentVersion>')
+    .option('--allow-empty', 'Allow zero-contact snapshots')
+    .option('--max-contacts <maxContacts>', 'Maximum contacts allowed in a snapshot')
     .action(async (options) => {
       await handlers.segmentSnapshot(deps.supabaseClient, {
         segmentId: options.segmentId,
         segmentVersion: options.segmentVersion ? Number(options.segmentVersion) : undefined,
+        allowEmpty: Boolean(options.allowEmpty),
+        maxContacts: options.maxContacts ? Number(options.maxContacts) : undefined,
+      });
+    });
+
+  program
+    .command('campaign:update')
+    .requiredOption('--campaign-id <campaignId>')
+    .option('--prompt-pack-id <promptPackId>')
+    .option('--schedule <json>')
+    .option('--throttle <json>')
+    .action(async (options) => {
+      await handlers.campaignUpdate(deps.supabaseClient, {
+        campaignId: options.campaignId,
+        promptPackId: options.promptPackId,
+        schedule: options.schedule,
+        throttle: options.throttle,
       });
     });
 

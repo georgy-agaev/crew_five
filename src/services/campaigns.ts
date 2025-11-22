@@ -48,3 +48,44 @@ export async function createCampaign(
 
   return data as Record<string, any>;
 }
+
+export interface CampaignUpdateInput {
+  promptPackId?: string;
+  schedule?: Record<string, unknown>;
+  throttle?: Record<string, unknown>;
+}
+
+export async function updateCampaign(
+  client: SupabaseClient,
+  campaignId: string,
+  input: CampaignUpdateInput
+) {
+  const patch: Record<string, unknown> = {};
+
+  if (input.promptPackId !== undefined) {
+    patch.prompt_pack_id = input.promptPackId;
+  }
+  if (input.schedule !== undefined) {
+    patch.schedule = input.schedule;
+  }
+  if (input.throttle !== undefined) {
+    patch.throttle = input.throttle;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    throw new Error('No updatable fields provided');
+  }
+
+  const { data, error } = await client
+    .from('campaigns')
+    .update(patch)
+    .eq('id', campaignId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw error ?? new Error('Failed to update campaign');
+  }
+
+  return data;
+}

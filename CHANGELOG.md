@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.4] - 2025-11-22
+### Added
+- Introduced validated segment filter DSL (`eq`, `in`, `not_in`, `gte`, `lte`) in `src/filters/` with guardrails for unknown fields and empty filters.
+- Enforced snapshot guardrails (default max 5000 contacts, `--max-contacts`, `--allow-empty`) and tightened snapshot workflow defaults.
+- Added `campaign:update` CLI/handler limited to `prompt_pack_id`, `schedule`, `throttle`; updated CLI wiring and docs.
+
 ## [0.1.3] - 2025-11-22
 ### Added
 - Added tracked `prompts/template.md` and adjusted ignore rules so prompt drafts stay local while the template remains versioned.
