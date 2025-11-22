@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import crypto from 'crypto';
 
 export type FilterOp = 'eq' | 'in' | 'not_in' | 'gte' | 'lte';
 
@@ -14,7 +15,7 @@ const allowedOps: FilterOp[] = ['eq', 'in', 'not_in', 'gte', 'lte'];
 function ensureFieldAllowed(field: string) {
   const ok = allowedPrefixes.some((prefix) => field.startsWith(prefix));
   if (!ok) {
-    throw new Error(`Unknown field: ${field}`);
+    throw new Error(`Unknown field: ${field}. Allowed prefixes: ${allowedPrefixes.join(', ')}`);
   }
 }
 
@@ -42,7 +43,7 @@ export function parseSegmentFilters(definition: unknown): FilterClause[] {
     ensureFieldAllowed(field);
 
     if (!allowedOps.includes(operator)) {
-      throw new Error(`Unsupported operator: ${operator}`);
+      throw new Error(`Unsupported operator: ${operator}. Allowed: ${allowedOps.join(', ')}`);
     }
 
     if ((operator === 'in' || operator === 'not_in') && (!Array.isArray(value) || value.length === 0)) {
@@ -55,6 +56,12 @@ export function parseSegmentFilters(definition: unknown): FilterClause[] {
 
     return { field, op: operator, value };
   });
+}
+
+export function hashFilters(filters: FilterClause[]): string {
+  const normalized = filters.map((f) => ({ field: f.field, op: f.op, value: f.value }));
+  const serialized = JSON.stringify(normalized);
+  return crypto.createHash('sha256').update(serialized).digest('hex');
 }
 
 export function buildContactQuery(client: SupabaseClient, filters: FilterClause[]) {

@@ -33,8 +33,8 @@ This repo tracks specs and planning artifacts for the AI SDR GTM System. It keep
   - Install deps: `pnpm install`
   - Run tests: `pnpm test`
   - Segment creation: `pnpm cli segment:create --name "Fintech" --locale en --filter '{"field":"employees.role","operator":"eq","value":"CTO"}'`
-  - Segment snapshot: `pnpm cli segment:snapshot --segment-id <id> [--segment-version 2] [--allow-empty] [--max-contacts 5000]`
-  - Campaign creation: `pnpm cli campaign:create --name "Q1 Push" --segment-id <id> --segment-version 1 --snapshot-mode refresh [--allow-empty] [--max-contacts 5000]`
+  - Segment snapshot: `pnpm cli segment:snapshot --segment-id <id> [--segment-version 2] [--allow-empty] [--max-contacts 5000] [--force-version]`
+  - Campaign creation: `pnpm cli campaign:create --name "Q1 Push" --segment-id <id> --segment-version 1 --snapshot-mode refresh [--allow-empty] [--max-contacts 5000] [--force-version]`
   - Campaign update: `pnpm cli campaign:update --campaign-id <id> [--prompt-pack-id <id>] [--schedule <json>] [--throttle <json>]`
   - Draft generation: `pnpm cli draft:generate --campaign-id <id>`
   Ensure `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` env vars are present (see `.env.example` once added).
@@ -45,4 +45,6 @@ Segments store `filter_definition` as an array of clauses, e.g.
 `eq`, `in`, `not_in`, `gte`, `lte`. Unknown fields/operators and empty filter lists are
 rejected. Only `employees.*` or `companies.*` fields are allowed. Snapshotting fails if no
 contacts match unless `--allow-empty` is passed; a guardrail caps snapshots at 5000 contacts
-by default (override with `--max-contacts`).
+by default (override with `--max-contacts`). Snapshots store a filters hash in member snapshots;
+reuse fails if the hash mismatches (refresh required). Use `--force-version` to override a stale
+segment version when intentionally syncing versions.

@@ -34,6 +34,7 @@ describe('buildContactQuery', () => {
       gte: (...args: any[]) => (calls.push({ method: 'gte', args }), query),
       lte: (...args: any[]) => (calls.push({ method: 'lte', args }), query),
       in: (...args: any[]) => (calls.push({ method: 'in', args }), query),
+      not: (...args: any[]) => (calls.push({ method: 'not', args }), query),
     };
     const client = {
       from: () => ({
@@ -46,6 +47,7 @@ describe('buildContactQuery', () => {
       { field: 'employees.headcount', operator: 'gte', value: 100 },
       { field: 'employees.headcount', operator: 'lte', value: 500 },
       { field: 'companies.segment', operator: 'in', value: ['Fintech', 'AI'] },
+      { field: 'companies.segment', operator: 'not_in', value: ['Legacy'] },
     ]);
 
     buildContactQuery(client, parsed);
@@ -55,6 +57,7 @@ describe('buildContactQuery', () => {
       { method: 'gte', args: ['employees.headcount', 100] },
       { method: 'lte', args: ['employees.headcount', 500] },
       { method: 'in', args: ['companies.segment', ['Fintech', 'AI']] },
+      { method: 'not', args: ['companies.segment', 'in', ['Legacy']] },
     ]);
   });
 });

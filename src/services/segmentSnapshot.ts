@@ -27,7 +27,8 @@ export interface SnapshotResult {
 export async function createSegmentSnapshot(
   client: SupabaseClient,
   segment: SegmentRecord,
-  contacts: ContactRow[]
+  contacts: ContactRow[],
+  filtersHash?: string
 ): Promise<SnapshotResult> {
   await client
     .from('segment_members')
@@ -50,6 +51,7 @@ export async function createSegmentSnapshot(
         position: contact.position,
       },
       company: contact.company ?? null,
+      filters_hash: filtersHash ?? null,
     },
   }));
 

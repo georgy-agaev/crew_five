@@ -59,6 +59,7 @@ describe('createProgram', () => {
       '--allow-empty',
       '--max-contacts',
       '1000',
+      '--force-version',
     ]);
 
     expect(snapshotHandler).toHaveBeenCalledWith({}, {
@@ -66,6 +67,7 @@ describe('createProgram', () => {
       segmentVersion: undefined,
       allowEmpty: true,
       maxContacts: 1000,
+      forceVersion: true,
     });
   });
 
@@ -98,6 +100,7 @@ describe('createProgram', () => {
       '--bump-segment-version',
       '--max-contacts',
       '500',
+      '--force-version',
     ]);
 
     expect(campaignHandler).toHaveBeenCalledWith({}, {
@@ -113,6 +116,7 @@ describe('createProgram', () => {
       bumpSegmentVersion: true,
       allowEmpty: false,
       maxContacts: 500,
+      forceVersion: true,
     });
   });
 

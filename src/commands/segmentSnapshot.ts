@@ -7,6 +7,7 @@ interface SegmentSnapshotOptions {
   segmentVersion?: number;
   allowEmpty?: boolean;
   maxContacts?: number;
+  forceVersion?: boolean;
 }
 
 export async function segmentSnapshotHandler(
@@ -19,5 +20,6 @@ export async function segmentSnapshotHandler(
     mode: 'refresh',
     allowEmpty: options.allowEmpty,
     maxContacts: options.maxContacts,
+    forceVersion: options.forceVersion,
   });
 }

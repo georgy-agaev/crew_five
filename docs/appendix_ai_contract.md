@@ -87,10 +87,14 @@ interface EmailDraftResponse {
 ## Segment Filter DSL (Snapshot Guardrails)
 - Filters are an array of clauses `{field, operator, value}` stored on `segments.filter_definition`.
 - Allowed operators: `eq`, `in`, `not_in`, `gte`, `lte`. All others are rejected.
-- Allowed fields must start with `employees.` or `companies.`; unknown fields are rejected.
+- Allowed fields must start with `employees.` or `companies.`; unknown fields are rejected with a
+  message listing allowed prefixes.
 - Empty filter arrays are invalid.
 - Snapshotting fails if no contacts match unless `allowEmpty` is explicitly set; a default guardrail
   caps snapshots at 5000 contacts (overridable per CLI call).
+- Snapshots store a filters hash inside each `segment_members.snapshot`; reuse is rejected if the
+  current filters hash differs (refresh required). Use `--force-version` to override stale versions
+  when intentionally resyncing.
 
 ## Notes
 - This contract is immutable; any prompt/model/provider change must produce the same shape.

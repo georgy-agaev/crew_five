@@ -60,6 +60,21 @@ export async function updateCampaign(
   campaignId: string,
   input: CampaignUpdateInput
 ) {
+  const { data: statusRow, error: statusError } = await client
+    .from('campaigns')
+    .select('status')
+    .eq('id', campaignId)
+    .single();
+
+  if (statusError || !statusRow) {
+    throw statusError ?? new Error('Campaign not found');
+  }
+
+  const allowedStatuses = ['draft', 'ready', 'review'];
+  if (!allowedStatuses.includes(statusRow.status)) {
+    throw new Error(`Cannot update campaign in status ${statusRow.status}`);
+  }
+
   const patch: Record<string, unknown> = {};
 
   if (input.promptPackId !== undefined) {

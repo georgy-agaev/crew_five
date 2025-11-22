@@ -18,6 +18,7 @@ interface CampaignCreateOptions {
   bumpSegmentVersion?: boolean;
   allowEmpty?: boolean;
   maxContacts?: number;
+  forceVersion?: boolean;
 }
 
 export async function campaignCreateHandler(
@@ -38,6 +39,7 @@ export async function campaignCreateHandler(
     bumpVersion: options.bumpSegmentVersion,
     allowEmpty: options.allowEmpty,
     maxContacts: options.maxContacts,
+    forceVersion: options.forceVersion,
   });
 
   return createCampaign(client, {

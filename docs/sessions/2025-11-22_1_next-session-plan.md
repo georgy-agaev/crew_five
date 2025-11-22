@@ -5,20 +5,23 @@ Focus the next session on hardening segmentation and snapshot enforcement so cam
 deterministic contact sets, while keeping draft generation stable. Avoid legacy fallback work unless
 explicitly requested.
 
-## Plan
-- Narrow scope: add a minimal `campaign:update` that only allows `prompt_pack_id`, `schedule`, and
-  `throttle` updates; forbid segment changes/status changes for now.
-- Keep filter DSL minimal (equals, in/not-in, >=, <=) with required `op/field/value`; reject unknown
-  fields/operators.
-- Build a mock Supabase client that records applied filters to assert query constraints in tests.
-- Reject snapshots when filters resolve to zero contacts unless `--allow-empty` is passed.
-- If `bumpVersion` is set, always increment then refresh; ignore provided `segmentVersion`.
-- Add end-to-end CLI/Vitest coverage for `segment:snapshot` + `campaign:create` with mocked
-  Supabase/AI to validate snapshot enforcement.
-- Document the DSL grammar/operator table in the PRD appendix.
-- Move filter parsing/validation into `src/filters/` and export AST types for reuse.
-- Enforce max contacts per snapshot (configurable) and fail fast when exceeded.
-- Only allow `prompt_pack_id`, `schedule`, `throttle` in `campaign:update`; no segment changes.
+## Plan (Completed 2025-11-22)
+- [Completed] Narrow scope: add a minimal `campaign:update` that only allows `prompt_pack_id`,
+  `schedule`, and `throttle` updates; forbid segment changes/status changes for now.
+- [Completed] Keep filter DSL minimal (equals, in/not-in, >=, <=) with required `op/field/value`;
+  reject unknown fields/operators.
+- [Completed] Build a mock Supabase client that records applied filters to assert query constraints
+  in tests.
+- [Completed] Reject snapshots when filters resolve to zero contacts unless `--allow-empty` is
+  passed.
+- [Completed] If `bumpVersion` is set, always increment then refresh; ignore provided
+  `segmentVersion`.
+- [Completed] Add end-to-end CLI/Vitest coverage for `segment:snapshot` + `campaign:create` with
+  mocked Supabase/AI to validate snapshot enforcement.
+- [Completed] Document the DSL grammar/operator table in the PRD appendix.
+- [Completed] Move filter parsing/validation into `src/filters/` and export AST types for reuse.
+- [Completed] Enforce max contacts per snapshot (configurable; default 5000) and fail fast when
+  exceeded.
 
 ## Files to Touch
 - `src/filters/` (new) – parsing/validation and AST types; query adapter.

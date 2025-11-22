@@ -73,6 +73,7 @@ export function createProgram(deps: CliDependencies) {
     .option('--bump-segment-version', 'Increment segment version before snapshot')
     .option('--allow-empty', 'Allow zero-contact snapshots')
     .option('--max-contacts <maxContacts>', 'Maximum contacts allowed in a snapshot')
+    .option('--force-version', 'Force segment version override when mismatched')
     .action(async (options) => {
       await handlers.campaignCreate(deps.supabaseClient, {
         name: options.name,
@@ -89,6 +90,7 @@ export function createProgram(deps: CliDependencies) {
         bumpSegmentVersion: Boolean(options.bumpSegmentVersion),
         allowEmpty: Boolean(options.allowEmpty),
         maxContacts: options.maxContacts ? Number(options.maxContacts) : undefined,
+        forceVersion: Boolean(options.forceVersion),
       });
     });
 
@@ -107,12 +109,14 @@ export function createProgram(deps: CliDependencies) {
     .option('--segment-version <segmentVersion>')
     .option('--allow-empty', 'Allow zero-contact snapshots')
     .option('--max-contacts <maxContacts>', 'Maximum contacts allowed in a snapshot')
+    .option('--force-version', 'Force segment version override when mismatched')
     .action(async (options) => {
       await handlers.segmentSnapshot(deps.supabaseClient, {
         segmentId: options.segmentId,
         segmentVersion: options.segmentVersion ? Number(options.segmentVersion) : undefined,
         allowEmpty: Boolean(options.allowEmpty),
         maxContacts: options.maxContacts ? Number(options.maxContacts) : undefined,
+        forceVersion: Boolean(options.forceVersion),
       });
     });
 

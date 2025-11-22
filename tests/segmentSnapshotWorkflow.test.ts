@@ -11,12 +11,17 @@ vi.mock('../src/services/segments', () => ({
   fetchContactsForSegment: vi.fn().mockResolvedValue([
     { id: 'contact-1', company_id: 'company-1' },
   ]),
-  setSegmentVersion: vi.fn().mockResolvedValue(2),
+  setSegmentVersion: vi.fn().mockImplementation((_client, _id, version) => Promise.resolve(version)),
 }));
 
-vi.mock('../src/filters', () => ({
-  parseSegmentFilters: vi.fn().mockReturnValue([{ field: 'employees.role', op: 'eq', value: 'CTO' }]),
-}));
+vi.mock('../src/filters', async () => {
+  const actual = await vi.importActual<typeof import('../src/filters')>('../src/filters');
+  return {
+    ...actual,
+    parseSegmentFilters: vi.fn().mockReturnValue([{ field: 'employees.role', op: 'eq', value: 'CTO' }]),
+    hashFilters: vi.fn().mockReturnValue('hash-123'),
+  };
+});
 
 vi.mock('../src/services/segmentSnapshot', () => ({
   createSegmentSnapshot: vi.fn().mockImplementation((_client, segment, contacts) =>
@@ -45,6 +50,70 @@ describe('snapshotExists', () => {
 });
 
 describe('ensureSegmentSnapshot guardrails', () => {
+  it('rejects reuse when filters hash mismatches', async () => {
+    const limit = vi.fn().mockResolvedValue({
+      data: [{ snapshot: { filters_hash: 'old-hash' } }],
+      count: 1,
+      error: null,
+    });
+    const match = vi.fn().mockReturnValue({ limit });
+    const select = vi.fn().mockReturnValue({ match });
+    const client = {
+      from: vi.fn().mockReturnValue({ select }),
+    } as any;
+
+    await expect(
+      ensureSegmentSnapshot(client, {
+        segmentId: 'segment-1',
+        mode: 'reuse',
+      })
+    ).rejects.toThrow(/hash mismatch/);
+  });
+
+  it('returns filters hash when refreshing', async () => {
+    const match = vi.fn().mockResolvedValue({ data: null, error: null, count: 0 });
+    const select = vi.fn().mockReturnValue({ match });
+    const client = {
+      from: vi.fn().mockReturnValue({ select }),
+    } as any;
+
+    const result = await ensureSegmentSnapshot(client, {
+      segmentId: 'segment-1',
+      mode: 'refresh',
+      allowEmpty: true,
+    });
+
+    expect(result.filtersHash).toBeDefined();
+    expect(typeof result.filtersHash).toBe('string');
+  });
+
+  it('fails when provided version mismatches unless forceVersion is set', async () => {
+    const match = vi.fn().mockResolvedValue({ data: null, error: null, count: 0 });
+    const select = vi.fn().mockReturnValue({ match });
+    const client = {
+      from: vi.fn().mockReturnValue({ select }),
+    } as any;
+
+    await expect(
+      ensureSegmentSnapshot(client, {
+        segmentId: 'segment-1',
+        mode: 'reuse',
+        segmentVersion: 99,
+      })
+    ).rejects.toThrow(/segment version mismatch/);
+
+    vi.mocked(fetchContactsForSegment).mockResolvedValueOnce([]);
+    await expect(
+      ensureSegmentSnapshot(client, {
+        segmentId: 'segment-1',
+        mode: 'refresh',
+        segmentVersion: 99,
+        forceVersion: true,
+        allowEmpty: true,
+      })
+    ).resolves.toEqual(expect.objectContaining({ version: 99, filtersHash: 'hash-123' }));
+  });
+
   it('rejects zero-contact snapshots unless allowEmpty is true', async () => {
     vi.mocked(fetchContactsForSegment).mockResolvedValueOnce([]);
     const match = vi.fn().mockResolvedValue({ data: null, error: null, count: 0 });
@@ -68,7 +137,7 @@ describe('ensureSegmentSnapshot guardrails', () => {
         mode: 'refresh',
         allowEmpty: true,
       })
-    ).resolves.toEqual({ version: 1, count: 0 });
+    ).resolves.toEqual(expect.objectContaining({ version: 1, count: 0 }));
   });
 
   it('enforces max contacts guardrail', async () => {

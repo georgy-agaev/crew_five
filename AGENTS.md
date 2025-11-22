@@ -10,6 +10,7 @@
 - When current documentation is needed for external APIs/libraries, fetch it via Context7 (`resolve-library-id` + `get-library-docs`) instead of relying solely on model training data.
 - When addressing problems or decisions, always propose at least three options (or combinations).
 - Prompts are kept in `prompts/` (ignored except for `prompts/template.md`); store working drafts there, never commit secrets, and keep tracked templates sanitized.
+- In session docs, explicitly mark tasks as “Completed” vs “To Do” so readers can see what’s done and what’s upcoming.
 
 ## Build, Test, and Development Commands
 - Install deps: `pnpm install`
