@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createCampaign } from '../src/services/campaigns';
+import { assertCampaignStatusTransition, createCampaign } from '../src/services/campaigns';
 
 describe('createCampaign', () => {
   it('stores campaign with default modes', async () => {
@@ -35,5 +35,35 @@ describe('createCampaign', () => {
       }),
     ]);
     expect(result).toEqual({ id: 'camp-1', interaction_mode: 'express' });
+  });
+
+  it('validates campaign status transitions (table-driven)', () => {
+    const valid: Array<[string, string]> = [
+      ['draft', 'ready'],
+      ['draft', 'review'],
+      ['ready', 'generating'],
+      ['generating', 'review'],
+      ['generating', 'sending'],
+      ['sending', 'paused'],
+      ['paused', 'sending'],
+      ['sending', 'complete'],
+      ['paused', 'complete'],
+    ];
+
+    valid.forEach(([from, to]) => {
+      expect(() => assertCampaignStatusTransition(from, to)).not.toThrow();
+    });
+
+    const invalid: Array<[string, string]> = [
+      ['sending', 'draft'],
+      ['complete', 'draft'],
+      ['ready', 'draft'],
+      ['review', 'draft'],
+      ['review', 'complete'],
+    ];
+
+    invalid.forEach(([from, to]) => {
+      expect(() => assertCampaignStatusTransition(from, to)).toThrow(/Invalid status transition/);
+    });
   });
 });

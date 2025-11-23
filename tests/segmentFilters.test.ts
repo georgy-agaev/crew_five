@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildContactQuery, parseSegmentFilters } from '../src/filters';
+import { buildContactQuery, parseSegmentFilters, validateFilters } from '../src/filters';
 
 describe('parseSegmentFilters', () => {
   it('parses minimal operators and rejects unknown', () => {
@@ -59,5 +59,18 @@ describe('buildContactQuery', () => {
       { method: 'in', args: ['companies.segment', ['Fintech', 'AI']] },
       { method: 'not', args: ['companies.segment', 'in', ['Legacy']] },
     ]);
+  });
+
+  it('validateFilters returns structured errors', () => {
+    const ok = validateFilters([
+      { field: 'employees.role', operator: 'eq', value: 'CTO' },
+    ]);
+    expect(ok.ok).toBe(true);
+    expect(ok.filters).toHaveLength(1);
+
+    const bad = validateFilters([{ field: 'unknown.field', operator: 'eq', value: 'x' }]);
+    expect(bad.ok).toBe(false);
+    expect(bad.error?.message).toMatch(/Unknown field/);
+    expect(bad.error?.details?.allowedPrefixes).toContain('employees.');
   });
 });

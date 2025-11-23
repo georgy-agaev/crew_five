@@ -49,6 +49,23 @@ export async function createCampaign(
   return data as Record<string, any>;
 }
 
+const statusTransitions: Record<string, string[]> = {
+  draft: ['ready', 'review'],
+  ready: ['generating'],
+  generating: ['review', 'sending'],
+  review: ['ready', 'generating'],
+  sending: ['paused', 'complete'],
+  paused: ['sending', 'complete'],
+  complete: [],
+};
+
+export function assertCampaignStatusTransition(current: string, next: string) {
+  const allowed = statusTransitions[current] ?? [];
+  if (!allowed.includes(next)) {
+    throw new Error(`Invalid status transition from ${current} to ${next}. Allowed: ${allowed.join(', ') || 'none'}`);
+  }
+}
+
 export interface CampaignUpdateInput {
   promptPackId?: string;
   schedule?: Record<string, unknown>;

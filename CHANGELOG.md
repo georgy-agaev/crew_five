@@ -13,6 +13,12 @@ All notable changes to this project will be documented in this file.
 - Snapshot hashing for reuse/refresh with hash mismatch rejection, filter validation errors improved, and `--force-version` wiring/guardrails in CLI/handlers.
 - Campaign update guardrails block non-draft/ready/review statuses; filter DSL tests expanded (`not_in`, range/list), and docs updated (README, appendix).
 
+## [0.1.6] - 2025-11-22
+### Added
+- Campaign status transition map (including pause/resume) with table tests; `campaign:update` still limited to prompt_pack_id/schedule/throttle and blocked outside draft/ready/review.
+- `filters:validate` CLI command outputs structured JSON and exits non-zero on errors; filter validation now returns friendly messages with allowed prefixes/operators.
+- README updated with status transition table and validate command; session logs/roadmap refreshed.
+
 ## [0.1.3] - 2025-11-22
 ### Added
 - Added tracked `prompts/template.md` and adjusted ignore rules so prompt drafts stay local while the template remains versioned.

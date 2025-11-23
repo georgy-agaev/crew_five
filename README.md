@@ -36,6 +36,7 @@ This repo tracks specs and planning artifacts for the AI SDR GTM System. It keep
   - Segment snapshot: `pnpm cli segment:snapshot --segment-id <id> [--segment-version 2] [--allow-empty] [--max-contacts 5000] [--force-version]`
   - Campaign creation: `pnpm cli campaign:create --name "Q1 Push" --segment-id <id> --segment-version 1 --snapshot-mode refresh [--allow-empty] [--max-contacts 5000] [--force-version]`
   - Campaign update: `pnpm cli campaign:update --campaign-id <id> [--prompt-pack-id <id>] [--schedule <json>] [--throttle <json>]`
+  - Validate filters (no DB): `pnpm cli filters:validate --filter '[{"field":"employees.role","operator":"eq","value":"CTO"}]'`
   - Draft generation: `pnpm cli draft:generate --campaign-id <id>`
   Ensure `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` env vars are present (see `.env.example` once added).
 
@@ -48,3 +49,13 @@ contacts match unless `--allow-empty` is passed; a guardrail caps snapshots at 5
 by default (override with `--max-contacts`). Snapshots store a filters hash in member snapshots;
 reuse fails if the hash mismatches (refresh required). Use `--force-version` to override a stale
 segment version when intentionally syncing versions.
+
+### Campaign Status Transitions
+Allowed transitions:
+- draft → ready | review
+- ready → generating
+- generating → review | sending
+- review → ready | generating
+- sending → paused | complete
+- paused → sending | complete
+All other transitions are rejected. `campaign:update` is allowed only in draft/ready/review statuses.

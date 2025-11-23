@@ -56,6 +56,8 @@
 - 2025-11-21_3_segment-snapshot-results: Segment snapshot command/services/tests/docs delivered.
 - 2025-11-21_4_campaign-snapshot-results: Segment versioning, snapshot enforcement in campaign create, CLI/tests/docs updated.
 - 2025-11-22_1_next-session-plan: Plan completed for snapshot guardrails and minimal campaign update; DSL tightened; docs/tests updated.
+- 2025-11-22_2_hash-guardrails-and-updates: Snapshot hashing, force-version, guardrails, campaign update safety; docs/tests updated.
+- 2025-11-22_3_status-guardrails-and-filter-validation: Campaign status transition map, filter validation CLI/UX, docs/tests updated.
 
 ### Phase 1 – Outreach MVP (remaining sessions)
 

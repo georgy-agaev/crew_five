@@ -6,6 +6,7 @@ import { campaignUpdateHandler } from './commands/campaignUpdate';
 import { draftGenerateHandler } from './commands/draftGenerate';
 import { segmentCreateHandler } from './commands/segmentCreate';
 import { segmentSnapshotHandler } from './commands/segmentSnapshot';
+import { validateFilters } from './filters';
 import { AiClient } from './services/aiClient';
 import { initSupabaseClient } from './services/supabaseClient';
 
@@ -133,6 +134,23 @@ export function createProgram(deps: CliDependencies) {
         schedule: options.schedule,
         throttle: options.throttle,
       });
+    });
+
+  program
+    .command('filters:validate')
+    .requiredOption('--filter <json>', 'Filter definition JSON')
+    .action(async (options) => {
+      try {
+        const parsed = JSON.parse(options.filter);
+        const result = validateFilters(parsed);
+        console.log(JSON.stringify(result));
+        if (!result.ok) {
+          process.exitCode = 1;
+        }
+      } catch (error: any) {
+        console.log(JSON.stringify({ ok: false, error: { message: error?.message ?? 'Invalid JSON' } }));
+        process.exitCode = 1;
+      }
     });
 
   return program;

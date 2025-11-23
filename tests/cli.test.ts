@@ -155,4 +155,26 @@ describe('createProgram', () => {
       throttle: '{"per_hour":100}',
     });
   });
+
+  it('wires the filters:validate command and prints JSON', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const program = createProgram({
+      supabaseClient: {} as any,
+      aiClient: {} as any,
+      handlers: {},
+    });
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'filters:validate',
+      '--filter',
+      '[{"field":"employees.role","operator":"eq","value":"CTO"}]',
+    ]);
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      JSON.stringify({ ok: true, filters: [{ field: 'employees.role', op: 'eq', value: 'CTO' }] })
+    );
+    consoleSpy.mockRestore();
+  });
 });

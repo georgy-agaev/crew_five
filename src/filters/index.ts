@@ -58,6 +58,24 @@ export function parseSegmentFilters(definition: unknown): FilterClause[] {
   });
 }
 
+export function validateFilters(definition: unknown): { ok: true; filters: FilterClause[] } | { ok: false; error: { message: string; details?: Record<string, unknown> } } {
+  try {
+    const filters = parseSegmentFilters(definition);
+    return { ok: true, filters };
+  } catch (error: any) {
+    return {
+      ok: false,
+      error: {
+        message: error?.message ?? 'Invalid filters',
+        details: {
+          allowedOperators: allowedOps,
+          allowedPrefixes,
+        },
+      },
+    };
+  }
+}
+
 export function hashFilters(filters: FilterClause[]): string {
   const normalized = filters.map((f) => ({ field: f.field, op: f.op, value: f.value }));
   const serialized = JSON.stringify(normalized);
