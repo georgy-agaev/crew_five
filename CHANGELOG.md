@@ -31,6 +31,12 @@ All notable changes to this project will be documented in this file.
 - `filters:validate` supports `json|text|terse` formats, returns codes/hints, sets exit codes, and includes a telemetry stub.
 - README (validate command formats) and appendix link to status/validation sections; session log added.
 
+## [0.1.9] - 2025-11-23
+### Added
+- Centralized status transitions in `src/status.ts` (typed union + helper); errors carry `ERR_STATUS_INVALID` with allowed transitions in details.
+- Validation CLI formats refined (json/text/terse) with codes/hints and consistent exit codes; telemetry stub retained.
+- Roadmap/session updated to reflect finalized status/validation UX.
+
 ## [0.1.3] - 2025-11-22
 ### Added
 - Added tracked `prompts/template.md` and adjusted ignore rules so prompt drafts stay local while the template remains versioned.

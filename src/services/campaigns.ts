@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { assertCampaignStatusTransition, CampaignStatus, getAllowedTransitions } from '../status';
+
 export interface CampaignInput {
   name: string;
   segmentId: string;
@@ -13,8 +15,6 @@ export interface CampaignInput {
   dataQualityMode?: 'strict' | 'graceful';
   metadata?: Record<string, unknown>;
 }
-
-export type CampaignStatus = 'draft' | 'ready' | 'review' | 'generating' | 'sending' | 'paused' | 'complete';
 
 export async function createCampaign(
   client: SupabaseClient,
@@ -51,27 +51,6 @@ export async function createCampaign(
   return data as Record<string, any>;
 }
 
-const statusTransitions: Record<CampaignStatus, CampaignStatus[]> = {
-  draft: ['ready', 'review'],
-  ready: ['generating'],
-  generating: ['review', 'sending'],
-  review: ['ready', 'generating'],
-  sending: ['paused', 'complete'],
-  paused: ['sending', 'complete'],
-  complete: [],
-};
-
-export function assertCampaignStatusTransition(current: CampaignStatus, next: CampaignStatus) {
-  const allowed = statusTransitions[current] ?? [];
-  if (!allowed.includes(next)) {
-    throw new Error(`ERR_STATUS_INVALID: Invalid status transition from ${current} to ${next}. Allowed: ${allowed.join(', ') || 'none'}`);
-  }
-}
-
-export function getAllowedTransitions(): Record<CampaignStatus, CampaignStatus[]> {
-  return statusTransitions;
-}
-
 export interface CampaignUpdateInput {
   promptPackId?: string;
   schedule?: Record<string, unknown>;
@@ -93,9 +72,12 @@ export async function updateCampaign(
     throw statusError ?? new Error('Campaign not found');
   }
 
-  const allowedStatuses = ['draft', 'ready', 'review'];
-  if (!allowedStatuses.includes(statusRow.status)) {
-    throw new Error(`Cannot update campaign in status ${statusRow.status}`);
+  const allowedStatuses: CampaignStatus[] = ['draft', 'ready', 'review'];
+  if (!allowedStatuses.includes(statusRow.status as CampaignStatus)) {
+    const err = new Error(`ERR_STATUS_INVALID: Cannot update campaign in status ${statusRow.status}`);
+    (err as any).code = 'ERR_STATUS_INVALID';
+    (err as any).details = { allowedStatuses, transitions: getAllowedTransitions()[statusRow.status as CampaignStatus] ?? [] };
+    throw err;
   }
 
   const patch: Record<string, unknown> = {};

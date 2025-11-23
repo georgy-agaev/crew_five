@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { assertCampaignStatusTransition, createCampaign } from '../src/services/campaigns';
+import { createCampaign } from '../src/services/campaigns';
+import { assertCampaignStatusTransition, getAllowedTransitions } from '../src/status';
 
 describe('createCampaign', () => {
   it('stores campaign with default modes', async () => {
