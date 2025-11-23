@@ -7,6 +7,9 @@ interface SendOptions {
   retryOnce?: boolean;
   logJson?: boolean;
   dryRun?: boolean;
+  failOnError?: boolean;
+  batchId?: string;
+  logger?: (payload: Record<string, unknown>) => void;
 }
 
 interface DraftRow {
@@ -25,7 +28,7 @@ export async function sendQueuedDrafts(
   options: SendOptions = {}
 ) {
   const throttle = options.throttlePerMinute ?? 50;
-  const batchId = `batch-${Date.now()}`;
+  const batchId = options.batchId ?? `batch-${Date.now()}`;
   const summary = { batchId, sent: 0, failed: 0, skipped: 0, timestamp: new Date().toISOString() };
 
   const { data: drafts, error } = await client
@@ -77,7 +80,7 @@ export async function sendQueuedDrafts(
         result = await attemptSend();
       }
 
-      outboundRecords.push({
+      const outboundRecord = {
         campaign_id: draft.campaign_id,
         draft_id: draft.id,
         contact_id: draft.contact_id,
@@ -87,13 +90,17 @@ export async function sendQueuedDrafts(
         status: 'sent',
         sent_at: new Date().toISOString(),
         metadata: { sendPayload },
-      });
+      };
+      outboundRecords.push(outboundRecord);
+      if (options.logger) {
+        options.logger({ level: 'info', batchId, draftId: draft.id, status: 'sent' });
+      }
       summary.sent += 1;
     } catch (sendError) {
       if (options.retryOnce) {
         try {
           const retryResult = await attemptSend();
-          outboundRecords.push({
+          const retryRecord = {
             campaign_id: draft.campaign_id,
             draft_id: draft.id,
             contact_id: draft.contact_id,
@@ -103,7 +110,11 @@ export async function sendQueuedDrafts(
             status: 'sent',
             sent_at: new Date().toISOString(),
             metadata: { sendPayload, retry: true },
-          });
+          };
+          outboundRecords.push(retryRecord);
+          if (options.logger) {
+            options.logger({ level: 'info', batchId, draftId: draft.id, status: 'sent', retry: true });
+          }
           summary.sent += 1;
           continue;
         } catch (retryError) {
@@ -115,8 +126,18 @@ export async function sendQueuedDrafts(
                 level: 'error',
                 draftId: draft.id,
                 error: (retryError as any)?.message ?? 'send failed',
+                batchId,
               })
             );
+          }
+          if (options.logger) {
+            options.logger({
+              level: 'error',
+              batchId,
+              draftId: draft.id,
+              error: (retryError as any)?.message ?? 'send failed',
+              retry: true,
+            });
           }
           continue;
         }
@@ -133,6 +154,14 @@ export async function sendQueuedDrafts(
             batchId,
           })
         );
+      }
+      if (options.logger) {
+        options.logger({
+          level: 'error',
+          batchId,
+          draftId: draft.id,
+          error: (sendError as any)?.message ?? 'send failed',
+        });
       }
     }
   }
@@ -154,6 +183,15 @@ export async function sendQueuedDrafts(
 
   if (options.logJson) {
     console.log(JSON.stringify({ level: 'info', summary }));
+  }
+  if (options.logger) {
+    options.logger({ level: 'info', summary });
+  }
+
+  if (options.failOnError && summary.failed > 0) {
+    const err = new Error('Send batch failed');
+    (err as any).summary = summary;
+    throw err;
   }
 
   return summary;

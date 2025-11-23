@@ -9,6 +9,8 @@ interface EmailSendOptions {
   summaryFormat?: 'json' | 'text';
   dryRun?: boolean;
   logJson?: boolean;
+  failOnError?: boolean;
+  batchId?: string;
 }
 
 export async function emailSendHandler(
@@ -22,6 +24,8 @@ export async function emailSendHandler(
     throttlePerMinute: options.throttlePerMinute,
     dryRun: options.dryRun,
     logJson: options.logJson,
+    failOnError: options.failOnError,
+    batchId: options.batchId,
   });
 
   if (options.summaryFormat === 'text') {

@@ -192,6 +192,8 @@ export function createProgram(deps: CliDependencies) {
     .option('--summary-format <format>', 'Summary format: json|text', 'json')
     .option('--dry-run', 'Skip sending, just log summary')
     .option('--log-json', 'Emit JSON logs/summary')
+    .option('--fail-on-error', 'Exit non-zero when any send fails')
+    .option('--batch-id <batchId>', 'Override batch id for tracing')
     .action(async (options) => {
       const supabaseClient = deps.supabaseClient;
       const smtpClient = {
@@ -206,6 +208,8 @@ export function createProgram(deps: CliDependencies) {
         dryRun: Boolean(options.dryRun),
         logJson: Boolean(options.logJson),
         summaryFormat: options.summaryFormat,
+        failOnError: Boolean(options.failOnError),
+        batchId: options.batchId,
       });
     });
 

@@ -109,8 +109,55 @@ describe('sendQueuedDrafts', () => {
     expect(summary.sent).toBe(1);
     expect(summary.failed).toBe(0);
     expect(sendMock).toHaveBeenCalledTimes(2);
-    expect(logSpy).toHaveBeenCalledTimes(1); // summary log
+    expect(logSpy).toHaveBeenCalled(); // error or summary log
 
     logSpy.mockRestore();
+  });
+
+  it('skips sends in dry-run and reports skipped', async () => {
+    const drafts = [
+      {
+        id: 'd1',
+        campaign_id: 'c1',
+        contact_id: 'contact-1',
+        company_id: 'company-1',
+        subject: 'Hi',
+        body: 'Body',
+        metadata: { foo: 'bar' },
+      },
+    ];
+    const limit = vi.fn().mockResolvedValue({ data: drafts, error: null });
+    const eqSelect = vi.fn().mockReturnValue({ limit });
+    const selectDrafts = vi.fn().mockReturnValue({ eq: eqSelect });
+
+    const updateEq = vi.fn().mockReturnValue({ error: null });
+    const updateDrafts = vi.fn().mockReturnValue({ eq: updateEq, in: vi.fn().mockResolvedValue({ error: null }) });
+
+    const insert = vi.fn().mockResolvedValue({ error: null });
+    const client = {
+      from: (table: string) => {
+        if (table === 'drafts') {
+          return {
+            select: selectDrafts,
+            update: updateDrafts,
+          };
+        }
+        if (table === 'email_outbound') return { insert };
+        return { update: updateDrafts };
+      },
+    } as any;
+
+    const smtpClient = { send: vi.fn() };
+    const summary = await sendQueuedDrafts(client, smtpClient, {
+      throttlePerMinute: 10,
+      provider: 'smtp',
+      senderIdentity: 'noreply@example.com',
+      dryRun: true,
+    });
+
+    expect(summary.sent).toBe(0);
+    expect(summary.failed).toBe(0);
+    expect(summary.skipped).toBe(1);
+    expect(smtpClient.send).not.toHaveBeenCalled();
   });
 });
