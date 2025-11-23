@@ -50,31 +50,24 @@
 
 ## Session Plan to Completion
 
-### Phase 0.5 – Foundations (Completed)
-- 2025-11-21_1_initial-prd-and-structure: PRD v0.1, AI contract appendix, README/CHANGELOG, SMTP-first/strict-mode defaults recorded.
-- 2025-11-21_2_cli-spine-implementation: CLI scaffold, env loader, services for segments/campaigns/drafts, AI stub, tests/README/AGENTS/CHANGELOG updated.
-- 2025-11-21_3_segment-snapshot-results: Segment snapshot command/services/tests/docs delivered.
-- 2025-11-21_4_campaign-snapshot-results: Segment versioning, snapshot enforcement in campaign create, CLI/tests/docs updated.
-- 2025-11-22_1_next-session-plan: Plan completed for snapshot guardrails and minimal campaign update; DSL tightened; docs/tests updated.
-- 2025-11-22_2_hash-guardrails-and-updates: Snapshot hashing, force-version, guardrails, campaign update safety; docs/tests updated.
-- 2025-11-22_3_status-guardrails-and-filter-validation: Campaign status transition map, filter validation CLI/UX, docs/tests updated.
-- 2025-11-22_4_status-enforcement-and-validation: Status enforcement/validation UX refinements; structured CLI outputs and docs/tests updated.
-- 2025-11-23_1_campaign-status-and-validation-next: Status/validation polish plan and execution.
-- 2025-11-23_2_campaign-status-cli-finalize: Status map centralized, validation CLI formats/code, docs/tests updated.
-- 2025-11-23_3_campaign-status-cli-wrap: Doc/test alignment pass for status/validation behavior.
+### Phase 0.5 – Foundations (Completed, newest first)
+- 2025-11-23_7_send-cli-polish: Batch_id/fail-on-error/dry-run options; single summary log.
+- 2025-11-23_6_smtp-send-logging-and-summary: Send summaries, formats, dry-run clarified.
+- 2025-11-23_5_smtp-send-hardening: Throttle/duplicate guard/retry summary logging.
 - 2025-11-23_4_campaign-status-next-steps: Added email send scaffold and documented status applicability.
+- 2025-11-23_3_campaign-status-cli-wrap: Doc/test alignment pass for status/validation behavior.
+- 2025-11-23_2_campaign-status-cli-finalize: Status map centralized, validation CLI formats/code, docs/tests updated.
+- 2025-11-23_1_campaign-status-and-validation-next: Status/validation polish plan and execution.
+- 2025-11-22_4_status-enforcement-and-validation: Status enforcement/validation UX refinements; structured CLI outputs and docs/tests updated.
+- 2025-11-22_3_status-guardrails-and-filter-validation: Campaign status transition map, filter validation CLI/UX, docs/tests updated.
+- 2025-11-22_2_hash-guardrails-and-updates: Snapshot hashing, force-version, guardrails, campaign update safety; docs/tests updated.
+- 2025-11-22_1_next-session-plan: Plan completed for snapshot guardrails and minimal campaign update; DSL tightened; docs/tests updated.
+- 2025-11-21_4_campaign-snapshot-results: Segment versioning, snapshot enforcement in campaign create, CLI/tests/docs updated.
+- 2025-11-21_3_segment-snapshot-results: Segment snapshot command/services/tests/docs delivered.
+- 2025-11-21_2_cli-spine-implementation: CLI scaffold, env loader, services for segments/campaigns/drafts, AI stub, tests/README/AGENTS/CHANGELOG updated.
+- 2025-11-21_1_initial-prd-and-structure: PRD v0.1, AI contract appendix, README/CHANGELOG, SMTP-first/strict-mode defaults recorded.
 
 ### Phase 1 – Outreach MVP (remaining sessions)
-
-**2025-11-22_2 Hash Guardrails & Updates (in-flight)**
-- Overview: Enforce snapshot determinism (hash + force-version) and tighten campaign updates.
-- Files: `src/filters/index.ts`, `src/services/segmentSnapshotWorkflow.ts`,
-  `src/services/campaigns.ts`, `src/commands/campaignUpdate.ts`, `src/cli.ts`, docs/tests.
-- Functions: `hashFilters(filters)` (stable hash of clauses), `ensureSegmentSnapshot(...)`
-  (hash enforcement, force-version), `campaignUpdateHandler(...)` (block non-draft/ready updates),
-  `parseSegmentFilters(...)` (better errors).
-- Tests: `segmentSnapshotWorkflow.rejects_reuse_on_hash_mismatch`, `segmentSnapshotWorkflow.allows_force_version`,
-  `campaignUpdate.blocks_non_draft`, `filters.supports_not_in_and_numeric`, `cli.force_version_passes_through`.
 
 **Session: Campaign State Machine & Guardrails**
 - Overview: Define allowed status transitions, enforce in handlers, and add clear errors for UI parity.
