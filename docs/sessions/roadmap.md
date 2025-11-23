@@ -59,6 +59,9 @@
 - 2025-11-22_2_hash-guardrails-and-updates: Snapshot hashing, force-version, guardrails, campaign update safety; docs/tests updated.
 - 2025-11-22_3_status-guardrails-and-filter-validation: Campaign status transition map, filter validation CLI/UX, docs/tests updated.
 - 2025-11-22_4_status-enforcement-and-validation: Status enforcement/validation UX refinements; structured CLI outputs and docs/tests updated.
+- 2025-11-23_1_campaign-status-and-validation-next: Status/validation polish plan and execution.
+- 2025-11-23_2_campaign-status-cli-finalize: Status map centralized, validation CLI formats/code, docs/tests updated.
+- 2025-11-23_3_campaign-status-cli-wrap: Doc/test alignment pass for status/validation behavior.
 
 ### Phase 1 – Outreach MVP (remaining sessions)
 

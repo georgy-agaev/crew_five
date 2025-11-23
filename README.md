@@ -53,7 +53,7 @@ Filter validation errors emit code `ERR_FILTER_VALIDATION` with allowed prefixes
 `filters:validate` command supports `json|text|terse` formats and exits non-zero on errors.
 
 ### Campaign Status Transitions
-Allowed transitions:
+Allowed transitions (source of truth: `src/status.ts`):
 - draft → ready | review
 - ready → generating
 - generating → review | sending
