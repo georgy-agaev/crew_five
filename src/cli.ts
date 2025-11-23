@@ -7,6 +7,7 @@ import { draftGenerateHandler } from './commands/draftGenerate';
 import { segmentCreateHandler } from './commands/segmentCreate';
 import { segmentSnapshotHandler } from './commands/segmentSnapshot';
 import { validateFilters } from './filters';
+import { emailSendHandler } from './cli-email-send';
 import { AiClient } from './services/aiClient';
 import { initSupabaseClient } from './services/supabaseClient';
 
@@ -181,6 +182,25 @@ export function createProgram(deps: CliDependencies) {
         emitTelemetry('filters:validate', { ok: false, format: options.format });
         process.exitCode = 1;
       }
+    });
+
+  program
+    .command('email:send')
+    .option('--provider <provider>', 'Email provider', 'smtp')
+    .option('--sender-identity <senderIdentity>', 'Sender identity/email')
+    .option('--throttle-per-minute <throttlePerMinute>', 'Throttle sends per minute', '50')
+    .action(async (options) => {
+      const supabaseClient = deps.supabaseClient;
+      const smtpClient = {
+        send: async (payload: any) => ({
+          providerId: `stub-${Date.now()}`,
+        }),
+      };
+      await emailSendHandler(supabaseClient, smtpClient, {
+        provider: options.provider,
+        senderIdentity: options.senderIdentity,
+        throttlePerMinute: options.throttlePerMinute ? Number(options.throttlePerMinute) : undefined,
+      });
     });
 
   return program;

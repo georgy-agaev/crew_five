@@ -37,6 +37,11 @@ All notable changes to this project will be documented in this file.
 - Validation CLI formats refined (json/text/terse) with codes/hints and consistent exit codes; telemetry stub retained.
 - Roadmap/session updated to reflect finalized status/validation UX.
 
+## [0.1.10] - 2025-11-23
+### Added
+- Email send scaffold (`email:send` CLI) with stubbed SMTP send/log/throttle and outbound recording.
+- README documents the send scaffold command; tests cover stub send and throttle behavior.
+
 ## [0.1.3] - 2025-11-22
 ### Added
 - Added tracked `prompts/template.md` and adjusted ignore rules so prompt drafts stay local while the template remains versioned.

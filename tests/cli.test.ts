@@ -224,4 +224,44 @@ describe('createProgram', () => {
     process.exitCode = originalExitCode ?? 0;
     consoleSpy.mockRestore();
   });
+
+  it('wires the email:send command', async () => {
+    const select = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+      }),
+    });
+    const insert = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn().mockReturnValue({ in: vi.fn().mockResolvedValue({ error: null }) });
+    const supabaseClient = {
+      from: (table: string) => {
+        if (table === 'drafts') {
+          return { select: () => select() };
+        }
+        if (table === 'email_outbound') {
+          return { insert };
+        }
+        return { update };
+      },
+    } as any;
+
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+    });
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'email:send',
+      '--provider',
+      'smtp',
+      '--sender-identity',
+      'noreply@example.com',
+      '--throttle-per-minute',
+      '25',
+    ]);
+
+    // No error thrown means command is wired; smtpClient is stubbed internally.
+  });
 });
