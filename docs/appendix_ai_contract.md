@@ -95,6 +95,8 @@ interface EmailDraftResponse {
 - Snapshots store a filters hash inside each `segment_members.snapshot`; reuse is rejected if the
   current filters hash differs (refresh required). Use `--force-version` to override stale versions
   when intentionally resyncing.
+- See README “Segment Filter Definition” and “Campaign Status Transitions” for current operators,
+  prefixes, status map, and CLI validation instructions; errors surface as codes with hints.
 
 ## Notes
 - This contract is immutable; any prompt/model/provider change must produce the same shape.

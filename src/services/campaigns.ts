@@ -14,6 +14,8 @@ export interface CampaignInput {
   metadata?: Record<string, unknown>;
 }
 
+export type CampaignStatus = 'draft' | 'ready' | 'review' | 'generating' | 'sending' | 'paused' | 'complete';
+
 export async function createCampaign(
   client: SupabaseClient,
   input: CampaignInput
@@ -49,7 +51,7 @@ export async function createCampaign(
   return data as Record<string, any>;
 }
 
-const statusTransitions: Record<string, string[]> = {
+const statusTransitions: Record<CampaignStatus, CampaignStatus[]> = {
   draft: ['ready', 'review'],
   ready: ['generating'],
   generating: ['review', 'sending'],
@@ -59,11 +61,15 @@ const statusTransitions: Record<string, string[]> = {
   complete: [],
 };
 
-export function assertCampaignStatusTransition(current: string, next: string) {
+export function assertCampaignStatusTransition(current: CampaignStatus, next: CampaignStatus) {
   const allowed = statusTransitions[current] ?? [];
   if (!allowed.includes(next)) {
-    throw new Error(`Invalid status transition from ${current} to ${next}. Allowed: ${allowed.join(', ') || 'none'}`);
+    throw new Error(`ERR_STATUS_INVALID: Invalid status transition from ${current} to ${next}. Allowed: ${allowed.join(', ') || 'none'}`);
   }
+}
+
+export function getAllowedTransitions(): Record<CampaignStatus, CampaignStatus[]> {
+  return statusTransitions;
 }
 
 export interface CampaignUpdateInput {

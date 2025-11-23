@@ -63,7 +63,7 @@ describe('createCampaign', () => {
     ];
 
     invalid.forEach(([from, to]) => {
-      expect(() => assertCampaignStatusTransition(from, to)).toThrow(/Invalid status transition/);
+      expect(() => assertCampaignStatusTransition(from as any, to as any)).toThrow(/ERR_STATUS_INVALID/);
     });
   });
 });

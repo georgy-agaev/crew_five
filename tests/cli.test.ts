@@ -196,7 +196,32 @@ describe('createProgram', () => {
       'text',
     ]);
 
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringMatching(/ERR_FILTER_VALIDATION/));
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringMatching(/ERR ERR_FILTER_VALIDATION/));
+    consoleSpy.mockRestore();
+  });
+
+  it('filters:validate terse format prints code and sets exit code', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const program = createProgram({
+      supabaseClient: {} as any,
+      aiClient: {} as any,
+      handlers: {},
+    });
+
+    const originalExitCode = process.exitCode;
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'filters:validate',
+      '--filter',
+      '[{"field":"unknown.field","operator":"eq","value":"x"}]',
+      '--format',
+      'terse',
+    ]);
+
+    expect(consoleSpy).toHaveBeenCalledWith('ERR ERR_FILTER_VALIDATION');
+    expect(process.exitCode).toBe(1);
+    process.exitCode = originalExitCode ?? 0;
     consoleSpy.mockRestore();
   });
 });

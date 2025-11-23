@@ -36,7 +36,7 @@ This repo tracks specs and planning artifacts for the AI SDR GTM System. It keep
   - Segment snapshot: `pnpm cli segment:snapshot --segment-id <id> [--segment-version 2] [--allow-empty] [--max-contacts 5000] [--force-version]`
   - Campaign creation: `pnpm cli campaign:create --name "Q1 Push" --segment-id <id> --segment-version 1 --snapshot-mode refresh [--allow-empty] [--max-contacts 5000] [--force-version]`
   - Campaign update: `pnpm cli campaign:update --campaign-id <id> [--prompt-pack-id <id>] [--schedule <json>] [--throttle <json>]`
-  - Validate filters (no DB): `pnpm cli filters:validate --filter '[{"field":"employees.role","operator":"eq","value":"CTO"}]'`
+  - Validate filters (no DB): `pnpm cli filters:validate --filter '[{"field":"employees.role","operator":"eq","value":"CTO"}]' [--format json|text|terse]`
   - Draft generation: `pnpm cli draft:generate --campaign-id <id>`
   Ensure `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` env vars are present (see `.env.example` once added).
 
@@ -49,6 +49,8 @@ contacts match unless `--allow-empty` is passed; a guardrail caps snapshots at 5
 by default (override with `--max-contacts`). Snapshots store a filters hash in member snapshots;
 reuse fails if the hash mismatches (refresh required). Use `--force-version` to override a stale
 segment version when intentionally syncing versions.
+Filter validation errors emit code `ERR_FILTER_VALIDATION` with allowed prefixes/operators; the
+`filters:validate` command supports `json|text|terse` formats and exits non-zero on errors.
 
 ### Campaign Status Transitions
 Allowed transitions:

@@ -25,6 +25,12 @@ All notable changes to this project will be documented in this file.
 - Status transition helper exposed and documented; campaign updates continue to enforce allowed statuses/fields.
 - Session docs/roadmap updated to reflect status enforcement/validation UX refinements.
 
+## [0.1.8] - 2025-11-23
+### Added
+- Campaign status typed union plus exported transition map helper; invalid transitions now use `ERR_STATUS_INVALID`.
+- `filters:validate` supports `json|text|terse` formats, returns codes/hints, sets exit codes, and includes a telemetry stub.
+- README (validate command formats) and appendix link to status/validation sections; session log added.
+
 ## [0.1.3] - 2025-11-22
 ### Added
 - Added tracked `prompts/template.md` and adjusted ignore rules so prompt drafts stay local while the template remains versioned.

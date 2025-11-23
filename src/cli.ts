@@ -38,6 +38,12 @@ export function createProgram(deps: CliDependencies) {
     ...deps.handlers,
   } as CliHandlers;
 
+  const emitTelemetry = (event: string, payload: Record<string, unknown>) => {
+    // Stub for future observability; no-op for now.
+    void event;
+    void payload;
+  };
+
   const program = new Command();
   program.name('gtm').description('AI SDR GTM system CLI');
 
@@ -139,29 +145,40 @@ export function createProgram(deps: CliDependencies) {
   program
     .command('filters:validate')
     .requiredOption('--filter <json>', 'Filter definition JSON')
-    .option('--format <format>', 'Output format: json|text', 'json')
+    .option('--format <format>', 'Output format: json|text|terse', 'json')
     .action(async (options) => {
       try {
         const parsed = JSON.parse(options.filter);
         const result = validateFilters(parsed);
-        if (options.format === 'text') {
+        if (options.format === 'terse') {
           if (result.ok) {
             console.log('OK');
           } else {
-            console.log(`ERR_FILTER_VALIDATION: ${result.error.message}`);
+            console.log(`ERR ${result.error.code ?? 'ERR_FILTER_VALIDATION'}`);
+          }
+        } else if (options.format === 'text') {
+          if (result.ok) {
+            console.log('OK');
+          } else {
+            console.log(`ERR ${result.error.code ?? 'ERR_FILTER_VALIDATION'}: ${result.error.message}`);
           }
         } else {
           console.log(JSON.stringify(result));
         }
+        emitTelemetry('filters:validate', { ok: result.ok, format: options.format });
         if (!result.ok) {
           process.exitCode = 1;
         }
       } catch (error: any) {
-        if (options.format === 'text') {
-          console.log(`ERR_FILTER_VALIDATION: ${error?.message ?? 'Invalid JSON'}`);
+        const errObj = { ok: false, error: { code: 'ERR_FILTER_VALIDATION', message: error?.message ?? 'Invalid JSON' } };
+        if (options.format === 'terse') {
+          console.log('ERR ERR_FILTER_VALIDATION');
+        } else if (options.format === 'text') {
+          console.log(`ERR ERR_FILTER_VALIDATION: ${errObj.error.message}`);
         } else {
-          console.log(JSON.stringify({ ok: false, error: { code: 'ERR_FILTER_VALIDATION', message: error?.message ?? 'Invalid JSON' } }));
+          console.log(JSON.stringify(errObj));
         }
+        emitTelemetry('filters:validate', { ok: false, format: options.format });
         process.exitCode = 1;
       }
     });
