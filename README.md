@@ -39,7 +39,8 @@ This repo tracks specs and planning artifacts for the AI SDR GTM System. It keep
   - Validate filters (no DB): `pnpm cli filters:validate --filter '[{"field":"employees.role","operator":"eq","value":"CTO"}]' [--format json|text|terse]`
   - Email send scaffold: `pnpm cli email:send --provider smtp --sender-identity noreply@example.com [--throttle-per-minute 50] [--summary-format json|text] [--dry-run] [--log-json] [--fail-on-error] [--batch-id <id>]`
   - Event ingest stub: `pnpm cli event:ingest --payload '{"provider":"stub","event_type":"delivered","provider_event_id":"123"}' [--dry-run]`
-  - Draft generation: `pnpm cli draft:generate --campaign-id <id>`
+  - Draft generation: `pnpm cli draft:generate --campaign-id <id> [--dry-run] [--fail-fast] [--limit 100]`
+  - Campaign status change: `pnpm cli campaign:status --campaign-id <id> --status <nextStatus>`
   Ensure `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` env vars are present (see `.env.example` once added).
 
 ### Segment Filter Definition

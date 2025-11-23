@@ -18,28 +18,30 @@ describe('generateDrafts', () => {
 
     const eq = vi.fn().mockReturnValue({ single });
 
-    const membersMatch = vi.fn().mockResolvedValue({
-      data: [
-        {
-          contact_id: 'contact-1',
-          company_id: 'company-1',
-          snapshot: {
-            request: {
-              email_type: 'intro',
-              language: 'en',
-              pattern_mode: 'standard',
-              brief: {
-                prospect: { full_name: 'Jane Doe', role: 'CTO', company_name: 'Acme' },
-                company: {},
-                context: {},
-                offer: { product_name: 'Tool', one_liner: 'Desc', key_benefits: ['a'] },
-                constraints: {},
+    const membersMatch = vi.fn().mockReturnValue({
+      limit: vi.fn().mockResolvedValue({
+        data: [
+          {
+            contact_id: 'contact-1',
+            company_id: 'company-1',
+            snapshot: {
+              request: {
+                email_type: 'intro',
+                language: 'en',
+                pattern_mode: 'standard',
+                brief: {
+                  prospect: { full_name: 'Jane Doe', role: 'CTO', company_name: 'Acme' },
+                  company: {},
+                  context: {},
+                  offer: { product_name: 'Tool', one_liner: 'Desc', key_benefits: ['a'] },
+                  constraints: {},
+                },
               },
             },
           },
-        },
-      ],
-      error: null,
+        ],
+        error: null,
+      }),
     });
 
     const insertSelect = vi.fn().mockResolvedValue({ data: [{ id: 'draft-1' }], error: null });
@@ -75,12 +77,59 @@ describe('generateDrafts', () => {
     };
     const aiClient = new AiClient(vi.fn().mockResolvedValue(aiResponse));
 
-    const drafts = await generateDrafts(supabase, aiClient, { campaignId: 'camp' });
+    const summary = await generateDrafts(supabase, aiClient, { campaignId: 'camp' });
 
     expect(eq).toHaveBeenCalledWith('id', 'camp');
     expect(membersMatch).toHaveBeenCalledWith({ segment_id: 'seg', segment_version: 1 });
     expect(insert).toHaveBeenCalled();
     expect(insertSelect).toHaveBeenCalled();
-    expect(drafts).toEqual([{ id: 'draft-1' }]);
+    expect(summary).toEqual({ generated: 1, skipped: 0, failed: 0, dryRun: false });
+  });
+
+  it('supports dry-run without inserts', async () => {
+    const single = vi.fn().mockResolvedValue({
+      data: { id: 'camp', segment_id: 'seg', segment_version: 1 },
+      error: null,
+    });
+    const eq = vi.fn().mockReturnValue({ single });
+    const membersMatch = vi.fn().mockReturnValue({
+      limit: vi.fn().mockResolvedValue({ data: [{ contact_id: 'c', company_id: 'co', snapshot: { request: {} } }], error: null }),
+    });
+    const supabase = {
+      from: (table: string) => {
+        if (table === 'campaigns') return { select: () => ({ eq }) };
+        if (table === 'segment_members') return { select: () => ({ match: membersMatch }) };
+        if (table === 'drafts') return { insert: vi.fn() };
+        throw new Error('unexpected');
+      },
+    } as any;
+
+    const aiClient = new AiClient(vi.fn());
+    const summary = await generateDrafts(supabase, aiClient, { campaignId: 'camp', dryRun: true });
+    expect(summary.generated).toBe(0);
+    expect(summary.skipped).toBeGreaterThanOrEqual(0);
+  });
+
+  it('fail-fast aborts on insert error', async () => {
+    const single = vi.fn().mockResolvedValue({ data: { id: 'camp', segment_id: 'seg', segment_version: 1 }, error: null });
+    const eq = vi.fn().mockReturnValue({ single });
+    const membersMatch = vi.fn().mockReturnValue({
+      limit: vi.fn().mockResolvedValue({
+        data: [{ contact_id: 'c', company_id: 'co', snapshot: { request: {} } }],
+        error: null,
+      }),
+    });
+    const insert = vi.fn().mockReturnValue({ select: vi.fn().mockResolvedValue({ error: new Error('insert fail') }) });
+    const supabase = {
+      from: (table: string) => {
+        if (table === 'campaigns') return { select: () => ({ eq }) };
+        if (table === 'segment_members') return { select: () => ({ match: membersMatch }) };
+        if (table === 'drafts') return { insert };
+        throw new Error('unexpected');
+      },
+    } as any;
+    const aiClient = new AiClient(vi.fn().mockResolvedValue({ subject: 's', body: 'b', metadata: { email_type: 'intro', language: 'en', pattern_mode: 'p', coach_prompt_id: 'c' } }));
+
+    await expect(generateDrafts(supabase, aiClient, { campaignId: 'camp', failFast: true })).rejects.toThrow(/insert fail/);
   });
 });

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.15] - 2025-11-23
+### Added
+- Campaign status CLI rewired to use guarded handler with dry-run; invalid transitions exit non-zero.
+- Draft orchestrator adds dry-run/fail-fast/limit with summary; CLI flags documented; tests updated.
+
 ## [0.1.13] - 2025-11-23
 ### Added
 - Send scaffold now supports batch_id override, logger callback, fail-on-error flag, and keeps dry-run semantics; summary logging is single-source.

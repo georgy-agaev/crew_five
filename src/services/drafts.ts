@@ -4,6 +4,9 @@ import type { AiClient, EmailDraftRequest } from './aiClient';
 
 interface GenerateDraftsOptions {
   campaignId: string;
+  dryRun?: boolean;
+  failFast?: boolean;
+  limit?: number;
 }
 
 interface SegmentMemberRow {
@@ -29,16 +32,23 @@ export async function generateDrafts(
   const membersRes = await client
     .from('segment_members')
     .select('contact_id, company_id, snapshot')
-    .match({ segment_id: campaign.segment_id, segment_version: campaign.segment_version });
+    .match({ segment_id: campaign.segment_id, segment_version: campaign.segment_version })
+    .limit(options.limit ?? 100);
 
   if (membersRes.error || !membersRes.data) {
     throw membersRes.error ?? new Error('No segment members found');
   }
 
   const draftsPayload = [] as any[];
+  const summary = { generated: 0, skipped: 0, failed: 0, dryRun: Boolean(options.dryRun) };
 
   for (const member of membersRes.data as SegmentMemberRow[]) {
     if (!member.snapshot?.request) {
+      continue;
+    }
+
+    if (options.dryRun) {
+      summary.skipped += 1;
       continue;
     }
 
@@ -56,17 +66,22 @@ export async function generateDrafts(
       metadata: response.metadata,
       status: 'generated',
     });
+    summary.generated += 1;
   }
 
   if (draftsPayload.length === 0) {
-    return [];
+    return summary;
   }
 
   const insertRes = await client.from('drafts').insert(draftsPayload).select();
 
   if (insertRes.error) {
-    throw insertRes.error;
+    if (options.failFast) {
+      throw insertRes.error;
+    }
+    summary.failed += draftsPayload.length;
+    return summary;
   }
 
-  return insertRes.data ?? draftsPayload;
+  return summary;
 }

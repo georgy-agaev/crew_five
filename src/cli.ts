@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { loadEnv } from './config/env';
 import { campaignCreateHandler } from './commands/campaignCreate';
 import { campaignUpdateHandler } from './commands/campaignUpdate';
+import { campaignStatusHandler } from './commands/campaignStatus';
 import { draftGenerateHandler } from './commands/draftGenerate';
 import { segmentCreateHandler } from './commands/segmentCreate';
 import { segmentSnapshotHandler } from './commands/segmentSnapshot';
@@ -106,9 +107,13 @@ export function createProgram(deps: CliDependencies) {
   program
     .command('draft:generate')
     .requiredOption('--campaign-id <campaignId>')
+    .option('--dry-run', 'Validate only, do not insert drafts')
+    .option('--fail-fast', 'Abort on first AI error')
     .action(async (options) => {
       await handlers.draftGenerate(deps.supabaseClient, deps.aiClient, {
         campaignId: options.campaignId,
+        dryRun: Boolean(options.dryRun),
+        failFast: Boolean(options.failFast),
       });
     });
 
@@ -127,6 +132,24 @@ export function createProgram(deps: CliDependencies) {
         maxContacts: options.maxContacts ? Number(options.maxContacts) : undefined,
         forceVersion: Boolean(options.forceVersion),
       });
+    });
+
+  program
+    .command('campaign:status')
+    .requiredOption('--campaign-id <campaignId>')
+    .requiredOption('--status <status>', 'Next status')
+    .option('--dry-run', 'Validate only, do not update')
+    .action(async (options) => {
+      try {
+        await campaignStatusHandler(deps.supabaseClient, {
+          campaignId: options.campaignId,
+          status: options.status,
+          dryRun: Boolean(options.dryRun),
+        } as any);
+      } catch (err: any) {
+        console.error(err?.message ?? 'Failed to update status');
+        process.exitCode = 1;
+      }
     });
 
   program

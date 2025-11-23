@@ -44,6 +44,39 @@ describe('createProgram', () => {
     // No error thrown means command is wired; smtpClient is stubbed internally.
   });
 
+  it('wires the campaign:status command', async () => {
+    const singleUpdate = vi.fn().mockResolvedValue({ data: { id: 'c', status: 'ready' }, error: null });
+    const eqUpdate = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ single: singleUpdate }) });
+    const update = vi.fn().mockReturnValue({ eq: eqUpdate });
+
+    const singleSelect = vi.fn().mockResolvedValue({ data: { status: 'draft' }, error: null });
+    const eqSelect = vi.fn().mockReturnValue({ single: singleSelect });
+    const select = vi.fn().mockReturnValue({ eq: eqSelect });
+    const supabaseClient = {
+      from: (table: string) => {
+        if (table === 'campaigns') {
+          return { select, update };
+        }
+        return { update };
+      },
+    } as any;
+
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+    });
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:status',
+      '--campaign-id',
+      'camp-1',
+      '--status',
+      'ready',
+    ]);
+  });
+
   it('wires the event:ingest command with JSON payload and dry-run', async () => {
     const limit = vi.fn().mockResolvedValue({ data: [], error: null });
     const eq2 = vi.fn().mockReturnValue({ limit });

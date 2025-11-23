@@ -51,6 +51,9 @@
 ## Session Plan to Completion
 
 ### Phase 0.5 – Foundations (Completed, newest first)
+- 2025-11-23_10_campaign-status-cli-fix-and-draft-orchestrator: Status CLI guard/dry-run; draft orchestrator with dry-run/fail-fast/limit.
+- 2025-11-23_9_campaign-state-and-draft-orchestrator: Status/validation plan for orchestrator.
+- 2025-11-23_8_event-ingestion-stub: Event ingest stub with validation/dedupe/dry-run.
 - 2025-11-23_7_send-cli-polish: Batch_id/fail-on-error/dry-run options; single summary log.
 - 2025-11-23_6_smtp-send-logging-and-summary: Send summaries, formats, dry-run clarified.
 - 2025-11-23_5_smtp-send-hardening: Throttle/duplicate guard/retry summary logging.

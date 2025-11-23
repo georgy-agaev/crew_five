@@ -5,6 +5,8 @@ import { generateDrafts } from '../services/drafts';
 
 interface DraftGenerateOptions {
   campaignId: string;
+  dryRun?: boolean;
+  failFast?: boolean;
 }
 
 export function draftGenerateHandler(
@@ -12,5 +14,9 @@ export function draftGenerateHandler(
   aiClient: AiClient,
   options: DraftGenerateOptions
 ) {
-  return generateDrafts(client, aiClient, { campaignId: options.campaignId });
+  return generateDrafts(client, aiClient, {
+    campaignId: options.campaignId,
+    dryRun: options.dryRun,
+    failFast: options.failFast,
+  });
 }

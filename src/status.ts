@@ -32,3 +32,8 @@ export function assertCampaignStatusTransition(current: CampaignStatus, next: Ca
     throw error;
   }
 }
+
+export function isValidTransition(current: CampaignStatus, next: CampaignStatus) {
+  const allowed = statusTransitions[current] ?? [];
+  return allowed.includes(next);
+}
