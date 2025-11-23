@@ -8,6 +8,7 @@ import { segmentCreateHandler } from './commands/segmentCreate';
 import { segmentSnapshotHandler } from './commands/segmentSnapshot';
 import { validateFilters } from './filters';
 import { emailSendHandler } from './cli-email-send';
+import { eventIngestHandler } from './cli-event-ingest';
 import { AiClient } from './services/aiClient';
 import { initSupabaseClient } from './services/supabaseClient';
 
@@ -211,6 +212,14 @@ export function createProgram(deps: CliDependencies) {
         failOnError: Boolean(options.failOnError),
         batchId: options.batchId,
       });
+    });
+
+  program
+    .command('event:ingest')
+    .requiredOption('--payload <json>', 'Event payload JSON')
+    .option('--dry-run', 'Validate only, do not insert')
+    .action(async (options) => {
+      await eventIngestHandler(deps.supabaseClient, options.payload, { dryRun: Boolean(options.dryRun) });
     });
 
   return program;

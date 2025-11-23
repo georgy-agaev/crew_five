@@ -7,6 +7,11 @@ All notable changes to this project will be documented in this file.
 - Send scaffold now supports batch_id override, logger callback, fail-on-error flag, and keeps dry-run semantics; summary logging is single-source.
 - Email send CLI exposes batch-id/fail-on-error flags; tests add dry-run and summary format coverage; docs updated.
 
+## [0.1.14] - 2025-11-23
+### Added
+- Event ingest stub (`event:ingest`) with validation, dedupe on provider_event_id, and dry-run support; service normalizes payloads and inserts into `email_events`.
+- CLI wiring for event ingest; README lists the stub; tests cover validation, dedupe, dry-run.
+
 ## [0.1.12] - 2025-11-23
 ### Added
 - Email send CLI now supports summary formats (json/text), dry-run, and JSON logging; send scaffold returns batch_id/timestamp summary.

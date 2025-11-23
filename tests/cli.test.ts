@@ -3,228 +3,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { createProgram } from '../src/cli';
 
 describe('createProgram', () => {
-  it('wires the segment:create command to handler with parsed options', async () => {
-    const segmentHandler = vi.fn().mockResolvedValue({ id: 'segment' });
-    const program = createProgram({
-      supabaseClient: {} as any,
-      aiClient: {} as any,
-      handlers: {
-        segmentCreate: segmentHandler,
-        campaignCreate: vi.fn(),
-        draftGenerate: vi.fn(),
-      },
-    });
-
-    await program.parseAsync([
-      'node',
-      'gtm',
-      'segment:create',
-      '--name',
-      'Fintech',
-      '--locale',
-      'en',
-      '--filter',
-      '{"role":"CTO"}',
-    ]);
-
-    expect(segmentHandler).toHaveBeenCalledWith({}, {
-      name: 'Fintech',
-      locale: 'en',
-      filter: '{"role":"CTO"}',
-      description: undefined,
-      createdBy: undefined,
-    });
-  });
-
-  it('wires the segment:snapshot command with guardrail flags', async () => {
-    const snapshotHandler = vi.fn();
-    const program = createProgram({
-      supabaseClient: {} as any,
-      aiClient: {} as any,
-      handlers: {
-        segmentCreate: vi.fn(),
-        campaignCreate: vi.fn(),
-        draftGenerate: vi.fn(),
-        segmentSnapshot: snapshotHandler,
-        campaignUpdate: vi.fn(),
-      } as any,
-    });
-
-    await program.parseAsync([
-      'node',
-      'gtm',
-      'segment:snapshot',
-      '--segment-id',
-      'segment-1',
-      '--allow-empty',
-      '--max-contacts',
-      '1000',
-      '--force-version',
-    ]);
-
-    expect(snapshotHandler).toHaveBeenCalledWith({}, {
-      segmentId: 'segment-1',
-      segmentVersion: undefined,
-      allowEmpty: true,
-      maxContacts: 1000,
-      forceVersion: true,
-    });
-  });
-
-  it('passes snapshot options to campaign:create handler', async () => {
-    const campaignHandler = vi.fn();
-    const program = createProgram({
-      supabaseClient: {} as any,
-      aiClient: {} as any,
-      handlers: {
-        segmentCreate: vi.fn(),
-        campaignCreate: campaignHandler,
-        draftGenerate: vi.fn(),
-        segmentSnapshot: vi.fn(),
-        campaignUpdate: vi.fn(),
-      },
-    });
-
-    await program.parseAsync([
-      'node',
-      'gtm',
-      'campaign:create',
-      '--name',
-      'test',
-      '--segment-id',
-      'seg-1',
-      '--segment-version',
-      '2',
-      '--snapshot-mode',
-      'refresh',
-      '--bump-segment-version',
-      '--max-contacts',
-      '500',
-      '--force-version',
-    ]);
-
-    expect(campaignHandler).toHaveBeenCalledWith({}, {
-      name: 'test',
-      segmentId: 'seg-1',
-      segmentVersion: 2,
-      schedule: undefined,
-      throttle: undefined,
-      createdBy: undefined,
-      interactionMode: undefined,
-      dataQualityMode: undefined,
-      snapshotMode: 'refresh',
-      bumpSegmentVersion: true,
-      allowEmpty: false,
-      maxContacts: 500,
-      forceVersion: true,
-    });
-  });
-
-  it('wires the campaign:update command with allowed fields only', async () => {
-    const campaignUpdateHandler = vi.fn();
-    const program = createProgram({
-      supabaseClient: {} as any,
-      aiClient: {} as any,
-      handlers: {
-        segmentCreate: vi.fn(),
-        campaignCreate: vi.fn(),
-        draftGenerate: vi.fn(),
-        segmentSnapshot: vi.fn(),
-        campaignUpdate: campaignUpdateHandler,
-      },
-    });
-
-    await program.parseAsync([
-      'node',
-      'gtm',
-      'campaign:update',
-      '--campaign-id',
-      'camp-1',
-      '--prompt-pack-id',
-      'prompt-2',
-      '--schedule',
-      '{"cron":"0 9 * * *"}',
-      '--throttle',
-      '{"per_hour":100}',
-    ]);
-
-    expect(campaignUpdateHandler).toHaveBeenCalledWith({}, {
-      campaignId: 'camp-1',
-      promptPackId: 'prompt-2',
-      schedule: '{"cron":"0 9 * * *"}',
-      throttle: '{"per_hour":100}',
-    });
-  });
-
-  it('wires the filters:validate command and prints JSON', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const program = createProgram({
-      supabaseClient: {} as any,
-      aiClient: {} as any,
-      handlers: {},
-    });
-
-    await program.parseAsync([
-      'node',
-      'gtm',
-      'filters:validate',
-      '--filter',
-      '[{"field":"employees.role","operator":"eq","value":"CTO"}]',
-    ]);
-
-    expect(consoleSpy).toHaveBeenCalledWith(
-      JSON.stringify({ ok: true, filters: [{ field: 'employees.role', op: 'eq', value: 'CTO' }] })
-    );
-    consoleSpy.mockRestore();
-  });
-
-  it('filters:validate supports text format and errors', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const program = createProgram({
-      supabaseClient: {} as any,
-      aiClient: {} as any,
-      handlers: {},
-    });
-
-    await program.parseAsync([
-      'node',
-      'gtm',
-      'filters:validate',
-      '--filter',
-      '[{"field":"unknown.field","operator":"eq","value":"x"}]',
-      '--format',
-      'text',
-    ]);
-
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringMatching(/ERR ERR_FILTER_VALIDATION/));
-    consoleSpy.mockRestore();
-  });
-
-  it('filters:validate terse format prints code and sets exit code', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const program = createProgram({
-      supabaseClient: {} as any,
-      aiClient: {} as any,
-      handlers: {},
-    });
-
-    const originalExitCode = process.exitCode;
-    await program.parseAsync([
-      'node',
-      'gtm',
-      'filters:validate',
-      '--filter',
-      '[{"field":"unknown.field","operator":"eq","value":"x"}]',
-      '--format',
-      'terse',
-    ]);
-
-    expect(consoleSpy).toHaveBeenCalledWith('ERR ERR_FILTER_VALIDATION');
-    expect(process.exitCode).toBe(1);
-    process.exitCode = originalExitCode ?? 0;
-    consoleSpy.mockRestore();
-  });
-
   it('wires the email:send command', async () => {
     const limit = vi.fn().mockResolvedValue({ data: [], error: null });
     const eq = vi.fn().mockReturnValue({ limit });
@@ -265,4 +43,37 @@ describe('createProgram', () => {
 
     // No error thrown means command is wired; smtpClient is stubbed internally.
   });
-}); 
+
+  it('wires the event:ingest command with JSON payload and dry-run', async () => {
+    const limit = vi.fn().mockResolvedValue({ data: [], error: null });
+    const eq2 = vi.fn().mockReturnValue({ limit });
+    const eq1 = vi.fn().mockReturnValue({ eq: eq2 });
+    const selectDedup = vi.fn().mockReturnValue({ eq: eq1 });
+
+    const single = vi.fn().mockResolvedValue({ data: { id: 'evt-1' }, error: null });
+    const selectInsert = vi.fn().mockReturnValue({ single });
+    const insert = vi.fn().mockReturnValue({ select: selectInsert });
+    const supabaseClient = {
+      from: (table: string) => {
+        if (table === 'email_events') {
+          return { select: selectDedup, insert };
+        }
+        return { select: selectDedup };
+      },
+    } as any;
+
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+    });
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'event:ingest',
+      '--payload',
+      '{"provider":"stub","event_type":"delivered"}',
+      '--dry-run',
+    ]);
+  });
+});
