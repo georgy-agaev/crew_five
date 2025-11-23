@@ -6,6 +6,9 @@ interface EmailSendOptions {
   provider?: string;
   senderIdentity?: string;
   throttlePerMinute?: number;
+  summaryFormat?: 'json' | 'text';
+  dryRun?: boolean;
+  logJson?: boolean;
 }
 
 export async function emailSendHandler(
@@ -13,9 +16,19 @@ export async function emailSendHandler(
   smtpClient: { send: (payload: any) => Promise<{ providerId: string }> },
   options: EmailSendOptions
 ) {
-  return sendQueuedDrafts(client, smtpClient, {
+  const summary = await sendQueuedDrafts(client, smtpClient, {
     provider: options.provider,
     senderIdentity: options.senderIdentity,
     throttlePerMinute: options.throttlePerMinute,
+    dryRun: options.dryRun,
+    logJson: options.logJson,
   });
+
+  if (options.summaryFormat === 'text') {
+    console.log(`send summary: sent=${summary.sent} failed=${summary.failed} skipped=${summary.skipped} batch=${summary.batchId}`);
+  } else if (options.logJson) {
+    console.log(JSON.stringify({ level: 'info', summary }));
+  }
+
+  return summary;
 }

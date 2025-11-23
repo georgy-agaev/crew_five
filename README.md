@@ -37,7 +37,7 @@ This repo tracks specs and planning artifacts for the AI SDR GTM System. It keep
   - Campaign creation: `pnpm cli campaign:create --name "Q1 Push" --segment-id <id> --segment-version 1 --snapshot-mode refresh [--allow-empty] [--max-contacts 5000] [--force-version]`
   - Campaign update: `pnpm cli campaign:update --campaign-id <id> [--prompt-pack-id <id>] [--schedule <json>] [--throttle <json>]`
   - Validate filters (no DB): `pnpm cli filters:validate --filter '[{"field":"employees.role","operator":"eq","value":"CTO"}]' [--format json|text|terse]`
-  - Email send scaffold: `pnpm cli email:send --provider smtp --sender-identity noreply@example.com [--throttle-per-minute 50]` (stubbed send/log/throttle for now)
+  - Email send scaffold: `pnpm cli email:send --provider smtp --sender-identity noreply@example.com [--throttle-per-minute 50] [--summary-format json|text] [--dry-run] [--log-json]`
   - Draft generation: `pnpm cli draft:generate --campaign-id <id>`
   Ensure `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` env vars are present (see `.env.example` once added).
 

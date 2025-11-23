@@ -6,6 +6,7 @@ interface SendOptions {
   senderIdentity?: string;
   retryOnce?: boolean;
   logJson?: boolean;
+  dryRun?: boolean;
 }
 
 interface DraftRow {
@@ -24,7 +25,8 @@ export async function sendQueuedDrafts(
   options: SendOptions = {}
 ) {
   const throttle = options.throttlePerMinute ?? 50;
-  const summary = { sent: 0, failed: 0, skipped: 0 };
+  const batchId = `batch-${Date.now()}`;
+  const summary = { batchId, sent: 0, failed: 0, skipped: 0, timestamp: new Date().toISOString() };
 
   const { data: drafts, error } = await client
     .from('drafts')
@@ -64,6 +66,12 @@ export async function sendQueuedDrafts(
     const attemptSend = async () => smtpClient.send(sendPayload);
 
     try {
+      if (options.dryRun) {
+        summary.skipped += 1;
+        await client.from('drafts').update({ status: 'generated' }).eq('id', draft.id);
+        continue;
+      }
+
       let result = await attemptSend();
       if (options.retryOnce && !result?.providerId) {
         result = await attemptSend();
@@ -122,6 +130,7 @@ export async function sendQueuedDrafts(
             level: 'error',
             draftId: draft.id,
             error: (sendError as any)?.message ?? 'send failed',
+            batchId,
           })
         );
       }

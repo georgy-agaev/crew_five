@@ -189,6 +189,9 @@ export function createProgram(deps: CliDependencies) {
     .option('--provider <provider>', 'Email provider', 'smtp')
     .option('--sender-identity <senderIdentity>', 'Sender identity/email')
     .option('--throttle-per-minute <throttlePerMinute>', 'Throttle sends per minute', '50')
+    .option('--summary-format <format>', 'Summary format: json|text', 'json')
+    .option('--dry-run', 'Skip sending, just log summary')
+    .option('--log-json', 'Emit JSON logs/summary')
     .action(async (options) => {
       const supabaseClient = deps.supabaseClient;
       const smtpClient = {
@@ -200,6 +203,9 @@ export function createProgram(deps: CliDependencies) {
         provider: options.provider,
         senderIdentity: options.senderIdentity,
         throttlePerMinute: options.throttlePerMinute ? Number(options.throttlePerMinute) : undefined,
+        dryRun: Boolean(options.dryRun),
+        logJson: Boolean(options.logJson),
+        summaryFormat: options.summaryFormat,
       });
     });
 
