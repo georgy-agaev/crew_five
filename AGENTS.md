@@ -6,6 +6,7 @@
 - `docs/AI_SDR_Toolkit_Architecture.md`, `docs/GMT_system_plan.md`, `docs/Setup_Guide.md`, and `docs/Database_Description.md` provide architectural, roadmap, setup, and schema context respectively.
 - `docs/sessions/YYYY-MM-DD_<n>_<slug>.md` stores session tasks/outcomes (e.g., `docs/sessions/2025-11-21_1_initial-prd-and-structure.md`).
 - `CHANGELOG.md` captures versioned changes; `README.md` is the entry point for repo orientation.
+- Update `CHANGELOG.md` at the end of each session so the latest changes are recorded first.
 - Prompt-pack drafts live at the root (`Cold_*.md`); keep Interactive Coach and Pipeline Express copies in sync.
 - When current documentation is needed for external APIs/libraries, fetch it via Context7 (`resolve-library-id` + `get-library-docs`) instead of relying solely on model training data.
 - When addressing problems or decisions, always propose at least three options (or combinations).

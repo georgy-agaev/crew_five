@@ -2,15 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.10] - 2025-11-23
-### Added
-- Email send scaffold (`email:send` CLI) with stubbed SMTP send/log/throttle and outbound recording.
-- README documents the send scaffold command; tests cover stub send and throttle behavior.
-
 ## [0.1.11] - 2025-11-23
 ### Added
 - Hardened send scaffold with per-minute throttling, duplicate guard (mark drafts sending), retry-once stub, and summary logging (`sent/failed/skipped`).
 - CLI send wiring retains stub provider and supports JSON logs; tests cover throttle/skip and retry logging.
+
+## [0.1.10] - 2025-11-23
+### Added
+- Email send scaffold (`email:send` CLI) with stubbed SMTP send/log/throttle and outbound recording.
+- README documents the send scaffold command; tests cover stub send and throttle behavior.
 
 ## [0.1.9] - 2025-11-23
 ### Added
