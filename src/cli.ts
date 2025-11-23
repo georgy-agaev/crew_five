@@ -139,16 +139,29 @@ export function createProgram(deps: CliDependencies) {
   program
     .command('filters:validate')
     .requiredOption('--filter <json>', 'Filter definition JSON')
+    .option('--format <format>', 'Output format: json|text', 'json')
     .action(async (options) => {
       try {
         const parsed = JSON.parse(options.filter);
         const result = validateFilters(parsed);
-        console.log(JSON.stringify(result));
+        if (options.format === 'text') {
+          if (result.ok) {
+            console.log('OK');
+          } else {
+            console.log(`ERR_FILTER_VALIDATION: ${result.error.message}`);
+          }
+        } else {
+          console.log(JSON.stringify(result));
+        }
         if (!result.ok) {
           process.exitCode = 1;
         }
       } catch (error: any) {
-        console.log(JSON.stringify({ ok: false, error: { message: error?.message ?? 'Invalid JSON' } }));
+        if (options.format === 'text') {
+          console.log(`ERR_FILTER_VALIDATION: ${error?.message ?? 'Invalid JSON'}`);
+        } else {
+          console.log(JSON.stringify({ ok: false, error: { code: 'ERR_FILTER_VALIDATION', message: error?.message ?? 'Invalid JSON' } }));
+        }
         process.exitCode = 1;
       }
     });

@@ -177,4 +177,26 @@ describe('createProgram', () => {
     );
     consoleSpy.mockRestore();
   });
+
+  it('filters:validate supports text format and errors', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const program = createProgram({
+      supabaseClient: {} as any,
+      aiClient: {} as any,
+      handlers: {},
+    });
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'filters:validate',
+      '--filter',
+      '[{"field":"unknown.field","operator":"eq","value":"x"}]',
+      '--format',
+      'text',
+    ]);
+
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringMatching(/ERR_FILTER_VALIDATION/));
+    consoleSpy.mockRestore();
+  });
 });

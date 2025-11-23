@@ -58,6 +58,7 @@
 - 2025-11-22_1_next-session-plan: Plan completed for snapshot guardrails and minimal campaign update; DSL tightened; docs/tests updated.
 - 2025-11-22_2_hash-guardrails-and-updates: Snapshot hashing, force-version, guardrails, campaign update safety; docs/tests updated.
 - 2025-11-22_3_status-guardrails-and-filter-validation: Campaign status transition map, filter validation CLI/UX, docs/tests updated.
+- 2025-11-22_4_status-enforcement-and-validation: Status enforcement/validation UX refinements; structured CLI outputs and docs/tests updated.
 
 ### Phase 1 – Outreach MVP (remaining sessions)
 

@@ -66,6 +66,7 @@ export function validateFilters(definition: unknown): { ok: true; filters: Filte
     return {
       ok: false,
       error: {
+        code: 'ERR_FILTER_VALIDATION',
         message: error?.message ?? 'Invalid filters',
         details: {
           allowedOperators: allowedOps,

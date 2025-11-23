@@ -19,6 +19,12 @@ All notable changes to this project will be documented in this file.
 - `filters:validate` CLI command outputs structured JSON and exits non-zero on errors; filter validation now returns friendly messages with allowed prefixes/operators.
 - README updated with status transition table and validate command; session logs/roadmap refreshed.
 
+## [0.1.7] - 2025-11-22
+### Added
+- Structured filter validation errors with `ERR_FILTER_VALIDATION` code, JSON/text output formats, and CLI wiring that exits non-zero on failure.
+- Status transition helper exposed and documented; campaign updates continue to enforce allowed statuses/fields.
+- Session docs/roadmap updated to reflect status enforcement/validation UX refinements.
+
 ## [0.1.3] - 2025-11-22
 ### Added
 - Added tracked `prompts/template.md` and adjusted ignore rules so prompt drafts stay local while the template remains versioned.

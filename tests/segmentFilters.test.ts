@@ -70,7 +70,9 @@ describe('buildContactQuery', () => {
 
     const bad = validateFilters([{ field: 'unknown.field', operator: 'eq', value: 'x' }]);
     expect(bad.ok).toBe(false);
+    expect(bad.error?.code).toBe('ERR_FILTER_VALIDATION');
     expect(bad.error?.message).toMatch(/Unknown field/);
     expect(bad.error?.details?.allowedPrefixes).toContain('employees.');
+    expect(bad.error?.details?.allowedOperators).toContain('eq');
   });
 });
