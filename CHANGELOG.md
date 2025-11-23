@@ -2,20 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.11] - 2025-11-23
+## [0.1.13] - 2025-11-23
 ### Added
-- Hardened send scaffold with per-minute throttling, duplicate guard (mark drafts sending), retry-once stub, and summary logging (`sent/failed/skipped`).
-- CLI send wiring retains stub provider and supports JSON logs; tests cover throttle/skip and retry logging.
+- Send scaffold now supports batch_id override, logger callback, fail-on-error flag, and keeps dry-run semantics; summary logging is single-source.
+- Email send CLI exposes batch-id/fail-on-error flags; tests add dry-run and summary format coverage; docs updated.
 
 ## [0.1.12] - 2025-11-23
 ### Added
 - Email send CLI now supports summary formats (json/text), dry-run, and JSON logging; send scaffold returns batch_id/timestamp summary.
 - Tests cover throttle/skip and retry logging; docs updated with CLI options.
 
-## [0.1.13] - 2025-11-23
+## [0.1.11] - 2025-11-23
 ### Added
-- Send scaffold now supports batch_id override, logger callback, fail-on-error flag, and keeps dry-run semantics; summary logging is single-source.
-- Email send CLI exposes batch-id/fail-on-error flags; tests add dry-run and summary format coverage; docs updated.
+- Hardened send scaffold with per-minute throttling, duplicate guard (mark drafts sending), retry-once stub, and summary logging (`sent/failed/skipped`).
+- CLI send wiring retains stub provider and supports JSON logs; tests cover throttle/skip and retry logging.
 
 ## [0.1.10] - 2025-11-23
 ### Added
