@@ -109,4 +109,145 @@ describe('createProgram', () => {
       '--dry-run',
     ]);
   });
+
+  it('wires smartlead:campaigns:list with injected client', async () => {
+    const listCampaigns = vi.fn().mockResolvedValue({ campaigns: [{ id: 'c1', name: 'C' }] });
+    const client = { listCampaigns } as any;
+    const supabaseClient = { from: vi.fn() } as any;
+
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      smartleadClient: client,
+    });
+
+    await program.parseAsync(['node', 'gtm', 'smartlead:campaigns:list', '--dry-run']);
+
+    expect(listCampaigns).toHaveBeenCalledWith({ dryRun: true, format: 'json' });
+  });
+
+  it('wires smartlead:events:pull and calls ingest', async () => {
+    const events = [
+      {
+        provider: 'smartlead',
+        provider_event_id: 'evt-1',
+        event_type: 'delivered',
+        outcome_classification: null,
+        contact_id: null,
+        outbound_id: null,
+        occurred_at: '2025-01-01T00:00:00Z',
+        payload: {},
+      },
+    ];
+    const pullEvents = vi.fn().mockResolvedValue({ events });
+    const client = { pullEvents } as any;
+
+    const insert = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ single: vi.fn() }) });
+    const select = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ limit: vi.fn() }) });
+    const supabaseClient = {
+      from: (table: string) => {
+        if (table === 'email_events') {
+          return { insert, select };
+        }
+        return { insert, select };
+      },
+    } as any;
+
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      smartleadClient: client,
+    });
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'smartlead:events:pull',
+      '--dry-run',
+      '--since',
+      '2025-01-01T00:00:00Z',
+      '--limit',
+      '25',
+    ]);
+
+    expect(pullEvents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dryRun: true,
+        format: 'json',
+        since: '2025-01-01T00:00:00Z',
+        limit: 25,
+      })
+    );
+  });
+
+  it('smartlead:events:pull rejects bad since/limit', async () => {
+    const pullEvents = vi.fn();
+    const client = { pullEvents } as any;
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      smartleadClient: client,
+    });
+
+    await expect(
+      program.parseAsync(['node', 'gtm', 'smartlead:events:pull', '--since', 'invalid', '--limit', '-1'])
+    ).rejects.toThrow();
+  });
+
+  it('smartlead:events:pull wires retry cap and assume-now flag', async () => {
+    const pullEvents = vi.fn().mockResolvedValue({ events: [] });
+    const client = { pullEvents } as any;
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      smartleadClient: client,
+    });
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'smartlead:events:pull',
+      '--retry-after-cap-ms',
+      '250',
+      '--assume-now-occurred-at',
+    ]);
+
+    expect(pullEvents).toHaveBeenCalledWith({
+      dryRun: false,
+      format: 'json',
+      since: undefined,
+      limit: undefined,
+      retryAfterCapMs: 250,
+      assumeNowOccurredAt: true,
+    });
+  });
+
+  it('wires smartlead:send', async () => {
+    const listDrafts = [{ id: 'd1', campaign_id: 'c1', contact_id: 'lead@example.com', company_id: 'co', subject: 's', body: 'b', metadata: {} }];
+    const select = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue({ data: listDrafts, error: null }) }) });
+    const update = vi.fn().mockReturnValue({ in: vi.fn().mockResolvedValue({ error: null }), eq: vi.fn().mockResolvedValue({ error: null }) });
+    const insert = vi.fn().mockResolvedValue({ error: null });
+    const supabaseClient = {
+      from: (table: string) => {
+        if (table === 'drafts') return { select, update };
+        if (table === 'email_outbound') return { insert };
+        return { insert, update };
+      },
+    } as any;
+    const sendEmail = vi.fn().mockResolvedValue({ provider_message_id: 'm1' });
+    const client = { sendEmail } as any;
+
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      smartleadClient: client,
+    });
+
+    await program.parseAsync(['node', 'gtm', 'smartlead:send', '--batch-size', '10']);
+
+    expect(sendEmail).toHaveBeenCalled();
+    expect(insert).toHaveBeenCalled();
+  });
 });

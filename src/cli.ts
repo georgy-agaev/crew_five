@@ -5,11 +5,15 @@ import { campaignCreateHandler } from './commands/campaignCreate';
 import { campaignUpdateHandler } from './commands/campaignUpdate';
 import { campaignStatusHandler } from './commands/campaignStatus';
 import { draftGenerateHandler } from './commands/draftGenerate';
+import { smartleadCampaignsListCommand } from './commands/smartleadCampaignsList';
+import { smartleadEventsPullCommand } from './commands/smartleadEventsPull';
+import { smartleadSendCommand } from './commands/smartleadSend';
 import { segmentCreateHandler } from './commands/segmentCreate';
 import { segmentSnapshotHandler } from './commands/segmentSnapshot';
 import { validateFilters } from './filters';
 import { emailSendHandler } from './cli-email-send';
 import { eventIngestHandler } from './cli-event-ingest';
+import { buildSmartleadMcpClient, type SmartleadMcpClient } from './integrations/smartleadMcp';
 import { AiClient } from './services/aiClient';
 import { initSupabaseClient } from './services/supabaseClient';
 
@@ -25,6 +29,7 @@ interface CliDependencies {
   supabaseClient: any;
   aiClient: AiClient;
   handlers?: Partial<CliHandlers>;
+  smartleadClient?: SmartleadMcpClient;
 }
 
 const defaultHandlers: CliHandlers = {
@@ -45,6 +50,17 @@ export function createProgram(deps: CliDependencies) {
     // Stub for future observability; no-op for now.
     void event;
     void payload;
+  };
+
+  const getSmartleadClient = () => {
+    if (deps.smartleadClient) return deps.smartleadClient;
+    const url = process.env.SMARTLEAD_MCP_URL;
+    const token = process.env.SMARTLEAD_MCP_TOKEN;
+    const workspaceId = process.env.SMARTLEAD_MCP_WORKSPACE_ID;
+    if (!url || !token) {
+      throw new Error('SMARTLEAD_MCP_URL and SMARTLEAD_MCP_TOKEN are required for smartlead:* commands');
+    }
+    return buildSmartleadMcpClient({ url, token, workspaceId });
   };
 
   const program = new Command();
@@ -243,6 +259,51 @@ export function createProgram(deps: CliDependencies) {
     .option('--dry-run', 'Validate only, do not insert')
     .action(async (options) => {
       await eventIngestHandler(deps.supabaseClient, options.payload, { dryRun: Boolean(options.dryRun) });
+    });
+
+  program
+    .command('smartlead:campaigns:list')
+    .option('--dry-run', 'Skip remote call and print summary only')
+    .option('--format <format>', 'Output format: json|text', 'json')
+    .action(async (options) => {
+      const client = getSmartleadClient();
+      await smartleadCampaignsListCommand(client, {
+        dryRun: Boolean(options.dryRun),
+        format: options.format ?? 'json',
+      });
+    });
+
+  program
+    .command('smartlead:events:pull')
+    .option('--dry-run', 'Skip remote call and ingestion, print summary')
+    .option('--format <format>', 'Output format: json|text', 'json')
+    .option('--since <since>', 'ISO timestamp to pull events since')
+    .option('--limit <limit>', 'Max events to pull')
+    .option('--retry-after-cap-ms <ms>', 'Cap on Retry-After wait in ms')
+    .option('--assume-now-occurred-at', 'If provider omits occurred_at, fill with now (ISO)')
+    .action(async (options) => {
+      const client = getSmartleadClient();
+      await smartleadEventsPullCommand(client, deps.supabaseClient, {
+        dryRun: Boolean(options.dryRun),
+        format: options.format ?? 'json',
+        since: options.since,
+        limit: options.limit ? Number(options.limit) : undefined,
+        retryAfterCapMs: options.retryAfterCapMs ? Number(options.retryAfterCapMs) : undefined,
+        assumeNowOccurredAt: Boolean(options.assumeNowOccurredAt),
+      });
+    });
+
+  program
+    .command('smartlead:send')
+    .option('--dry-run', 'Skip remote send, print summary')
+    .option('--batch-size <batchSize>', 'Max drafts to send', '50')
+    .action(async (options) => {
+      const client = getSmartleadClient();
+      const summary = await smartleadSendCommand(client, deps.supabaseClient, {
+        dryRun: Boolean(options.dryRun),
+        batchSize: options.batchSize ? Number(options.batchSize) : undefined,
+      });
+      console.log(JSON.stringify(summary));
     });
 
   return program;

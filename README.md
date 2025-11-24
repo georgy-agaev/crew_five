@@ -8,6 +8,7 @@ This repo tracks specs and planning artifacts for the AI SDR GTM System. It keep
 - `docs/AI_SDR_Toolkit_Architecture.md` – CLI/architecture overview driving the implementation approach.
 - `docs/GMT_system_plan.md` – staged rollout plan for outreach system.
 - `docs/Setup_Guide.md` – local environment prerequisites (macOS focused).
+- `docs/Setup_smartlead_mcp.md` – Smartlead MCP setup/integration options (optional provider).
 - `docs/Database_Description.md` – current Supabase schema reference.
 - `docs/sessions/YYYY-MM-DD_<n>_<slug>.md` – session backlog + outcomes (see `docs/sessions/2025-11-21_1_initial-prd-and-structure.md`).
 - `Cold_*.md` – prompt-pack source files for Interactive Coach / Pipeline Express modes.
@@ -42,6 +43,21 @@ This repo tracks specs and planning artifacts for the AI SDR GTM System. It keep
   - Draft generation: `pnpm cli draft:generate --campaign-id <id> [--dry-run] [--fail-fast] [--limit 100]`
   - Campaign status change: `pnpm cli campaign:status --campaign-id <id> --status <nextStatus>`
   Ensure `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` env vars are present (see `.env.example` once added).
+
+### Smartlead MCP (optional)
+- Use Smartlead MCP to avoid building a custom Smartlead connector. Setup steps live in
+  `docs/Setup_smartlead_mcp.md`.
+- Add `.env` entries: `SMARTLEAD_MCP_URL`, `SMARTLEAD_MCP_TOKEN`, `SMARTLEAD_MCP_WORKSPACE_ID`
+  (optional). Keep secrets out of git.
+- Start with ingest-first (list/pull via MCP → `event:ingest`) before enabling outbound send; always
+  support `--dry-run` and idempotent ingest on `provider_event_id`.
+- CLI commands:
+  - List campaigns: `pnpm cli smartlead:campaigns:list [--dry-run] [--format json|text]`
+   - Pull events and ingest: `pnpm cli smartlead:events:pull [--dry-run] [--format json|text] [--since <iso>] [--limit <n>]`
+     - `--since` requires Zulu ISO 8601 (e.g., 2025-01-01T00:00:00Z); `--limit` is clamped to 500.
+     - Optional guardrails: `--retry-after-cap-ms <n>` (default 5000) caps wait on Retry-After; `--assume-now-occurred-at` fills missing timestamps (otherwise rejected).
+   - Send via Smartlead: `pnpm cli smartlead:send [--dry-run] [--batch-size <n>]`
+   - Reply patterns: events carry `reply_label` (replied/positive/negative); use pattern counts to inform prompts/enrichment. Route `onAssumeNow`/pattern logs into telemetry if enabled.
 
 ### Segment Filter Definition
 Segments store `filter_definition` as an array of clauses, e.g.

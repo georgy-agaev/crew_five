@@ -4,6 +4,8 @@
 - `docs/AI_SDR_GTM_PRD.md` holds the authoritative product requirements; update it first when scope changes.
 - `docs/appendix_ai_contract.md` defines the non-negotiable `generate_email_draft` contract; never modify the PRD without syncing this appendix.
 - `docs/AI_SDR_Toolkit_Architecture.md`, `docs/GMT_system_plan.md`, `docs/Setup_Guide.md`, and `docs/Database_Description.md` provide architectural, roadmap, setup, and schema context respectively.
+- `docs/Setup_smartlead_mcp.md` documents Smartlead MCP setup/integration options; keep tokens only in `.env`/secret stores.
+- `docs/ast-grep_setup.md` documents ast-grep usage; run `ast-grep --config ast-grep.yml scan .` before commits to catch guardrail violations (CLI parity, idempotency, assume-now logging, retry caps, error hygiene).
 - `docs/sessions/YYYY-MM-DD_<n>_<slug>.md` stores session tasks/outcomes (e.g., `docs/sessions/2025-11-21_1_initial-prd-and-structure.md`).
 - `CHANGELOG.md` captures versioned changes; `README.md` is the entry point for repo orientation.
 - Update `CHANGELOG.md` at the end of each session so the latest changes are recorded first.

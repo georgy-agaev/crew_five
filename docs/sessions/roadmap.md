@@ -51,6 +51,22 @@
 ## Session Plan to Completion
 
 ### Phase 0.5 – Foundations (Completed, newest first)
+- 2025-11-21_4_campaign-snapshot-results: Segment versioning, snapshot enforcement in campaign create, CLI/tests/docs updated.
+- 2025-11-21_3_segment-snapshot-results: Segment snapshot command/services/tests/docs delivered.
+- 2025-11-21_2_cli-spine-implementation: CLI scaffold, env loader, services for segments/campaigns/drafts, AI stub, tests/README/AGENTS/CHANGELOG updated.
+- 2025-11-21_1_initial-prd-and-structure: PRD v0.1, AI contract appendix, README/CHANGELOG, SMTP-first/strict-mode defaults recorded.
+
+### Phase 1 – Outreach MVP (Completed, newest first)
+- 2025-11-24_10_prompt-enrichment-feedback-loop-plan: Documented hooks/telemetry guidance for assume-now and reply pattern usage.
+- 2025-11-24_9_reply-classification-and-patterns-plan: Reply classification/labels, pattern counts helper, tests.
+- 2025-11-24_8_smartlead-outbound-wiring-plan: Smartlead send CLI with dry-run/batch-size, outbound recording, idempotency keys.
+- 2025-11-24_7_smartlead-mcp-error-body-and-telemetry-plan: Capped error snippets, assume-now logging hook, retry cap env override.
+- 2025-11-24_6_smartlead-mcp-final-consistency-pass: Single pull timestamp for assume-now; centralized retry cap; error codes.
+- 2025-11-24_5_smartlead-mcp-retry-and-error-guidance: Retry-After handling with caps, non-mutating error cache, assume-now fallback flag.
+- 2025-11-24_4_smartlead-mcp-polish-and-guardrails: Retry cap override, assume-now flag, improved occurred_at guidance.
+- 2025-11-24_3_smartlead-mcp-idempotency-and-validation: Deterministic idempotency hash, enriched errors, CLI validation.
+- 2025-11-24_2_smartlead-mcp-ingest-hardening: since/limit filters, idempotency guard, summaries.
+- 2025-11-24_1_smartlead-mcp-ingest-plan: Smartlead MCP ingest-first wrapper/CLI and docs.
 - 2025-11-23_10_campaign-status-cli-fix-and-draft-orchestrator: Status CLI guard/dry-run; draft orchestrator with dry-run/fail-fast/limit.
 - 2025-11-23_9_campaign-state-and-draft-orchestrator: Status/validation plan for orchestrator.
 - 2025-11-23_8_event-ingestion-stub: Event ingest stub with validation/dedupe/dry-run.
@@ -65,46 +81,9 @@
 - 2025-11-22_3_status-guardrails-and-filter-validation: Campaign status transition map, filter validation CLI/UX, docs/tests updated.
 - 2025-11-22_2_hash-guardrails-and-updates: Snapshot hashing, force-version, guardrails, campaign update safety; docs/tests updated.
 - 2025-11-22_1_next-session-plan: Plan completed for snapshot guardrails and minimal campaign update; DSL tightened; docs/tests updated.
-- 2025-11-21_4_campaign-snapshot-results: Segment versioning, snapshot enforcement in campaign create, CLI/tests/docs updated.
-- 2025-11-21_3_segment-snapshot-results: Segment snapshot command/services/tests/docs delivered.
-- 2025-11-21_2_cli-spine-implementation: CLI scaffold, env loader, services for segments/campaigns/drafts, AI stub, tests/README/AGENTS/CHANGELOG updated.
-- 2025-11-21_1_initial-prd-and-structure: PRD v0.1, AI contract appendix, README/CHANGELOG, SMTP-first/strict-mode defaults recorded.
 
-### Phase 1 – Outreach MVP (remaining sessions)
-
-**Session: Campaign State Machine & Guardrails**
-- Overview: Define allowed status transitions, enforce in handlers, and add clear errors for UI parity.
-- Files: `src/services/campaigns.ts`, `src/commands/campaignCreate.ts`/`campaignUpdate.ts`,
-  `src/cli.ts`, tests, README/changelog note.
-- Functions: `updateCampaignStatus(client, id, next)` (validate transition map), `assertDraftState(...)`
-  (shared guard), `registerStatusCommands(...)` (CLI wiring).
-- Tests: `campaignStatus.rejects_invalid_transition`, `campaignStatus.allows_valid_transition_map`,
-  `cli.campaign_status_update_wires_flags`.
-
-**Session: Draft Generation Orchestrator**
-- Overview: Add orchestrator to generate drafts with real AI client stub, status updates, error logging.
-- Files: `src/services/drafts.ts`, `src/services/aiClient.ts`, `src/commands/draftGenerate.ts`,
-  `src/cli.ts`, tests, README.
-- Functions: `generateDrafts(...)` (batch with logging), `markDraftStatus(...)` (state updates),
-  `AiClient.generateDraft` (stub with metadata).
-- Tests: `drafts.generates_and_persists_metadata`, `drafts.skips_missing_requests`,
-  `drafts.logs_errors_and_continues`, `cli.draft_generate_end_to_end_mocked`.
-
-**Session: SMTP Adapter & Sending**
-- Overview: Wire SMTP send pipeline with throttling and logging; keep Smartlead out.
-- Files: `src/services/emailOutbound.ts` (new), `src/cli.ts` send command, README/changelog.
-- Functions: `sendQueuedDrafts(smtpClient, options)` (throttle, log), `recordOutbound(...)`
-  (persist provider ids), `buildSmtpMessage(...)` (from draft/contact snapshot).
-- Tests: `emailOutbound.sends_and_records_ids`, `emailOutbound.respects_throttle`, `cli.send_command_executes_pipeline`.
-
-**Session: Event Ingestion Stubs**
-- Overview: Add webhook/IMAP stub handlers writing to `email_events`; simple outcome mapping.
-- Files: `src/services/emailEvents.ts` (new), `src/commands/eventIngest.ts` (optional CLI),
-  README/changelog.
-- Functions: `ingestEmailEvent(payload)` (validate, persist), `mapProviderEvent(...)`
-  (normalize types), `recordOutcome(...)` (write to `email_events`).
-- Tests: `emailEvents.maps_and_persists_events`, `emailEvents.rejects_invalid_payload`,
-  `cli.event_ingest_mocked_flow`.
+### Phase 1 – Outreach MVP (Remaining sessions)
+- None (current phase scope delivered). Use backlog to add top-N/date filters for reply patterns if scale requires.
 
 ### Phase 2 – Enrichment & Judge (future sessions)
 
@@ -151,3 +130,41 @@
 - Files: `src/services/experiments.ts`, `tests/experiments.test.ts`, README.
 - Functions: `assignVariant(subject)`, `recordExperimentResult(...)`.
 - Tests: `experiments.assigns_deterministically`, `experiments.records_outcome`.
+
+### Phase 3 – Web UI Rollout (planned)
+
+**Session: UI Scaffold & API bridge**
+- Overview: Add React/Vite app in `web/`, thin API to reuse service/CLI handlers; env handling.
+- Files: `web/` scaffold, `README.md`, `CHANGELOG.md`.
+- Functions: `apiClient.fetchCampaigns()`, `triggerDraftGenerate()`, `triggerSmartleadSend()`.
+- Tests: `apiClient.calls_cli_endpoints_mocked`.
+
+**Session: Campaigns & Drafts Views**
+- Overview: List/detail campaigns; drafts table by status; trigger draft generation (dry-run + limit).
+- Files: `web/src/pages/Campaigns.tsx`, `web/src/components/DraftTable.tsx`.
+- Functions: `useCampaigns()`, `useDrafts(campaignId)`.
+- Tests: `campaigns.renders_and_calls_api`, `drafts.triggers_generate_action`.
+
+**Session: Send Control & Summaries**
+- Overview: Run Smartlead send with dry-run/batch size; show summary; guard empty drafts.
+- Files: `web/src/pages/Send.tsx`, API wrapper.
+- Functions: `useSendSmartlead(opts)`, `SendSummaryCard`.
+- Tests: `send.calls_api_with_dry_run`, `send.shows_summary`.
+
+**Session: Events & Reply Patterns**
+- Overview: Show recent events and reply pattern counts with since/limit filters.
+- Files: `web/src/pages/Events.tsx`, `web/src/components/PatternsChart.tsx`.
+- Functions: `useEvents({ since, limit })`, `useReplyPatterns()`.
+- Tests: `events.fetches_and_renders_rows`, `patterns.renders_counts`.
+
+**Session: Settings & Guardrails**
+- Overview: Settings page for retry caps, assume-now toggle (with warning), logging opt-in; env hints.
+- Files: `web/src/pages/Settings.tsx`, `README.md`.
+- Functions: `useSettingsStore()`, `updateSettings()`.
+- Tests: `settings.updates_and_persists`, `settings.shows_warnings_for_assume_now`.
+
+**Session: Telemetry & UX polish**
+- Overview: Optional telemetry hooks for assume-now/send summaries; loading/error states; layout/nav.
+- Files: `web/src/hooks/useTelemetry.ts`, layout components.
+- Functions: `logAssumeNowUsage(info)`, `logSendSummary(summary)`.
+- Tests: `telemetry.hook_invoked_on_assume_now`, `ui.shows_loading_and_errors`.

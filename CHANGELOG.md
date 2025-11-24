@@ -2,20 +2,81 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.24] - 2025-11-24
+### Added
+- Smartlead outbound send command (`smartlead:send`) with dry-run, batch size, and summary logging,
+  plus MCP send wrapper and outbound recording.
+
+## [0.1.25] - 2025-11-24
+### Added
+- Reply classification and pattern counting: `reply_label` mapping, pattern helper, and tests.
+
+## [0.1.26] - 2025-11-24
+### Added
+- Smartlead MCP docs: noted reply labels/pattern usage for prompt/enrichment feedback and `assume-now` logging guidance.
+
+## [0.1.27] - 2025-11-24
+### Added
+- Documented telemetry/log guidance for `onAssumeNow` and reply pattern usage to feed prompt/enrichment updates.
+
+## [0.1.23] - 2025-11-24
+### Added
+- Smartlead MCP polish: capped error snippets with truncation note, per-pull timestamp for assume-now,
+  optional logging hook for assume-now usage, and env override for Retry-After cap.
+
+## [0.1.22] - 2025-11-24
+### Added
+- Smartlead MCP ingest consistency: single pull timestamp for `--assume-now-occurred-at`, centralized
+  Retry-After cap constant, and aligned error hints (code for missing `occurred_at`).
+
+## [0.1.21] - 2025-11-24
+### Added
+- Smartlead MCP ingest guardrails: Retry-After respected (cap/override), non-mutating error cache, CLI
+  flags for retry cap and `--assume-now-occurred-at`, and clearer error guidance.
+
+## [0.1.20] - 2025-11-24
+### Added
+- Smartlead MCP ingest polish: require `occurred_at` for events, deterministic hash remains; errors cache body/JSON once; 4xx/5xx paths tested for single body read; docs clarify Zulu-only `--since`.
+
+## [0.1.19] - 2025-11-24
+### Added
+- Smartlead MCP ingest robustness: deterministic idempotency hash when provider_event_id is missing,
+  enriched error messages (status + body), simple retry on 5xx, and CLI validation for `since`/`limit`
+  with max cap.
+
+## [0.1.18] - 2025-11-24
+### Added
+- Smartlead MCP ingest hardening: `since`/`limit` filters on event pulls, provider_event_id fallback
+  for idempotency, CLI wiring for filters, and single-summary outputs with dry-run parity.
+- Docs updated (README, Smartlead setup) and tests expanded for MCP URL params and idempotency.
+
+## [0.1.17] - 2025-11-24
+### Added
+- Smartlead MCP ingest-first integration: typed client wrapper, CLI commands `smartlead:campaigns:list`
+  and `smartlead:events:pull` with `--dry-run` and summaries; events flow through existing
+  `event:ingest` path.
+- Tests cover MCP client auth/dry-run/normalization and CLI wiring.
+
+## [0.1.16] - 2025-11-23
+### Added
+- Documented Smartlead MCP setup/integration options (env vars, guardrails, ingest-first path) to
+  reuse the MCP server instead of building a custom connector first.
+- README now calls out Smartlead MCP as optional and `.env.example` includes MCP placeholders.
+
 ## [0.1.15] - 2025-11-23
 ### Added
 - Campaign status CLI rewired to use guarded handler with dry-run; invalid transitions exit non-zero.
 - Draft orchestrator adds dry-run/fail-fast/limit with summary; CLI flags documented; tests updated.
 
-## [0.1.13] - 2025-11-23
-### Added
-- Send scaffold now supports batch_id override, logger callback, fail-on-error flag, and keeps dry-run semantics; summary logging is single-source.
-- Email send CLI exposes batch-id/fail-on-error flags; tests add dry-run and summary format coverage; docs updated.
-
 ## [0.1.14] - 2025-11-23
 ### Added
 - Event ingest stub (`event:ingest`) with validation, dedupe on provider_event_id, and dry-run support; service normalizes payloads and inserts into `email_events`.
 - CLI wiring for event ingest; README lists the stub; tests cover validation, dedupe, dry-run.
+
+## [0.1.13] - 2025-11-23
+### Added
+- Send scaffold now supports batch_id override, logger callback, fail-on-error flag, and keeps dry-run semantics; summary logging is single-source.
+- Email send CLI exposes batch-id/fail-on-error flags; tests add dry-run and summary format coverage; docs updated.
 
 ## [0.1.12] - 2025-11-23
 ### Added

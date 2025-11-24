@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ingestEmailEvent, mapProviderEvent } from '../src/services/emailEvents';
+import { classifyReply, getReplyPatterns, ingestEmailEvent, mapProviderEvent } from '../src/services/emailEvents';
 
 describe('emailEvents', () => {
   it('maps and persists events', async () => {
@@ -62,5 +62,27 @@ describe('emailEvents', () => {
     const result = await ingestEmailEvent(client, payload, { dryRun: true });
     expect(result.dryRun).toBe(true);
     expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('classifies replies', () => {
+    expect(classifyReply('reply', null)).toBe('replied');
+    expect(classifyReply('delivered', 'meeting')).toBe('positive');
+    expect(classifyReply('delivered', 'angry')).toBe('negative');
+    expect(classifyReply('delivered', null)).toBeNull();
+  });
+
+  it('counts reply patterns', async () => {
+    const data = [
+      { reply_label: 'replied', count: 2 },
+      { reply_label: 'positive', count: 1 },
+    ];
+    const select = vi.fn().mockReturnValue({ not: vi.fn().mockReturnValue({ group: vi.fn().mockResolvedValue({ data, error: null }) }) });
+    const client = { from: () => ({ select }) } as any;
+
+    const patterns = await getReplyPatterns(client);
+    expect(patterns).toEqual([
+      { reply_label: 'replied', count: 2 },
+      { reply_label: 'positive', count: 1 },
+    ]);
   });
 });

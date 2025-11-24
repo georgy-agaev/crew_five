@@ -1,0 +1,77 @@
+id: ai-sdr-gtm-rules
+metadata:
+  description: Project guardrails for Smartlead/CLI
+
+rules:
+  - id: smartlead-cli-dry-run
+    message: "Smartlead CLI commands should expose --dry-run for safety."
+    severity: error
+    language: TypeScript
+    pattern: "command('smartlead:*')"
+    not:
+      inside:
+        pattern: "--dry-run"
+    within:
+      filepath: "src/cli.ts"
+
+  - id: smartlead-events-pull-guardrails
+    message: "smartlead:events:pull should expose --retry-after-cap-ms and --assume-now-occurred-at."
+    severity: error
+    language: TypeScript
+    pattern: "command('smartlead:events:pull')"
+    not:
+      inside:
+        pattern: "--retry-after-cap-ms"
+    within:
+      filepath: "src/cli.ts"
+
+  - id: smartlead-send-idempotency
+    message: "Smartlead send should persist idempotency_key in email_outbound records."
+    severity: error
+    language: TypeScript
+    pattern: "insert({$X})"
+    not:
+      inside:
+        pattern: "idempotency_key"
+    within:
+      filepath: "src/commands/smartleadSend.ts"
+
+  - id: smartlead-assume-now-logging
+    message: "assumeNowOccurredAt should pair with onAssumeNow/logging."
+    severity: warning
+    language: TypeScript
+    pattern: "assumeNowOccurredAt: true"
+    not:
+      inside:
+        pattern: "onAssumeNow"
+
+  - id: reply-label-required
+    message: "email_events inserts should include reply_label when reply/outcome present."
+    severity: error
+    language: TypeScript
+    pattern: "insert({$X})"
+    inside:
+      pattern: "email_events"
+    not:
+      inside:
+        pattern: "reply_label"
+    within:
+      filepath: "src/services/emailEvents.ts"
+
+  - id: smartlead-retry-cap-constant
+    message: "Use DEFAULT_RETRY_AFTER_CAP_MS or env override; avoid hardcoded caps."
+    severity: warning
+    language: TypeScript
+    pattern: "Retry-After"
+    within:
+      filepath: "src/integrations/smartleadMcp.ts"
+
+  - id: smartlead-error-hygiene
+    message: "Smartlead errors should include status/snippet (Smartlead MCP request failed ...)."
+    severity: error
+    language: TypeScript
+    pattern: "new Error($MSG)"
+    not:
+      regex: "Smartlead MCP request failed"
+    within:
+      filepath: "src/integrations/smartleadMcp.ts"
