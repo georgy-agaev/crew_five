@@ -250,4 +250,48 @@ describe('createProgram', () => {
     expect(sendEmail).toHaveBeenCalled();
     expect(insert).toHaveBeenCalled();
   });
+
+  it('wires enrich command', async () => {
+    const members = [{ contact_id: 'lead@example.com', company_id: 'co1' }];
+    const select = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue({ data: members, error: null }) }) });
+    const from = (table: string) => {
+      if (table === 'segment_members') {
+        return { select };
+      }
+      return { select };
+    };
+    const supabaseClient = { from } as any;
+    const smartleadClient = { sendEmail: vi.fn() } as any;
+
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      smartleadClient,
+    });
+
+    await program.parseAsync(['node', 'gtm', 'enrich:run', '--segment-id', 'seg-1', '--limit', '5']);
+
+    expect(select).toHaveBeenCalled();
+  });
+
+  it('wires judge:drafts with dry-run', async () => {
+    const drafts = [{ id: 'd1', subject: 's', body: 'b' }];
+    const select = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue({ data: drafts, error: null }) }) });
+    const update = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) });
+    const supabaseClient = {
+      from: (table: string) => {
+        if (table === 'drafts') return { select, update };
+        return { select, update };
+      },
+    } as any;
+
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      smartleadClient: {} as any,
+    });
+
+    await program.parseAsync(['node', 'gtm', 'judge:drafts', '--campaign-id', 'c1', '--dry-run', '--limit', '5']);
+    expect(select).toHaveBeenCalled();
+  });
 });

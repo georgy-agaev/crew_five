@@ -8,6 +8,8 @@ import { draftGenerateHandler } from './commands/draftGenerate';
 import { smartleadCampaignsListCommand } from './commands/smartleadCampaignsList';
 import { smartleadEventsPullCommand } from './commands/smartleadEventsPull';
 import { smartleadSendCommand } from './commands/smartleadSend';
+import { enrichCommand } from './commands/enrich';
+import { judgeDraftsCommand } from './commands/judgeDrafts';
 import { segmentCreateHandler } from './commands/segmentCreate';
 import { segmentSnapshotHandler } from './commands/segmentSnapshot';
 import { validateFilters } from './filters';
@@ -81,6 +83,20 @@ export function createProgram(deps: CliDependencies) {
         description: options.description,
         createdBy: options.createdBy,
       });
+    });
+
+  program
+    .command('judge:drafts')
+    .requiredOption('--campaign-id <campaignId>')
+    .option('--dry-run', 'Skip writes, print summary only')
+    .option('--limit <limit>', 'Max drafts to judge', '10')
+    .action(async (options) => {
+      const summary = await judgeDraftsCommand(deps.supabaseClient, {
+        campaignId: options.campaignId,
+        dryRun: Boolean(options.dryRun),
+        limit: options.limit ? Number(options.limit) : undefined,
+      });
+      console.log(JSON.stringify(summary));
     });
 
   program
@@ -302,6 +318,22 @@ export function createProgram(deps: CliDependencies) {
       const summary = await smartleadSendCommand(client, deps.supabaseClient, {
         dryRun: Boolean(options.dryRun),
         batchSize: options.batchSize ? Number(options.batchSize) : undefined,
+      });
+      console.log(JSON.stringify(summary));
+    });
+
+  program
+    .command('enrich:run')
+    .requiredOption('--segment-id <segmentId>')
+    .option('--adapter <adapter>', 'Enrichment adapter', 'mock')
+    .option('--dry-run', 'Skip enrichment, print summary')
+    .option('--limit <limit>', 'Max members to enrich', '10')
+    .action(async (options) => {
+      const summary = await enrichCommand(deps.supabaseClient, {
+        segmentId: options.segmentId,
+        adapter: options.adapter,
+        dryRun: Boolean(options.dryRun),
+        limit: options.limit ? Number(options.limit) : undefined,
       });
       console.log(JSON.stringify(summary));
     });

@@ -19,6 +19,13 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Documented telemetry/log guidance for `onAssumeNow` and reply pattern usage to feed prompt/enrichment updates.
 
+## [0.1.28] - 2025-11-25
+### Added
+- Enrichment stub (adapter registry + mock) with CLI `enrich:run` (dry-run/limit).
+- Graceful fallback service (catalog lookup, apply, guard) with tests.
+- Judge scaffold for draft scoring + CLI `judge:drafts` (dry-run/limit).
+- ast-grep guardrails tightened (errors on key rules); docs updated.
+
 ## [0.1.23] - 2025-11-24
 ### Added
 - Smartlead MCP polish: capped error snippets with truncation note, per-pull timestamp for assume-now,
