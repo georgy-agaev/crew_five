@@ -95,19 +95,32 @@ export async function ingestEmailEvent(
   return { inserted: 1, event: data };
 }
 
-export async function getReplyPatterns(client: SupabaseClient) {
-  const { data, error } = await client
+export async function getReplyPatterns(
+  client: SupabaseClient,
+  options: { since?: string; topN?: number } = {}
+) {
+  let query = client
     .from('email_events')
     .select('reply_label, count')
-    .not('reply_label', 'is', null)
-    .group('reply_label');
+    .not('reply_label', 'is', null);
 
-  if (error) {
-    throw error;
+  if (options.since) {
+    query = query.gte('occurred_at', options.since);
   }
-  const patterns = (data ?? []).map((row: any) => ({
+
+  const { data, error } = await query.group('reply_label');
+  if (error) throw error;
+
+  let patterns = (data ?? []).map((row: any) => ({
     reply_label: row.reply_label,
     count: Number(row.count ?? 0),
   }));
+
+  if (options.topN && options.topN > 0) {
+    patterns = patterns
+      .sort((a, b) => b.count - a.count)
+      .slice(0, options.topN);
+  }
+
   return patterns;
 }

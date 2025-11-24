@@ -1,12 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { AiClient, EmailDraftRequest } from './aiClient';
+import { applyGracefulFallback, ensureGracefulToggle, getFallbackTemplate } from './fallbackTemplates';
 
 interface GenerateDraftsOptions {
   campaignId: string;
   dryRun?: boolean;
   failFast?: boolean;
   limit?: number;
+  graceful?: boolean;
+  previewGraceful?: boolean;
 }
 
 interface SegmentMemberRow {
@@ -40,7 +43,18 @@ export async function generateDrafts(
   }
 
   const draftsPayload = [] as any[];
-  const summary = { generated: 0, skipped: 0, failed: 0, dryRun: Boolean(options.dryRun) };
+  const summary = {
+    generated: 0,
+    skipped: 0,
+    failed: 0,
+    dryRun: Boolean(options.dryRun),
+    gracefulUsed: 0,
+    previewGraceful: Boolean(options.previewGraceful),
+  };
+
+  if (options.graceful && !getFallbackTemplate('general', 'en')) {
+    ensureGracefulToggle(false);
+  }
 
   for (const member of membersRes.data as SegmentMemberRow[]) {
     if (!member.snapshot?.request) {
@@ -53,6 +67,23 @@ export async function generateDrafts(
     }
 
     const response = await aiClient.generateDraft(member.snapshot.request);
+    let subject = response.subject;
+    let body = response.body;
+
+    if (options.graceful || options.previewGraceful) {
+      const tpl = getFallbackTemplate('general', 'en') ?? 'Fallback Body';
+      const needsFallback = !member.snapshot.request?.brief;
+      if (needsFallback) {
+        summary.gracefulUsed += 1;
+        if (options.previewGraceful) {
+          summary.generated += 1;
+          continue;
+        }
+        const filled = applyGracefulFallback({ subject, body }, tpl);
+        subject = filled.subject ?? subject;
+        body = filled.body ?? body;
+      }
+    }
 
     draftsPayload.push({
       campaign_id: options.campaignId,
@@ -61,8 +92,8 @@ export async function generateDrafts(
       email_type: response.metadata.email_type,
       language: response.metadata.language,
       pattern_mode: response.metadata.pattern_mode,
-      subject: response.subject,
-      body: response.body,
+      subject,
+      body,
       metadata: response.metadata,
       status: 'generated',
     });

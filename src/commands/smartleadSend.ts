@@ -4,6 +4,7 @@ import type { SmartleadMcpClient } from '../integrations/smartleadMcp';
 interface SendOptions {
   dryRun?: boolean;
   batchSize?: number;
+  dedupe?: boolean;
 }
 
 interface DraftRow {
@@ -42,7 +43,13 @@ export async function smartleadSendCommand(
   const drafts = (data as DraftRow[]) ?? [];
   const outboundRecords: Array<Record<string, unknown>> = [];
 
+  const seen = new Set<string>();
   for (const draft of drafts) {
+    if (options.dedupe && seen.has(draft.id)) {
+      summary.skipped += 1;
+      continue;
+    }
+    seen.add(draft.id);
     if (options.dryRun) {
       summary.skipped += 1;
       continue;
@@ -90,5 +97,5 @@ export async function smartleadSendCommand(
       );
   }
 
-  return summary;
+  return { ...summary, fetched: drafts.length };
 }

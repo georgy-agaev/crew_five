@@ -7,6 +7,8 @@ interface DraftGenerateOptions {
   campaignId: string;
   dryRun?: boolean;
   failFast?: boolean;
+  graceful?: boolean;
+  previewGraceful?: boolean;
 }
 
 export function draftGenerateHandler(
@@ -18,5 +20,7 @@ export function draftGenerateHandler(
     campaignId: options.campaignId,
     dryRun: options.dryRun,
     failFast: options.failFast,
+    graceful: options.graceful,
+    previewGraceful: options.previewGraceful,
   });
 }

@@ -141,11 +141,15 @@ export function createProgram(deps: CliDependencies) {
     .requiredOption('--campaign-id <campaignId>')
     .option('--dry-run', 'Validate only, do not insert drafts')
     .option('--fail-fast', 'Abort on first AI error')
+    .option('--graceful', 'Enable graceful mode (requires catalog)')
+    .option('--preview-graceful', 'Preview how many drafts would use fallbacks')
     .action(async (options) => {
       await handlers.draftGenerate(deps.supabaseClient, deps.aiClient, {
         campaignId: options.campaignId,
         dryRun: Boolean(options.dryRun),
         failFast: Boolean(options.failFast),
+        graceful: Boolean(options.graceful),
+        previewGraceful: Boolean(options.previewGraceful),
       });
     });
 

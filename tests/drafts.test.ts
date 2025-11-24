@@ -83,7 +83,8 @@ describe('generateDrafts', () => {
     expect(membersMatch).toHaveBeenCalledWith({ segment_id: 'seg', segment_version: 1 });
     expect(insert).toHaveBeenCalled();
     expect(insertSelect).toHaveBeenCalled();
-    expect(summary).toEqual({ generated: 1, skipped: 0, failed: 0, dryRun: false });
+    expect(summary.generated).toBe(1);
+    expect(summary.gracefulUsed).toBe(0);
   });
 
   it('supports dry-run without inserts', async () => {

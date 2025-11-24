@@ -71,18 +71,17 @@ describe('emailEvents', () => {
     expect(classifyReply('delivered', null)).toBeNull();
   });
 
-  it('counts reply patterns', async () => {
+  it('counts reply patterns with topN and since', async () => {
     const data = [
       { reply_label: 'replied', count: 2 },
       { reply_label: 'positive', count: 1 },
     ];
-    const select = vi.fn().mockReturnValue({ not: vi.fn().mockReturnValue({ group: vi.fn().mockResolvedValue({ data, error: null }) }) });
+    const group = vi.fn().mockResolvedValue({ data, error: null });
+    const not = vi.fn().mockReturnValue({ gte: vi.fn().mockReturnValue({ group }) });
+    const select = vi.fn().mockReturnValue({ not, gte: vi.fn().mockReturnValue({ group }) });
     const client = { from: () => ({ select }) } as any;
 
-    const patterns = await getReplyPatterns(client);
-    expect(patterns).toEqual([
-      { reply_label: 'replied', count: 2 },
-      { reply_label: 'positive', count: 1 },
-    ]);
+    const patterns = await getReplyPatterns(client, { topN: 1, since: '2025-01-01T00:00:00Z' });
+    expect(patterns).toEqual([{ reply_label: 'replied', count: 2 }]);
   });
 });

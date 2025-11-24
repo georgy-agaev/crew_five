@@ -25,10 +25,11 @@ describe('smartleadSendCommand', () => {
     const sendEmail = vi.fn().mockResolvedValue({ provider_message_id: 'msg-1' });
     const mcp = { sendEmail } as any;
 
-    const summary = await smartleadSendCommand(mcp, supabaseClient, { dryRun: false, batchSize: 10 });
+    const summary = await smartleadSendCommand(mcp, supabaseClient, { dryRun: false, batchSize: 10, dedupe: true });
 
     expect(sendEmail).toHaveBeenCalledTimes(1);
     expect(summary.sent).toBe(1);
+    expect(summary.fetched).toBe(1);
     expect(insert).toHaveBeenCalled();
     expect(update).toHaveBeenCalled();
   });
