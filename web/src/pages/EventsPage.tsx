@@ -1,31 +1,34 @@
 import { useEffect, useState } from 'react';
 
-import { useReplyPatterns } from '../queryMocks';
+import { useEffect, useState } from 'react';
 
-interface EventRow {
-  id: string;
-  event: string;
-  occurred_at: string;
-}
-
-const mockEvents: EventRow[] = [
-  { id: 'evt1', event: 'delivered', occurred_at: '2025-11-25T00:00:00Z' },
-  { id: 'evt2', event: 'reply', occurred_at: '2025-11-25T01:00:00Z' },
-];
+import { fetchEvents, fetchReplyPatterns, type EventRow, type PatternRow } from '../apiClient';
 
 export function EventsPage() {
   const [since, setSince] = useState<string>('');
   const [limit, setLimit] = useState<number>(10);
   const [events, setEvents] = useState<EventRow[]>([]);
-  const patterns = useReplyPatterns();
+  const [patterns, setPatterns] = useState<PatternRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setEvents(mockEvents.slice(0, limit));
-  }, [limit]);
+    setLoading(true);
+    setError(null);
+    Promise.all([fetchEvents({ since, limit }), fetchReplyPatterns({ since })])
+      .then(([evts, pats]) => {
+        setEvents(evts);
+        setPatterns(pats);
+      })
+      .catch((err) => setError(err?.message ?? 'Failed to load events'))
+      .finally(() => setLoading(false));
+  }, [since, limit]);
 
   return (
     <section>
       <h2>Events</h2>
+      {error && <p>{error}</p>}
+      {loading && <p>Loading...</p>}
       <div style={{ marginBottom: 8 }}>
         <label>
           Since
@@ -53,7 +56,7 @@ export function EventsPage() {
           {events.map((evt) => (
             <tr key={evt.id}>
               <td>{evt.id}</td>
-              <td>{evt.event}</td>
+              <td>{evt.event_type}</td>
               <td>{evt.occurred_at}</td>
             </tr>
           ))}

@@ -1,23 +1,56 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchCampaigns, triggerDraftGenerate, triggerSmartleadSend } from './apiClient';
+import {
+  fetchCampaigns,
+  fetchDrafts,
+  fetchEvents,
+  fetchReplyPatterns,
+  triggerDraftGenerate,
+  triggerSmartleadSend,
+} from './apiClient';
 
-describe('web api client (mock)', () => {
-  it('fetchCampaigns returns mock list', async () => {
-    const campaigns = await fetchCampaigns();
-    expect(campaigns.length).toBeGreaterThan(0);
+describe('web api client (live adapter)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal('fetch', vi.fn());
   });
 
-  it('triggerDraftGenerate respects dry-run', async () => {
-    const result = await triggerDraftGenerate('camp', { dryRun: true, limit: 5 });
-    expect(result.generated).toBe(0);
-    expect(result.dryRun).toBe(true);
+  it('fetchCampaigns hits campaigns endpoint', async () => {
+    (fetch as any).mockResolvedValue({ ok: true, json: async () => [{ id: 'c1', name: 'C' }] });
+    const data = await fetchCampaigns();
+    expect(fetch).toHaveBeenCalledWith('/api/campaigns', expect.any(Object));
+    expect(data[0].id).toBe('c1');
   });
 
-  it('triggerSmartleadSend respects dry-run', async () => {
-    const result = await triggerSmartleadSend({ dryRun: true, batchSize: 5 });
-    expect(result.sent).toBe(0);
-    expect(result.skipped).toBe(1);
-    expect(result.fetched).toBe(5);
+  it('triggerDraftGenerate sends dry-run by default', async () => {
+    (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ generated: 0, dryRun: true }) });
+    const data = await triggerDraftGenerate('c1');
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body);
+    expect(body.dryRun).toBe(true);
+    expect(data.dryRun).toBe(true);
+  });
+
+  it('triggerSmartleadSend passes batch size and dry-run', async () => {
+    (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ sent: 0, skipped: 1, failed: 0, fetched: 5 }) });
+    await triggerSmartleadSend({ batchSize: 5, dryRun: true });
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body);
+    expect(body.batchSize).toBe(5);
+    expect(body.dryRun).toBe(true);
+  });
+
+  it('fetchEvents uses since/limit', async () => {
+    (fetch as any).mockResolvedValue({ ok: true, json: async () => [] });
+    await fetchEvents({ since: '2025-01-01', limit: 10 });
+    const url = (fetch as any).mock.calls[0][0] as string;
+    expect(url).toContain('since=2025-01-01');
+    expect(url).toContain('limit=10');
+  });
+
+  it('fetchReplyPatterns uses topN/since', async () => {
+    (fetch as any).mockResolvedValue({ ok: true, json: async () => [] });
+    await fetchReplyPatterns({ since: '2025-01-01', topN: 3 });
+    const url = (fetch as any).mock.calls[0][0] as string;
+    expect(url).toContain('topN=3');
+    expect(url).toContain('since=2025-01-01');
   });
 });

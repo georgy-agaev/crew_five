@@ -4,8 +4,8 @@
 Add Events and Reply Patterns view: show recent events (with since/limit filters) and pattern counts. Keep it read-only with mock API.
 
 ## Tasks
-- Completed: Events page with table and filters (mock data, since/limit inputs).
-- Completed: Patterns component shows reply_label counts (mock).
+- Completed: Events page with table and filters wired to API client.
+- Completed: Patterns component shows reply_label counts from API client.
 - To Do: Update docs/changelog/session log.
 
 ## Files to Touch

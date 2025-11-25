@@ -8,15 +8,27 @@ export function DraftsPage() {
   const [dryRun, setDryRun] = useState(true);
   const [limit, setLimit] = useState(10);
   const [message, setMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchCampaigns().then(setCampaigns);
+    fetchCampaigns()
+      .then(setCampaigns)
+      .catch((err) => setError(err?.message ?? 'Failed to load campaigns'));
   }, []);
 
   const runGenerate = async () => {
     if (!selected) return;
-    const res = await triggerDraftGenerate(selected, { dryRun, limit });
-    setMessage(`Generated=${res.generated} dryRun=${res.dryRun}`);
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await triggerDraftGenerate(selected, { dryRun, limit });
+      setMessage(`Generated=${res.generated} dryRun=${res.dryRun}`);
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to generate drafts');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -55,6 +67,8 @@ export function DraftsPage() {
           Generate Drafts
         </button>
       </div>
+      {loading && <p>Loading...</p>}
+      {error && <p>{error}</p>}
       {message && (
         <div style={{ marginTop: 12 }}>
           <strong>{message}</strong>

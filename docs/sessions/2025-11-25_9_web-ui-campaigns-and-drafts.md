@@ -4,9 +4,9 @@
 Implement Campaigns and Drafts views: list campaigns, view details, and show drafts filtered by status with a trigger for draft generation (dry-run + limit).
 
 ## Tasks
-- Completed: Campaigns page with list and link to drafts.
-- Completed: Drafts view with dry-run + limit action.
-- Completed: Wire mock API client and loading/error states.
+- Completed: Campaigns page with list and link to drafts; loading/error states.
+- Completed: Drafts view with dry-run + limit action; wired to API client.
+- Completed: Wire API client calls (live adapter) and loading/error states.
 - To Do: Update docs/changelog/session log.
 
 ## Files to Touch

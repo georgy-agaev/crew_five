@@ -11,6 +11,8 @@ export function CampaignsPage() {
   const [sendDryRun, setSendDryRun] = useState(true);
   const [sendBatchSize, setSendBatchSize] = useState(10);
   const [summary, setSummary] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCampaigns()
@@ -21,24 +23,39 @@ export function CampaignsPage() {
 
   const runDraftGenerate = async (id: string) => {
     setSummary(null);
-    const result = await triggerDraftGenerate(id, { dryRun, limit });
-    setSummary(`Drafts: generated=${result.generated}, dryRun=${result.dryRun}`);
+    setError(null);
+    setLoading(true);
+    try {
+      const result = await triggerDraftGenerate(id, { dryRun, limit });
+      setSummary(`Drafts: generated=${result.generated}, dryRun=${result.dryRun}`);
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to generate drafts');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const runSend = async () => {
     setSummary(null);
-    const result = await triggerSmartleadSend({ dryRun: sendDryRun, batchSize: sendBatchSize });
-    setSummary(
-      `Send: fetched=${result.fetched} sent=${result.sent} failed=${result.failed} skipped=${result.skipped}`
-    );
+    setError(null);
+    setLoading(true);
+    try {
+      const result = await triggerSmartleadSend({ dryRun: sendDryRun, batchSize: sendBatchSize });
+      setSummary(
+        `Send: fetched=${result.fetched} sent=${result.sent} failed=${result.failed} skipped=${result.skipped}`
+      );
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to send');
+    } finally {
+      setLoading(false);
+    }
   };
-
-  if (loading) return <p>Loading campaigns...</p>;
-  if (error) return <p>{error}</p>;
 
   return (
     <section>
       <h2>Campaigns</h2>
+      {error && <p>{error}</p>}
+      {loading && <p>Loading...</p>}
       <table>
         <thead>
           <tr>

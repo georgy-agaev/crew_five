@@ -7,6 +7,7 @@ export interface Campaign {
 export interface DraftSummary {
   generated: number;
   dryRun: boolean;
+  gracefulUsed?: number;
 }
 
 export interface SendSummary {
@@ -16,29 +17,80 @@ export interface SendSummary {
   fetched: number;
 }
 
-const mockCampaigns: Campaign[] = [{ id: 'camp-1', name: 'Mock Campaign', status: 'draft' }];
+export interface EventRow {
+  id: string;
+  event_type: string;
+  occurred_at: string;
+}
+
+export interface PatternRow {
+  reply_label: string;
+  count: number;
+}
+
+const baseUrl = import.meta.env.VITE_API_BASE ?? '/api';
+
+async function fetchJson<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${baseUrl}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  if (!res.ok) {
+    throw new Error(`API error ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
 
 export async function fetchCampaigns(): Promise<Campaign[]> {
-  return mockCampaigns;
+  return fetchJson<Campaign[]>('/campaigns');
+}
+
+export async function fetchDrafts(campaignId: string, status?: string): Promise<any[]> {
+  const params = new URLSearchParams({ campaignId });
+  if (status) params.set('status', status);
+  return fetchJson<any[]>(`/drafts?${params.toString()}`);
 }
 
 export async function triggerDraftGenerate(
   campaignId: string,
   opts: { dryRun?: boolean; limit?: number } = {}
 ): Promise<DraftSummary> {
-  void campaignId;
-  void opts.limit;
-  return { generated: opts.dryRun ? 0 : 1, dryRun: Boolean(opts.dryRun) };
+  const body = {
+    campaignId,
+    dryRun: opts.dryRun ?? true,
+    limit: opts.limit,
+  };
+  return fetchJson<DraftSummary>('/drafts/generate', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
 }
 
 export async function triggerSmartleadSend(
   opts: { dryRun?: boolean; batchSize?: number } = {}
 ): Promise<SendSummary> {
-  void opts.batchSize;
-  return {
-    sent: opts.dryRun ? 0 : 1,
-    failed: 0,
-    skipped: opts.dryRun ? 1 : 0,
-    fetched: opts.batchSize ?? 1,
+  const body = {
+    dryRun: opts.dryRun ?? true,
+    batchSize: opts.batchSize ?? 10,
   };
+  return fetchJson<SendSummary>('/smartlead/send', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchEvents(opts: { since?: string; limit?: number } = {}): Promise<EventRow[]> {
+  const params = new URLSearchParams();
+  if (opts.since) params.set('since', opts.since);
+  if (opts.limit) params.set('limit', String(opts.limit));
+  const qs = params.toString();
+  return fetchJson<EventRow[]>(`/events${qs ? `?${qs}` : ''}`);
+}
+
+export async function fetchReplyPatterns(opts: { since?: string; topN?: number } = {}): Promise<PatternRow[]> {
+  const params = new URLSearchParams();
+  if (opts.since) params.set('since', opts.since);
+  if (opts.topN) params.set('topN', String(opts.topN));
+  const qs = params.toString();
+  return fetchJson<PatternRow[]>(`/reply-patterns${qs ? `?${qs}` : ''}`);
 }

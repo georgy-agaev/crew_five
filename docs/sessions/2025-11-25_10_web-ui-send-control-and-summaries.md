@@ -4,7 +4,7 @@
 Add a Send control page to run Smartlead send with dry-run/batch size and show a summary. Guard empty drafts and provide clear logging.
 
 ## Tasks
-- Completed: Send page with dry-run/batch size form and summary panel (mock API).
+- Completed: Send page with dry-run/batch size form and summary panel wired to live API client.
 - To Do: Guard when no drafts are available; show informative message.
 - To Do: Update docs/changelog/session log.
 

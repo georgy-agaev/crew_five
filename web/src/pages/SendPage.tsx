@@ -6,12 +6,22 @@ export function SendPage() {
   const [dryRun, setDryRun] = useState(true);
   const [batchSize, setBatchSize] = useState(10);
   const [summary, setSummary] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const runSend = async () => {
-    const res = await triggerSmartleadSend({ dryRun, batchSize });
-    setSummary(
-      `Send: fetched=${res.fetched} sent=${res.sent} failed=${res.failed} skipped=${res.skipped} dryRun=${dryRun}`
-    );
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await triggerSmartleadSend({ dryRun, batchSize });
+      setSummary(
+        `Send: fetched=${res.fetched} sent=${res.sent} failed=${res.failed} skipped=${res.skipped} dryRun=${dryRun}`
+      );
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to send');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -35,6 +45,8 @@ export function SendPage() {
       <div style={{ marginTop: 8 }}>
         <button onClick={runSend}>Run Send</button>
       </div>
+      {loading && <p>Loading...</p>}
+      {error && <p>{error}</p>}
       {summary && (
         <div style={{ marginTop: 12 }}>
           <strong>{summary}</strong>
