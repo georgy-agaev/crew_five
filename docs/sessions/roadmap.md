@@ -85,51 +85,17 @@
 ### Phase 1 – Outreach MVP (Remaining sessions)
 - None (current phase scope delivered). Use backlog to add top-N/date filters for reply patterns if scale requires.
 
-### Phase 2 – Enrichment & Judge (future sessions)
-
-**Session: Enrichment Integrations Stub**
-- Overview: Add adapter scaffolds for EXA/Parallels/Anysite; no live calls, mockable.
-- Files: `src/services/enrichment/*.ts`, `src/cli.ts` command, README.
-- Functions: `fetchCompanyInsights(adapter, input)`, `fetchEmployeeInsights(...)`,
-  `enrichSegmentMembers(...)` (batched).
-- Tests: `enrichment.dispatches_to_adapter`, `enrichment.stores_insights_mock`, `cli.enrich_command_mocked`.
-
-**Session: Graceful Mode Enablement**
-- Overview: Define fallback template catalog and gate graceful mode toggles.
-- Files: `supabase/migrations` (templates table if needed), `src/services/fallbackTemplates.ts`,
-  `src/cli.ts`, README/appendix.
-- Functions: `getFallbackTemplate(category, locale)`, `applyGracefulFallback(...)` (inject template
-  when data missing), `ensureGracefulToggle(...)` (guard).
-- Tests: `fallback.fetches_template`, `graceful.applies_template_on_missing_data`,
-  `cli.graceful_toggle_rejected_without_catalog`.
-
-**Session: LLM Judge & Analytics**
-- Overview: Add judge scaffold to score drafts and log outcomes for Pattern Breaker dashboards.
-- Files: `src/services/judge.ts`, `tests/judge.test.ts`, `supabase` metadata fields, README.
-- Functions: `scoreDraft(aiJudge, draft)` (returns scores/reasons), `recordJudgement(...)`
-  (persist to drafts/analytics).
-- Tests: `judge.scores_and_persists`, `judge.rejects_missing_inputs`.
+### Phase 2 – Enrichment & Judge (Completed, newest first)
+- 2025-11-25_4_backlog-hardening-plan: Graceful flag preview, Smartlead send dedupe/batch summary, reply pattern filters, judge validation tweaks, assume-now hook guidance.
+- 2025-11-25_3_llm-judge-and-analytics-plan: Judge stub + CLI `judge:drafts` (dry-run/limit), scoring schema, tests.
+- 2025-11-25_2_graceful-mode-enable-plan: Fallback template catalog/service with guard and tests.
+- 2025-11-25_1_enrichment-integrations-stub-plan: Enrichment adapter registry (mock) and CLI `enrich:run` (dry-run/limit).
 
 ### Phase 3 – Trace Logging & Optimization (future sessions)
-
-**Session: Trace Logging**
-- Overview: Capture AI/router metadata and store per interaction; expose basic query.
-- Files: `src/services/tracing.ts`, `src/services/aiClient.ts` (emit trace), `tests/tracing.test.ts`,
-  README.
-- Functions: `startTrace(...)`, `finishTrace(...)`, `recordTrace(...)`.
-- Tests: `tracing.records_model_and_latency`, `tracing.links_to_draft`.
-
-**Session: Interaction Mode Telemetry**
-- Overview: Track mode usage/errors; wire metrics events.
-- Files: `src/services/telemetry.ts`, CLI hooks, README.
-- Functions: `emitTelemetry(event, payload)`, `validateTelemetryContext(...)`.
-- Tests: `telemetry.emits_on_cli_actions`, `telemetry.rejects_invalid_payload`.
-
-**Session: Prompt Experiments**
-- Overview: Add A/B hooks for prompts/pattern modes and logging.
-- Files: `src/services/experiments.ts`, `tests/experiments.test.ts`, README.
-- Functions: `assignVariant(subject)`, `recordExperimentResult(...)`.
-- Tests: `experiments.assigns_deterministically`, `experiments.records_outcome`.
+### Phase 3 – Trace Logging & Optimization (Completed, newest first)
+- 2025-11-25_7_prompt-experiments-plan: Deterministic variant assignment/helpers, CLI variant flag for drafts (no UI), tests.
+- 2025-11-25_6_interaction-telemetry-plan: Telemetry service, `--telemetry` opt-in on Smartlead commands, PII validation, tests.
+- 2025-11-25_5_trace-logging-plan: Tracing service, AI + Smartlead MCP instrumentation, `--trace-file` flag, caps, tests.
 
 ### Phase 3 – Web UI Rollout (planned)
 
@@ -137,7 +103,7 @@
 - Overview: Add React/Vite app in `web/`, thin API to reuse service/CLI handlers; env handling.
 - Files: `web/` scaffold, `README.md`, `CHANGELOG.md`.
 - Functions: `apiClient.fetchCampaigns()`, `triggerDraftGenerate()`, `triggerSmartleadSend()`.
-- Tests: `apiClient.calls_cli_endpoints_mocked`.
+- Tests: `apiClient.calls_cli_endpoints_mocked`. (API client mock added; scaffold pending.)
 
 **Session: Campaigns & Drafts Views**
 - Overview: List/detail campaigns; drafts table by status; trigger draft generation (dry-run + limit).

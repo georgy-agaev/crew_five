@@ -26,6 +26,17 @@ All notable changes to this project will be documented in this file.
 - Judge scaffold for draft scoring + CLI `judge:drafts` (dry-run/limit).
 - ast-grep guardrails tightened (errors on key rules); docs updated.
 
+## [0.1.29] - 2025-11-25
+### Added
+- Tracing service + instrumentation for AI drafts and Smartlead MCP calls (env toggle/cap; traces to console/file).
+- Telemetry service and `--telemetry` flag on Smartlead CLI commands (PII validation).
+- Prompt experiments helpers (deterministic variant assignment/outcome logging).
+- Smartlead send dedupe/batch summary, graceful preview wiring, reply pattern filters; tests updated.
+
+## [0.1.30] - 2025-11-25
+### Added
+- Web UI prep: mock API client (`src/web/apiClient.ts`) for campaigns/draft generation/send with tests; session plan updated. Full UI scaffold pending.
+
 ## [0.1.23] - 2025-11-24
 ### Added
 - Smartlead MCP polish: capped error snippets with truncation note, per-pull timestamp for assume-now,

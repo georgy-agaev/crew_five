@@ -53,11 +53,12 @@ This repo tracks specs and planning artifacts for the AI SDR GTM System. It keep
   support `--dry-run` and idempotent ingest on `provider_event_id`.
 - CLI commands:
   - List campaigns: `pnpm cli smartlead:campaigns:list [--dry-run] [--format json|text]`
-   - Pull events and ingest: `pnpm cli smartlead:events:pull [--dry-run] [--format json|text] [--since <iso>] [--limit <n>]`
-     - `--since` requires Zulu ISO 8601 (e.g., 2025-01-01T00:00:00Z); `--limit` is clamped to 500.
-     - Optional guardrails: `--retry-after-cap-ms <n>` (default 5000) caps wait on Retry-After; `--assume-now-occurred-at` fills missing timestamps (otherwise rejected).
+  - Pull events and ingest: `pnpm cli smartlead:events:pull [--dry-run] [--format json|text] [--since <iso>] [--limit <n>]`
+    - `--since` requires Zulu ISO 8601 (e.g., 2025-01-01T00:00:00Z); `--limit` is clamped to 500.
+    - Optional guardrails: `--retry-after-cap-ms <n>` (default 5000) caps wait on Retry-After; `--assume-now-occurred-at` fills missing timestamps (otherwise rejected).
    - Send via Smartlead: `pnpm cli smartlead:send [--dry-run] [--batch-size <n>]`
    - Reply patterns: events carry `reply_label` (replied/positive/negative); use pattern counts to inform prompts/enrichment. Route `onAssumeNow`/pattern logs into telemetry if enabled.
+   - Web UI (mock): `cd web && pnpm install && pnpm dev` (React/Vite scaffold with mock API client). Tests: `cd web && pnpm test`.
 
 ### Segment Filter Definition
 Segments store `filter_definition` as an array of clauses, e.g.
