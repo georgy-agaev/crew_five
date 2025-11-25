@@ -37,6 +37,11 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Web UI prep: mock API client (`src/web/apiClient.ts`) for campaigns/draft generation/send with tests; session plan updated. Full UI scaffold pending.
 
+## [0.1.31] - 2025-11-25
+### Added
+- Web UI scaffold expanded: Drafts, Send, Events/Patterns, Settings pages wired to mock API; settings/telemetry hooks; styles and navigation.
+- Web package tests added for API client, settings store, telemetry hook.
+
 ## [0.1.23] - 2025-11-24
 ### Added
 - Smartlead MCP polish: capped error snippets with truncation note, per-pull timestamp for assume-now,

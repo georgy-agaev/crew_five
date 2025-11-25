@@ -98,39 +98,10 @@
 - 2025-11-25_5_trace-logging-plan: Tracing service, AI + Smartlead MCP instrumentation, `--trace-file` flag, caps, tests.
 
 ### Phase 3 – Web UI Rollout (planned)
-
-**Session: UI Scaffold & API bridge**
-- Overview: Add React/Vite app in `web/`, thin API to reuse service/CLI handlers; env handling.
-- Files: `web/` scaffold, `README.md`, `CHANGELOG.md`.
-- Functions: `apiClient.fetchCampaigns()`, `triggerDraftGenerate()`, `triggerSmartleadSend()`.
-- Tests: `apiClient.calls_cli_endpoints_mocked`. (API client mock added; scaffold pending.)
-
-**Session: Campaigns & Drafts Views**
-- Overview: List/detail campaigns; drafts table by status; trigger draft generation (dry-run + limit).
-- Files: `web/src/pages/Campaigns.tsx`, `web/src/components/DraftTable.tsx`.
-- Functions: `useCampaigns()`, `useDrafts(campaignId)`.
-- Tests: `campaigns.renders_and_calls_api`, `drafts.triggers_generate_action`.
-
-**Session: Send Control & Summaries**
-- Overview: Run Smartlead send with dry-run/batch size; show summary; guard empty drafts.
-- Files: `web/src/pages/Send.tsx`, API wrapper.
-- Functions: `useSendSmartlead(opts)`, `SendSummaryCard`.
-- Tests: `send.calls_api_with_dry_run`, `send.shows_summary`.
-
-**Session: Events & Reply Patterns**
-- Overview: Show recent events and reply pattern counts with since/limit filters.
-- Files: `web/src/pages/Events.tsx`, `web/src/components/PatternsChart.tsx`.
-- Functions: `useEvents({ since, limit })`, `useReplyPatterns()`.
-- Tests: `events.fetches_and_renders_rows`, `patterns.renders_counts`.
-
-**Session: Settings & Guardrails**
-- Overview: Settings page for retry caps, assume-now toggle (with warning), logging opt-in; env hints.
-- Files: `web/src/pages/Settings.tsx`, `README.md`.
-- Functions: `useSettingsStore()`, `updateSettings()`.
-- Tests: `settings.updates_and_persists`, `settings.shows_warnings_for_assume_now`.
-
-**Session: Telemetry & UX polish**
-- Overview: Optional telemetry hooks for assume-now/send summaries; loading/error states; layout/nav.
-- Files: `web/src/hooks/useTelemetry.ts`, layout components.
-- Functions: `logAssumeNowUsage(info)`, `logSendSummary(summary)`.
-- Tests: `telemetry.hook_invoked_on_assume_now`, `ui.shows_loading_and_errors`.
+### Phase 3 – Web UI Rollout (Completed, newest first)
+- 2025-11-25_13_web-ui-telemetry-and-ux-polish: Telemetry hook with tests; basic nav. Loading/error polish pending future.
+- 2025-11-25_12_web-ui-settings-and-guardrails: Settings page (retry cap, assume-now, telemetry) with storage/tests.
+- 2025-11-25_11_web-ui-events-and-patterns: Events/patterns mock page with filters.
+- 2025-11-25_10_web-ui-send-control-and-summaries: Send page with dry-run/batch controls and summary (mock).
+- 2025-11-25_9_web-ui-campaigns-and-drafts: Campaigns/Drafts views with mock API actions.
+- 2025-11-25_8_web-ui-scaffold-and-api-bridge: React/Vite scaffold, mock API client, navigation; env/docs pending.
