@@ -15,6 +15,46 @@
 - Prompts are kept in `prompts/` (ignored except for `prompts/template.md`); store working drafts there, never commit secrets, and keep tracked templates sanitized.
 - In session docs, explicitly mark tasks as “Completed” vs “To Do” so readers can see what’s done and what’s upcoming.
 
+## Agent Roster (Copilot)
+- @docs-agent  
+  - Scope: Write/update `docs/`, `CHANGELOG.md`, `docs/sessions/*.md`; read `src/` for context; keep
+    PRD and Appendix A synchronized.  
+  - Commands: `pnpm build`, `pnpm test` (sanity before doc updates).  
+  - Boundaries: Never edit `src/`, `supabase/migrations/`, or `prompts/`; ask before major rewrites.
+- @cli-agent  
+  - Scope: CLI behavior/guardrails in `src/cli.ts` and `src/commands/**`; enforce dry-run/retry/assume-now
+    options per `ast-grep.yml`; keep CLI/Web parity.  
+  - Commands: `pnpm build`, `pnpm test`, `pnpm cli ... --dry-run`, `ast-grep --config ast-grep.yml scan .`.  
+  - Boundaries: No schema changes; coordinate with @ui-agent on parity shifts.
+- @prompt-agent  
+  - Scope: Prompt packs (`Cold_*.md`, `prompts/`), Coach vs Pipeline Express parity, Appendix A
+    `generate_email_draft` contract, AI SDK usage.  
+  - Commands: `pnpm cli draft:generate --campaign-id <id> --dry-run --fail-fast --limit 5`, `pnpm test`
+    (prompt parity fixtures).  
+  - Boundaries: Do not change DB or CLI flags without @cli-agent/@db-agent alignment.
+- @db-agent  
+  - Scope: Supabase schema/migrations in `supabase/migrations/` and `docs/Database_Description.md`; keep
+    spine tables consistent.  
+  - Commands: `supabase db diff --linked --f supabase/migrations/<name>.sql`, `supabase db lint`,
+    `pnpm build`.  
+  - Boundaries: Ask before destructive DDL; keep PRD/appendix references updated with @docs-agent.
+- @test-agent  
+  - Scope: Vitest suites in `tests/` (and `web/**/tests`); protect CLI/Web parity via fixtures/mocks.  
+  - Commands: `pnpm test`, `pnpm test --runInBand`.  
+  - Boundaries: Do not delete failing tests without approval; no schema or prompt edits.
+- @ui-agent  
+  - Scope: `web/` flows (segment selector, draft review, outreach control, logs); keep parity with CLI
+    outputs/flags.  
+  - Commands: `cd web && pnpm install`, `cd web && pnpm test`, `cd web && pnpm build`; may run
+    `pnpm cli ... --format json` for parity checks.  
+  - Boundaries: No Supabase schema or prompt changes.
+- @ops-agent (optional)  
+  - Scope: Observability/release hygiene for dev/stage; logging/telemetry/circuit breakers; cautious deploy
+    steps.  
+  - Commands: `pnpm build`, `pnpm test`, `supabase db reset` (only with approval), telemetry verification
+    scripts.  
+  - Boundaries: Dev/stage only; no production secrets; defer schema/prompt decisions to owners.
+
 ## Build, Test, and Development Commands
 - Install deps: `pnpm install`
 - Run unit tests (Vitest): `pnpm test`

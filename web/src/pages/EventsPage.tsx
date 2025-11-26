@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 
-import { useEffect, useState } from 'react';
-
 import { fetchEvents, fetchReplyPatterns, type EventRow, type PatternRow } from '../apiClient';
+import { Alert } from '../components/Alert';
 
 export function EventsPage() {
   const [since, setSince] = useState<string>('');
@@ -27,8 +26,8 @@ export function EventsPage() {
   return (
     <section>
       <h2>Events</h2>
-      {error && <p>{error}</p>}
-      {loading && <p>Loading...</p>}
+      {error && <Alert kind="error">{error}</Alert>}
+      {loading && <Alert>Loading...</Alert>}
       <div style={{ marginBottom: 8 }}>
         <label>
           Since

@@ -9,6 +9,7 @@ interface DraftGenerateOptions {
   failFast?: boolean;
   graceful?: boolean;
   previewGraceful?: boolean;
+  variant?: string;
 }
 
 export function draftGenerateHandler(
@@ -22,5 +23,6 @@ export function draftGenerateHandler(
     failFast: options.failFast,
     graceful: options.graceful,
     previewGraceful: options.previewGraceful,
+    variant: options.variant,
   });
 }

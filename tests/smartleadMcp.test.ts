@@ -342,4 +342,19 @@ describe('smartlead MCP client', () => {
     setTimeoutSpy.mockRestore();
     process.env.SMARTLEAD_MCP_RETRY_AFTER_CAP_MS = original;
   });
+
+  it('emits_trace_on_pull_when_enabled', async () => {
+    process.env.TRACE_ENABLED = 'true';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ events: [] }),
+    });
+    const client = buildSmartleadMcpClient({
+      url: 'http://smartlead.local',
+      token: 'token-123',
+      fetchImpl: fetchMock as any,
+    });
+    await client.pullEvents({});
+    process.env.TRACE_ENABLED = 'false';
+  });
 });

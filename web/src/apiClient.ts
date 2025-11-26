@@ -4,6 +4,12 @@ export interface Campaign {
   status?: string;
 }
 
+export interface DraftRow {
+  id: string;
+  status?: string;
+  contact?: string;
+}
+
 export interface DraftSummary {
   generated: number;
   dryRun: boolean;
@@ -28,6 +34,13 @@ export interface PatternRow {
   count: number;
 }
 
+export interface MetaStatus {
+  mode: 'live' | 'mock' | 'unknown';
+  apiBase: string;
+  smartleadReady: boolean;
+  supabaseReady: boolean;
+}
+
 const baseUrl = import.meta.env.VITE_API_BASE ?? '/api';
 
 async function fetchJson<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -45,20 +58,29 @@ export async function fetchCampaigns(): Promise<Campaign[]> {
   return fetchJson<Campaign[]>('/campaigns');
 }
 
-export async function fetchDrafts(campaignId: string, status?: string): Promise<any[]> {
-  const params = new URLSearchParams({ campaignId });
+export async function fetchDrafts(campaignId?: string, status?: string): Promise<DraftRow[]> {
+  const params = new URLSearchParams();
+  if (campaignId) params.set('campaignId', campaignId);
   if (status) params.set('status', status);
-  return fetchJson<any[]>(`/drafts?${params.toString()}`);
+  const qs = params.toString();
+  return fetchJson<DraftRow[]>(`/drafts${qs ? `?${qs}` : ''}`);
 }
 
 export async function triggerDraftGenerate(
   campaignId: string,
-  opts: { dryRun?: boolean; limit?: number } = {}
+  opts: {
+    dryRun?: boolean;
+    limit?: number;
+    dataQualityMode?: 'strict' | 'graceful';
+    interactionMode?: 'express' | 'coach';
+  } = {}
 ): Promise<DraftSummary> {
   const body = {
     campaignId,
     dryRun: opts.dryRun ?? true,
     limit: opts.limit,
+    dataQualityMode: opts.dataQualityMode,
+    interactionMode: opts.interactionMode,
   };
   return fetchJson<DraftSummary>('/drafts/generate', {
     method: 'POST',
@@ -93,4 +115,8 @@ export async function fetchReplyPatterns(opts: { since?: string; topN?: number }
   if (opts.topN) params.set('topN', String(opts.topN));
   const qs = params.toString();
   return fetchJson<PatternRow[]>(`/reply-patterns${qs ? `?${qs}` : ''}`);
+}
+
+export async function fetchMeta(): Promise<MetaStatus> {
+  return fetchJson<MetaStatus>('/meta');
 }

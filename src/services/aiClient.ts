@@ -52,6 +52,22 @@ export class AiClient {
   constructor(private readonly generator: AiGenerator) {}
 
   async generateDraft(request: EmailDraftRequest): Promise<EmailDraftResponse> {
-    return this.generator(request);
+    if (!isTracingEnabled()) {
+      return this.generator(request);
+    }
+    const trace = startTrace({
+      span: 'ai.generateDraft',
+      service: 'aiClient',
+      model: request?.constraints?.model ?? 'unknown',
+    });
+    try {
+      const resp = await this.generator(request);
+      emitTrace(finishTrace(trace, 'ok'));
+      return resp;
+    } catch (err: any) {
+      emitTrace(finishTrace(trace, 'error', err?.message));
+      throw err;
+    }
   }
 }
+import { emitTrace, finishTrace, isTracingEnabled, startTrace } from './tracing';

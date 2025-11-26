@@ -77,7 +77,7 @@ describe('generateDrafts', () => {
     };
     const aiClient = new AiClient(vi.fn().mockResolvedValue(aiResponse));
 
-    const summary = await generateDrafts(supabase, aiClient, { campaignId: 'camp' });
+    const summary = await generateDrafts(supabase, aiClient, { campaignId: 'camp', variant: 'A' });
 
     expect(eq).toHaveBeenCalledWith('id', 'camp');
     expect(membersMatch).toHaveBeenCalledWith({ segment_id: 'seg', segment_version: 1 });

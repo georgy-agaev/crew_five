@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { emitTrace, finishTrace, isTracingEnabled, startTrace } from '../services/tracing';
 
 export const DEFAULT_RETRY_AFTER_CAP_MS = 5000;
 
@@ -68,16 +69,25 @@ export function buildSmartleadMcpClient(config: SmartleadMcpConfig): SmartleadMc
     if (options.dryRun) {
       return { campaigns: [], dryRun: true as const };
     }
-    const response = await fetchImpl(`${config.url}/campaigns`, {
-      method: 'GET',
-      headers: baseHeaders,
-    });
-    if (!response.ok) {
-      const err = await buildResponseError(response, `${config.url}/campaigns`);
+    const trace = isTracingEnabled()
+      ? startTrace({ span: 'smartlead.listCampaigns', service: 'smartlead-mcp' })
+      : undefined;
+    try {
+      const response = await fetchImpl(`${config.url}/campaigns`, {
+        method: 'GET',
+        headers: baseHeaders,
+      });
+      if (!response.ok) {
+        const err = await buildResponseError(response, `${config.url}/campaigns`);
+        throw err;
+      }
+      const data = (await response.json()) as { campaigns?: SmartleadCampaign[] };
+      if (trace) emitTrace(finishTrace(trace, 'ok'));
+      return { campaigns: data.campaigns ?? [] };
+    } catch (err: any) {
+      if (trace) emitTrace(finishTrace(trace, 'error', err?.message));
       throw err;
     }
-    const data = (await response.json()) as { campaigns?: SmartleadCampaign[] };
-    return { campaigns: data.campaigns ?? [] };
   }
 
   async function pullEvents(options: PullEventsOptions = {}) {
@@ -92,25 +102,34 @@ export function buildSmartleadMcpClient(config: SmartleadMcpConfig): SmartleadMc
     if (options.limit !== undefined) qs.set('limit', String(options.limit));
     const url = `${config.url}/events${qs.toString() ? `?${qs.toString()}` : ''}`;
 
-    const response = await requestWithRetry(
-      fetchImpl,
-      url,
-      baseHeaders,
-      options.retryAfterCapMs ?? envRetryCapMs
-    );
-    const data = (await response.json()) as { events?: Array<Record<string, any>> };
-    let assumeCount = 0;
-    const events = (data.events ?? []).map((evt) =>
-      normalizeEvent(evt, {
-        assumeNowOccurredAt: Boolean(options.assumeNowOccurredAt),
-        pullTimestamp,
-        onAssume: () => assumeCount++,
-      })
-    );
-    if (assumeCount > 0 && options.onAssumeNow) {
-      options.onAssumeNow({ count: assumeCount });
+    const trace = isTracingEnabled()
+      ? startTrace({ span: 'smartlead.pullEvents', service: 'smartlead-mcp' })
+      : undefined;
+    try {
+      const response = await requestWithRetry(
+        fetchImpl,
+        url,
+        baseHeaders,
+        options.retryAfterCapMs ?? envRetryCapMs
+      );
+      const data = (await response.json()) as { events?: Array<Record<string, any>> };
+      let assumeCount = 0;
+      const events = (data.events ?? []).map((evt) =>
+        normalizeEvent(evt, {
+          assumeNowOccurredAt: Boolean(options.assumeNowOccurredAt),
+          pullTimestamp,
+          onAssume: () => assumeCount++,
+        })
+      );
+      if (assumeCount > 0 && options.onAssumeNow) {
+        options.onAssumeNow({ count: assumeCount });
+      }
+      if (trace) emitTrace(finishTrace(trace, 'ok'));
+      return { events };
+    } catch (err: any) {
+      if (trace) emitTrace(finishTrace(trace, 'error', err?.message));
+      throw err;
     }
-    return { events };
   }
 
   return {

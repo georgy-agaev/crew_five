@@ -53,3 +53,28 @@ button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.alert {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.alert--info {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+  color: #0c4a6e;
+}
+
+.alert--error {
+  background: #fef2f2;
+  border-color: #fecdd3;
+  color: #991b1b;
+}
+
+.alert--success {
+  background: #ecfdf3;
+  border-color: #bbf7d0;
+  color: #14532d;
+}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { loadSettings, saveSettings, validateSettings, type Settings } from '../hooks/useSettingsStore';
 import { useTelemetry } from '../hooks/useTelemetry';
+import { Alert } from '../components/Alert';
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<Settings>(loadSettings());
@@ -68,7 +69,7 @@ export function SettingsPage() {
       </div>
       {error && (
         <div style={{ marginTop: 8 }}>
-          <strong>{error}</strong>
+          <Alert kind="error">{error}</Alert>
         </div>
       )}
     </section>

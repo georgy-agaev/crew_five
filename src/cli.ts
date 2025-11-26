@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { fileURLToPath } from 'node:url';
 
 import { loadEnv } from './config/env';
 import { campaignCreateHandler } from './commands/campaignCreate';
@@ -10,6 +11,7 @@ import { smartleadEventsPullCommand } from './commands/smartleadEventsPull';
 import { smartleadSendCommand } from './commands/smartleadSend';
 import { enrichCommand } from './commands/enrich';
 import { judgeDraftsCommand } from './commands/judgeDrafts';
+import { emitTelemetry } from './services/telemetry';
 import { segmentCreateHandler } from './commands/segmentCreate';
 import { segmentSnapshotHandler } from './commands/segmentSnapshot';
 import { validateFilters } from './filters';
@@ -143,13 +145,20 @@ export function createProgram(deps: CliDependencies) {
     .option('--fail-fast', 'Abort on first AI error')
     .option('--graceful', 'Enable graceful mode (requires catalog)')
     .option('--preview-graceful', 'Preview how many drafts would use fallbacks')
+    .option('--variant <variant>', 'Assign prompt variant label')
+    .option('--trace-file <path>', 'Enable tracing and write traces to file')
     .action(async (options) => {
+      if (options.traceFile) {
+        process.env.TRACE_ENABLED = 'true';
+        process.env.TRACE_FILE = options.traceFile;
+      }
       await handlers.draftGenerate(deps.supabaseClient, deps.aiClient, {
         campaignId: options.campaignId,
         dryRun: Boolean(options.dryRun),
         failFast: Boolean(options.failFast),
         graceful: Boolean(options.graceful),
         previewGraceful: Boolean(options.previewGraceful),
+        variant: options.variant,
       });
     });
 
@@ -285,12 +294,15 @@ export function createProgram(deps: CliDependencies) {
     .command('smartlead:campaigns:list')
     .option('--dry-run', 'Skip remote call and print summary only')
     .option('--format <format>', 'Output format: json|text', 'json')
+    .option('--telemetry', 'Emit telemetry event')
     .action(async (options) => {
       const client = getSmartleadClient();
-      await smartleadCampaignsListCommand(client, {
+      const result = await smartleadCampaignsListCommand(client, {
         dryRun: Boolean(options.dryRun),
         format: options.format ?? 'json',
       });
+      emitTelemetry('smartlead:campaigns:list', { dryRun: Boolean(options.dryRun) }, { enabled: Boolean(options.telemetry) });
+      return result;
     });
 
   program
@@ -301,9 +313,15 @@ export function createProgram(deps: CliDependencies) {
     .option('--limit <limit>', 'Max events to pull')
     .option('--retry-after-cap-ms <ms>', 'Cap on Retry-After wait in ms')
     .option('--assume-now-occurred-at', 'If provider omits occurred_at, fill with now (ISO)')
+    .option('--telemetry', 'Emit telemetry event')
+    .option('--trace-file <path>', 'Enable tracing and write traces to file')
     .action(async (options) => {
       const client = getSmartleadClient();
-      await smartleadEventsPullCommand(client, deps.supabaseClient, {
+      if (options.traceFile) {
+        process.env.TRACE_ENABLED = 'true';
+        process.env.TRACE_FILE = options.traceFile;
+      }
+      const summary = await smartleadEventsPullCommand(client, deps.supabaseClient, {
         dryRun: Boolean(options.dryRun),
         format: options.format ?? 'json',
         since: options.since,
@@ -311,19 +329,29 @@ export function createProgram(deps: CliDependencies) {
         retryAfterCapMs: options.retryAfterCapMs ? Number(options.retryAfterCapMs) : undefined,
         assumeNowOccurredAt: Boolean(options.assumeNowOccurredAt),
       });
+      emitTelemetry('smartlead:events:pull', { dryRun: Boolean(options.dryRun), since: options.since }, { enabled: Boolean(options.telemetry) });
+      return summary;
     });
 
   program
     .command('smartlead:send')
     .option('--dry-run', 'Skip remote send, print summary')
     .option('--batch-size <batchSize>', 'Max drafts to send', '50')
+    .option('--telemetry', 'Emit telemetry event')
+    .option('--trace-file <path>', 'Enable tracing and write traces to file')
     .action(async (options) => {
       const client = getSmartleadClient();
+      if (options.traceFile) {
+        process.env.TRACE_ENABLED = 'true';
+        process.env.TRACE_FILE = options.traceFile;
+      }
       const summary = await smartleadSendCommand(client, deps.supabaseClient, {
         dryRun: Boolean(options.dryRun),
         batchSize: options.batchSize ? Number(options.batchSize) : undefined,
+        dedupe: true,
       });
       console.log(JSON.stringify(summary));
+      emitTelemetry('smartlead:send', { dryRun: Boolean(options.dryRun), batchSize: options.batchSize ? Number(options.batchSize) : undefined }, { enabled: Boolean(options.telemetry) });
     });
 
   program
@@ -362,4 +390,10 @@ export async function runCli(argv = process.argv) {
 
   const program = createProgram({ supabaseClient, aiClient });
   await program.parseAsync(argv);
+}
+
+// When executed directly (e.g. via `pnpm cli`), run the CLI.
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
+  // eslint-disable-next-line no-floating-promises
+  runCli();
 }

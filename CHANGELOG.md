@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.35] - 2025-11-25
+### Added
+- Sub-agent roster with commands/boundaries in `AGENTS.md` aligned to docs/CLI/prompt/DB/UI/test/ops roles.
+- Individual Copilot agent personas in `.github/agents/*.md` for docs, cli, prompt, db, test, ui, and ops.
+
+## [0.1.33] - 2025-11-25
+### Added
+- Live web adapter wiring option with Supabase-backed deps and stub AI/Smartlead, env-switchable mock mode.
+- App base URL notice and adapter config docs; adapter dispatch tests cover live deps.
+
+## [0.1.34] - 2025-11-25
+### Added
+- Live adapter env validation for Smartlead MCP; buildSmartlead client helper.
+- Events/reply-pattern dispatch tests for filters; UI badge shows adapter mode.
+- Docs updated with Smartlead env requirements for web adapter.
+### Changed
+- Draft generate payload now carries interaction/data-quality mode flags through adapter.
+- Added adapter meta endpoint and readiness cues in UI; send disabled when Smartlead not ready.
+
+## [0.1.32] - 2025-11-25
+### Added
+- Web UI parity pass: shared alert component, drafts table with status filter, mode toggles (Strict + Pipeline
+  Express defaults), send gating confirmation, and helper tests.
+- Thin HTTP adapter with mock deps (`src/web/server.ts`) plus dispatch tests; web README documents adapter
+  endpoints and dev flow.
+### Changed
+- Hardened web API client tests (env base URL/error) and removed legacy mock client/test.
+
 ## [0.1.24] - 2025-11-24
 ### Added
 - Smartlead outbound send command (`smartlead:send`) with dry-run, batch size, and summary logging,

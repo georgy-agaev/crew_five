@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { AiClient, EmailDraftRequest } from './aiClient';
 import { applyGracefulFallback, ensureGracefulToggle, getFallbackTemplate } from './fallbackTemplates';
+import { applyVariantToDraft } from './experiments';
 
 interface GenerateDraftsOptions {
   campaignId: string;
@@ -10,6 +11,9 @@ interface GenerateDraftsOptions {
   limit?: number;
   graceful?: boolean;
   previewGraceful?: boolean;
+  variant?: string;
+  interactionMode?: 'coach' | 'express';
+  dataQualityMode?: 'strict' | 'graceful';
 }
 
 interface SegmentMemberRow {
@@ -94,7 +98,7 @@ export async function generateDrafts(
       pattern_mode: response.metadata.pattern_mode,
       subject,
       body,
-      metadata: response.metadata,
+      metadata: applyVariantToDraft({ metadata: response.metadata }, options.variant ?? '').metadata,
       status: 'generated',
     });
     summary.generated += 1;

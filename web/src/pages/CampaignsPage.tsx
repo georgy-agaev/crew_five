@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 
 import { fetchCampaigns, triggerDraftGenerate, triggerSmartleadSend, type Campaign } from '../apiClient';
+import { Alert } from '../components/Alert';
+
+export function modeSummary(
+  dataQuality: 'strict' | 'graceful',
+  interaction: 'express' | 'coach'
+) {
+  return `${dataQuality} / ${interaction}`;
+}
 
 export function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -11,8 +19,8 @@ export function CampaignsPage() {
   const [sendDryRun, setSendDryRun] = useState(true);
   const [sendBatchSize, setSendBatchSize] = useState(10);
   const [summary, setSummary] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [dataQualityMode, setDataQualityMode] = useState<'strict' | 'graceful'>('strict');
+  const [interactionMode, setInteractionMode] = useState<'express' | 'coach'>('express');
 
   useEffect(() => {
     fetchCampaigns()
@@ -27,7 +35,12 @@ export function CampaignsPage() {
     setLoading(true);
     try {
       const result = await triggerDraftGenerate(id, { dryRun, limit });
-      setSummary(`Drafts: generated=${result.generated}, dryRun=${result.dryRun}`);
+      setSummary(
+        `Drafts: generated=${result.generated}, dryRun=${result.dryRun}, modes=${modeSummary(
+          dataQualityMode,
+          interactionMode
+        )}`
+      );
     } catch (err: any) {
       setError(err?.message ?? 'Failed to generate drafts');
     } finally {
@@ -54,8 +67,8 @@ export function CampaignsPage() {
   return (
     <section>
       <h2>Campaigns</h2>
-      {error && <p>{error}</p>}
-      {loading && <p>Loading...</p>}
+      {error && <Alert kind="error">{error}</Alert>}
+      {loading && <Alert>Loading...</Alert>}
       <table>
         <thead>
           <tr>
@@ -91,6 +104,37 @@ export function CampaignsPage() {
             style={{ width: 64 }}
           />
         </label>
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <fieldset style={{ border: '1px solid #e2e8f0', padding: 8, borderRadius: 6 }}>
+          <legend>Modes</legend>
+          <div>
+            <label>
+              Data quality
+              <select
+                value={dataQualityMode}
+                onChange={(e) => setDataQualityMode(e.target.value as 'strict' | 'graceful')}
+                style={{ marginLeft: 8 }}
+              >
+                <option value="strict">Strict (default)</option>
+                <option value="graceful">Graceful</option>
+              </select>
+            </label>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <label>
+              Interaction mode
+              <select
+                value={interactionMode}
+                onChange={(e) => setInteractionMode(e.target.value as 'express' | 'coach')}
+                style={{ marginLeft: 8 }}
+              >
+                <option value="express">Pipeline Express (default)</option>
+                <option value="coach">Interactive Coach</option>
+              </select>
+            </label>
+          </div>
+        </fieldset>
       </div>
 
       <div style={{ marginTop: 24 }}>
