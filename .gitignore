@@ -3,6 +3,10 @@ prompts/*
 !prompts/.gitkeep
 !prompts/template.md
 
+# Internal-only docs and agent configs (keep local, not pushed)
+docs/
+AGENTS.md
+
 # Dependencies
 node_modules
 pnpm-debug.log*

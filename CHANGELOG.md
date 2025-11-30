@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.42] - 2025-11-30
+### Changed
+- Updated `.gitignore` and git tracking so `docs/` and `AGENTS.md` are kept local-only and no longer pushed to the public GitHub repo; future changes to internal docs stay off the public history.
+
+## [0.1.41] - 2025-11-28
+### Added
+- Security sweep workflow running ESLint security config, ast-grep guardrails, gitleaks secret scan, and `pnpm audit --prod --audit-level high` with install safety (`--ignore-scripts`).
+- ESLint security-focused config and scripts for linting, ast-grep scans, secret scans, and audits; README documents the new commands.
+- ast-grep setup doc now reflects the current guardrails enforced in `ast-grep.yml`.
+
+## [0.1.40] - 2025-11-27
+### Added
+- Smartlead direct API wiring for campaigns/leads/sequences: new helpers in `src/integrations/smartleadMcp.ts` plus CLI commands `smartlead:leads:push` and `smartlead:sequences:sync` with dry-run and Supabase-backed mapping.
+- Draft generation now records a stable `draft_pattern` (prompt pack + Pattern Breaker mode + variant) and `user_edited` flag in `drafts.metadata` for later analysis of AI-only vs user-edited emails.
+- Requirements ID scheme documented in `docs/Requirements_ID_Scheme.md` and referenced from PRD v0.2 and the v0.3/v0.4 roadmaps to tie features to explicit IDs.
+
+## [0.1.39] - 2025-11-27
+### Added
+- Web adapter routes for Workflow 0: companies/contacts fetch with caps and Smartlead send defaulting to dry-run; mock/live deps updated.
+- Workflow 0 UI now pulls live Supabase companies/contacts, applies cohort caps, auto-excludes missing emails, and triggers Smartlead preview send.
+- API client helpers for companies/contacts and Smartlead preview; tests cover URL construction and payload defaults.
+
+## [0.1.38] - 2025-11-27
+### Added
+- Workflow Hub web UI covering PRD v0.2 flows: client selection → base email → bump setup, ICP discovery/Exa query planning, and SIM/offer roast planner with readiness cues.
+- New helper pages (`WorkflowZeroPage`, `IcpDiscoveryPage`, `SimPage`) with mock data, guardrails, and Smartlead/Supabase readiness badges; updated layout, typography, and cards/tabs for clearer navigation.
+- Tests for new workflow helpers (filters, ICP query derivation, SIM scoring); README updated with Web UI workflow guidance.
+
+## [0.1.37] - 2025-11-27
+### Added
+- Direct Smartlead API client (`addLeadsToCampaign`, `saveCampaignSequences`) gated by `SMARTLEAD_API_BASE` / `SMARTLEAD_API_KEY`, retaining MCP compatibility and stubbing sendEmail for adapter parity.
+- New CLI commands `smartlead:leads:push` and `smartlead:sequences:sync` wired through `src/cli.ts` with dry-run, limit/step/variant flags, and Supabase contact-to-lead mapping.
+- Web adapter readiness meta now respects Smartlead API envs; server tests cover missing Smartlead env validation.
+- Documentation updates (`README.md`, `docs/Setup_smartlead_mcp.md`) describing Smartlead direct API setup and new commands; CLI and integration tests added for Smartlead flows.
+
+## [0.1.36] - 2025-11-26
+### Added
+- Shared CLI error-handling helper (`wrapCliAction`/`formatCliError`) for `draft:generate`, `segment:snapshot`, `event:ingest`, and Smartlead commands to surface clean messages and stable exit codes instead of unhandled promise rejections.
+- `campaign:create --dry-run` flag wired through `campaignCreateHandler`, which now runs snapshot workflow without inserting a campaign and returns a summary payload.
+- `draft:generate --limit` flag exposed at the CLI and threaded into `generateDrafts` to cap work per run; handler and CLI wiring covered by tests.
+### Added
+- Optional JSON error output via `--error-format json` on `campaign:status`, `event:ingest`, and `smartlead:events:pull` so automation can consume structured `{ ok:false, error:{ code,message,details } }` payloads.
+### Changed
+- Smartlead CLI tests updated to assert validation behaviour for bad `--since`/`--limit` and missing MCP env; CLI now logs concise errors rather than throwing.
+
 ## [0.1.35] - 2025-11-25
 ### Added
 - Sub-agent roster with commands/boundaries in `AGENTS.md` aligned to docs/CLI/prompt/DB/UI/test/ops roles.
