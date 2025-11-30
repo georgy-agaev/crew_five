@@ -6,6 +6,7 @@ prompts/*
 # Internal-only docs and agent configs (keep local, not pushed)
 docs/
 AGENTS.md
+.github/agents/
 
 # Dependencies
 node_modules

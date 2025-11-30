@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.43] - 2025-11-30
+### Added
+- `public-docs/` folder with public-facing getting started, architecture, and extensibility guides to support the open-core OSS audience.
+- README refocused on the open-core toolkit (CLI + Web + Supabase) and wired to the new `public-docs` entry points instead of internal-only docs.
+- Open-core code boundaries documented in `AGENTS.md` so future CRM/connectors can live outside the public repo while reusing core interfaces.
+
 ## [0.1.42] - 2025-11-30
 ### Changed
 - Updated `.gitignore` and git tracking so `docs/` and `AGENTS.md` are kept local-only and no longer pushed to the public GitHub repo; future changes to internal docs stay off the public history.
