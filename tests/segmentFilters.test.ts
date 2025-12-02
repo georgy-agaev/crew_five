@@ -53,11 +53,11 @@ describe('buildContactQuery', () => {
     buildContactQuery(client, parsed);
 
     expect(calls).toEqual([
-      { method: 'eq', args: ['employees.role', 'CTO'] },
-      { method: 'gte', args: ['employees.headcount', 100] },
-      { method: 'lte', args: ['employees.headcount', 500] },
-      { method: 'in', args: ['companies.segment', ['Fintech', 'AI']] },
-      { method: 'not', args: ['companies.segment', 'in', ['Legacy']] },
+      { method: 'eq', args: ['role', 'CTO'] },
+      { method: 'gte', args: ['headcount', 100] },
+      { method: 'lte', args: ['headcount', 500] },
+      { method: 'in', args: ['company.segment', ['Fintech', 'AI']] },
+      { method: 'not', args: ['company.segment', 'in', ['Legacy']] },
     ]);
   });
 

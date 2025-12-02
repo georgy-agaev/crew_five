@@ -24,11 +24,6 @@ export async function snapshotExists(
   client: SupabaseClient,
   segmentId: string,
   version: number
-): Promise<{ exists: boolean; count: number }>
-export async function snapshotExists(
-  client: SupabaseClient,
-  segmentId: string,
-  version: number
 ): Promise<{ exists: boolean; count: number }> {
   const { count, error } = await client
     .from('segment_members')
@@ -127,4 +122,31 @@ async function getSnapshotMeta(client: SupabaseClient, segmentId: string, versio
 
   const filtersHash = data?.[0]?.snapshot?.filters_hash as string | undefined;
   return { exists: (count ?? 0) > 0, count: count ?? 0, filtersHash };
+}
+
+export async function ensureFinalSegmentSnapshot(
+  client: SupabaseClient,
+  segmentId: string,
+  options: { expectedVersion?: number; forceVersion?: boolean } = {}
+): Promise<{ version: number; count: number }> {
+  const segment = await getSegmentById(client, segmentId);
+  const currentVersion = typeof segment.version === 'number' ? segment.version : 0;
+  const targetVersion = options.expectedVersion ?? currentVersion;
+
+  if (currentVersion < 1) {
+    throw new Error('Segment is not finalized; snapshot version must be >= 1');
+  }
+
+  if (!options.forceVersion && currentVersion !== targetVersion) {
+    throw new Error(
+      `Segment version mismatch: current ${currentVersion} vs expected ${targetVersion}; rerun snapshot or pass --force-version`
+    );
+  }
+
+  const meta = await snapshotExists(client, segmentId, targetVersion);
+  if (!meta.exists) {
+    throw new Error('No finalized snapshot found for segment/version');
+  }
+
+  return { version: targetVersion, count: meta.count };
 }

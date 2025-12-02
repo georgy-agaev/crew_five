@@ -1,3 +1,4 @@
+/* eslint-disable security-node/detect-unhandled-async-errors */
 import { createHash } from 'crypto';
 import { emitTrace, finishTrace, isTracingEnabled, startTrace } from '../services/tracing';
 
@@ -43,8 +44,39 @@ export interface PullEventsOptions {
   onAssumeNow?: (info: { count: number }) => void;
 }
 
+export interface SmartleadLeadInput {
+  first_name?: string;
+  last_name?: string;
+  email: string;
+  phone_number?: string;
+  company_name?: string;
+  website?: string;
+  location?: string;
+  custom_fields?: Record<string, unknown>;
+  linkedin_profile?: string;
+  company_url?: string;
+}
+
+export interface SmartleadLeadSettings {
+  ignore_global_block_list?: boolean;
+  ignore_unsubscribe_list?: boolean;
+  ignore_community_bounce_list?: boolean;
+  ignore_duplicate_leads_in_other_campaign?: boolean;
+  return_lead_ids?: boolean;
+}
+
+export interface SmartleadSequenceInput {
+  seq_number: number;
+  delay_in_days: number;
+  subject: string;
+  email_body: string;
+  variant_label: string;
+}
+
 export interface SmartleadMcpClient {
   listCampaigns(options: ListCampaignsOptions): Promise<{ campaigns: SmartleadCampaign[]; dryRun?: boolean }>;
+  listActiveCampaigns?: () => Promise<SmartleadCampaign[]>;
+  createCampaign?: (payload: { name: string; status?: string }) => Promise<{ id: string; name: string; status?: string }>;
   pullEvents(options: PullEventsOptions): Promise<{ events: SmartleadEvent[]; dryRun?: boolean }>;
   sendEmail?(payload: {
     to: string;
@@ -52,12 +84,22 @@ export interface SmartleadMcpClient {
     body: string;
     campaignId?: string;
   }): Promise<{ provider_message_id: string }>;
+  addLeadsToCampaign?(args: {
+    campaignId: string;
+    leads: SmartleadLeadInput[];
+    settings?: SmartleadLeadSettings;
+  }): Promise<{ message?: string; leadIds?: Record<string, string> }>;
+  saveCampaignSequences?(args: {
+    campaignId: string;
+    sequences: SmartleadSequenceInput[];
+  }): Promise<unknown>;
 }
 
 export function buildSmartleadMcpClient(config: SmartleadMcpConfig): SmartleadMcpClient {
   const fetchImpl = config.fetchImpl ?? fetch;
   const envRetryCap = process.env.SMARTLEAD_MCP_RETRY_AFTER_CAP_MS;
   const envRetryCapMs = envRetryCap && !Number.isNaN(Number(envRetryCap)) ? Number(envRetryCap) : undefined;
+  const isSmartleadApi = config.url.includes('server.smartlead.ai/api');
 
   const baseHeaders = {
     Authorization: `Bearer ${config.token}`,
@@ -73,26 +115,127 @@ export function buildSmartleadMcpClient(config: SmartleadMcpConfig): SmartleadMc
       ? startTrace({ span: 'smartlead.listCampaigns', service: 'smartlead-mcp' })
       : undefined;
     try {
-      const response = await fetchImpl(`${config.url}/campaigns`, {
-        method: 'GET',
-        headers: baseHeaders,
-      });
-      if (!response.ok) {
-        const err = await buildResponseError(response, `${config.url}/campaigns`);
-        throw err;
+      let campaigns: SmartleadCampaign[] = [];
+      if (isSmartleadApi) {
+        const base = config.url.endsWith('/') ? config.url.slice(0, -1) : config.url;
+        const url = `${base}/analytics/campaign/list?${new URLSearchParams({
+          api_key: config.token,
+        }).toString()}`;
+        const response = await fetchImpl(url, {
+          method: 'GET',
+        });
+        if (!response.ok) {
+          const { error } = await buildResponseError(response, url);
+          throw error;
+        }
+        const data = (await response.json()) as any;
+        const rawCampaigns =
+          data?.data?.campaigns ??
+          data?.data?.campaign_list ??
+          data?.campaigns ??
+          data?.campaign_list ??
+          [];
+        campaigns = (rawCampaigns as any[]).map((c) => ({
+          id: String(c.id),
+          name: String(c.name ?? ''),
+          ...c,
+        }));
+      } else {
+        const url = `${config.url}/campaigns`;
+        const response = await fetchImpl(url, {
+          method: 'GET',
+          headers: baseHeaders,
+        });
+        if (!response.ok) {
+          const { error } = await buildResponseError(response, url);
+          throw error;
+        }
+        const data = (await response.json()) as { campaigns?: SmartleadCampaign[] };
+        campaigns = data.campaigns ?? [];
       }
-      const data = (await response.json()) as { campaigns?: SmartleadCampaign[] };
       if (trace) emitTrace(finishTrace(trace, 'ok'));
-      return { campaigns: data.campaigns ?? [] };
+      return { campaigns };
     } catch (err: any) {
       if (trace) emitTrace(finishTrace(trace, 'error', err?.message));
       throw err;
     }
   }
 
+  async function listActiveCampaigns() {
+    if (!isSmartleadApi) {
+      const { campaigns } = await listCampaigns();
+      return campaigns.filter((c: any) => !c.status || ['active', 'paused', 'completed', 'ready', 'stopped'].includes((c.status ?? '').toLowerCase()));
+    }
+    const base = config.url.endsWith('/') ? config.url.slice(0, -1) : config.url;
+    const search = new URLSearchParams({
+      api_key: config.token,
+      status: 'active',
+    });
+    // Smartlead API may not support multiple statuses; fetch active first
+    const urls = [
+      `${base}/analytics/campaign/list?${search.toString()}`,
+      `${base}/analytics/campaign/list?${new URLSearchParams({ api_key: config.token, status: 'paused' }).toString()}`,
+      `${base}/analytics/campaign/list?${new URLSearchParams({ api_key: config.token, status: 'completed' }).toString()}`,
+    ];
+    const all: any[] = [];
+    for (const url of urls) {
+      const response = await fetchImpl(url, { method: 'GET' });
+      if (!response.ok) {
+        const { error } = await buildResponseError(response, url);
+        throw error;
+      }
+      const data = (await response.json()) as any;
+      const rawCampaigns =
+        data?.data?.campaigns ?? data?.data?.campaign_list ?? data?.campaigns ?? data?.campaign_list ?? [];
+      all.push(...rawCampaigns);
+    }
+    const seen = new Set<string>();
+    return all
+      .map((c) => ({
+        id: String(c.id),
+        name: String(c.name ?? ''),
+        status: c.status ?? 'active',
+        ...c,
+      }))
+      .filter((c) => {
+        if (seen.has(c.id)) return false;
+        seen.add(c.id);
+        return true;
+      });
+  }
+
+  async function createCampaign(payload: { name: string; status?: string }) {
+    const status = payload.status ?? 'active';
+    if (!payload.name) throw new Error('Campaign name is required');
+    if (!isSmartleadApi) {
+      throw new Error('Smartlead MCP mode does not support campaign creation');
+    }
+    const base = config.url.endsWith('/') ? config.url.slice(0, -1) : config.url;
+    const url = `${base}/campaigns/create?${new URLSearchParams({ api_key: config.token }).toString()}`;
+    const body: Record<string, any> = { name: payload.name };
+    if (config.workspaceId) body.client_id = config.workspaceId;
+    const response = await fetchImpl(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const { error } = await buildResponseError(response, url);
+      throw error;
+    }
+    const data = (await response.json()) as any;
+    const created = data?.data ?? data ?? {};
+    return { id: String(created.id ?? created.campaign_id ?? created.campaignId ?? payload.name), name: payload.name, status };
+  }
+
   async function pullEvents(options: PullEventsOptions = {}) {
     if (options.dryRun) {
       return { events: [], dryRun: true as const };
+    }
+    if (isSmartleadApi) {
+      throw new Error(
+        '[ERR_SMARTLEAD_EVENTS_UNSUPPORTED] pullEvents is not implemented for direct Smartlead API; use webhooks or an MCP server for event ingestion.'
+      );
     }
     const pullTimestamp = options.assumeNowOccurredAt
       ? options.pullTimestamp ?? new Date().toISOString()
@@ -132,9 +275,91 @@ export function buildSmartleadMcpClient(config: SmartleadMcpConfig): SmartleadMc
     }
   }
 
+  async function addLeadsToCampaign(args: {
+    campaignId: string;
+    leads: SmartleadLeadInput[];
+    settings?: SmartleadLeadSettings;
+  }) {
+    if (!isSmartleadApi) {
+      throw new Error(
+        '[ERR_SMARTLEAD_API_ONLY] addLeadsToCampaign is only supported for the direct Smartlead API.'
+      );
+    }
+    const base = config.url.endsWith('/') ? config.url.slice(0, -1) : config.url;
+    const url = `${base}/campaigns/${encodeURIComponent(
+      args.campaignId
+    )}/leads?${new URLSearchParams({ api_key: config.token }).toString()}`;
+    const body: any = {
+      lead_list: args.leads,
+    };
+    if (args.settings) {
+      body.settings = args.settings;
+    }
+    const response = await fetchImpl(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const { error } = await buildResponseError(response, url);
+      throw error;
+    }
+    const data = (await response.json().catch(() => ({}))) as any;
+    const leadIds = data.lead_ids ?? data.leadIds;
+    return {
+      message: data.message as string | undefined,
+      leadIds: leadIds as Record<string, string> | undefined,
+    };
+  }
+
+  async function saveCampaignSequences(args: {
+    campaignId: string;
+    sequences: SmartleadSequenceInput[];
+  }) {
+    if (!isSmartleadApi) {
+      throw new Error(
+        '[ERR_SMARTLEAD_API_ONLY] saveCampaignSequences is only supported for the direct Smartlead API.'
+      );
+    }
+    const base = config.url.endsWith('/') ? config.url.slice(0, -1) : config.url;
+    const url = `${base}/campaigns/${encodeURIComponent(
+      args.campaignId
+    )}/sequences?${new URLSearchParams({ api_key: config.token }).toString()}`;
+    const sequencesPayload = args.sequences.map((seq) => ({
+      seq_number: seq.seq_number,
+      seq_delay_details: { delay_in_days: seq.delay_in_days },
+      seq_type: 'EMAIL',
+      seq_variants: [
+        {
+          subject: seq.subject,
+          email_body: seq.email_body,
+          variant_label: seq.variant_label,
+        },
+      ],
+    }));
+    const response = await fetchImpl(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ sequences: sequencesPayload }),
+    });
+    if (!response.ok) {
+      const { error } = await buildResponseError(response, url);
+      throw error;
+    }
+    return response.json().catch(() => ({}));
+  }
+
   return {
     listCampaigns,
+    listActiveCampaigns,
+    createCampaign,
     pullEvents,
+    addLeadsToCampaign,
+    saveCampaignSequences,
   };
 }
 

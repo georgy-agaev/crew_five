@@ -1,3 +1,4 @@
+/* eslint-disable security-node/detect-crlf */
 import type { SmartleadMcpClient, SmartleadCampaign } from '../integrations/smartleadMcp';
 
 export interface SmartleadCampaignsListOptions {

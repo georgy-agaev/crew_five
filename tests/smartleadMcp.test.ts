@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { describe, expect, it, vi } from 'vitest';
 
 import { buildSmartleadMcpClient } from '../src/integrations/smartleadMcp';
@@ -356,5 +357,84 @@ describe('smartlead MCP client', () => {
     });
     await client.pullEvents({});
     process.env.TRACE_ENABLED = 'false';
+  });
+
+  it('add_leads_uses_correct_url_and_payload_for_direct_api', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ message: 'Leads processed successfully.', lead_ids: { 'a@example.com': 'lead-1' } }),
+    });
+    const client = buildSmartleadMcpClient({
+      url: 'https://server.smartlead.ai/api/v1',
+      token: 'api-key-123',
+      fetchImpl: fetchMock as any,
+    });
+
+    await client.addLeadsToCampaign({
+      campaignId: '123',
+      leads: [
+        {
+          first_name: 'Alice',
+          last_name: 'Doe',
+          email: 'a@example.com',
+          company_name: 'Example Co',
+        },
+      ],
+      settings: {
+        ignore_global_block_list: true,
+        return_lead_ids: true,
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as any;
+    expect(url).toBe(
+      'https://server.smartlead.ai/api/v1/campaigns/123/leads?api_key=api-key-123'
+    );
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(init.body);
+    expect(body.lead_list).toHaveLength(1);
+    expect(body.lead_list[0].email).toBe('a@example.com');
+    expect(body.settings.ignore_global_block_list).toBe(true);
+    expect(body.settings.return_lead_ids).toBe(true);
+  });
+
+  it('save_sequences_uses_correct_url_and_payload_for_direct_api', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, data: 'success' }),
+    });
+    const client = buildSmartleadMcpClient({
+      url: 'https://server.smartlead.ai/api/v1',
+      token: 'api-key-123',
+      fetchImpl: fetchMock as any,
+    });
+
+    await client.saveCampaignSequences({
+      campaignId: '456',
+      sequences: [
+        {
+          seq_number: 1,
+          delay_in_days: 0,
+          subject: 'Hello',
+          email_body: '<p>Hello</p>',
+          variant_label: 'A',
+        },
+      ],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as any;
+    expect(url).toBe(
+      'https://server.smartlead.ai/api/v1/campaigns/456/sequences?api_key=api-key-123'
+    );
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(init.body);
+    expect(body.sequences).toHaveLength(1);
+    expect(body.sequences[0].seq_number).toBe(1);
+    expect(body.sequences[0].seq_delay_details.delay_in_days).toBe(0);
+    expect(body.sequences[0].seq_variants[0].subject).toBe('Hello');
+    expect(body.sequences[0].seq_variants[0].email_body).toBe('<p>Hello</p>');
+    expect(body.sequences[0].seq_variants[0].variant_label).toBe('A');
   });
 });

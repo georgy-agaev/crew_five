@@ -46,9 +46,17 @@ architecture docs live in `public-docs/`.
   - Validate filters (no DB): `pnpm cli filters:validate --filter '[{"field":"employees.role","operator":"eq","value":"CTO"}]' [--format json|text|terse]`
   - Email send scaffold: `pnpm cli email:send --provider smtp --sender-identity noreply@example.com [--throttle-per-minute 50] [--summary-format json|text] [--dry-run] [--log-json] [--fail-on-error] [--batch-id <id>]`
   - Event ingest stub: `pnpm cli event:ingest --payload '{"provider":"stub","event_type":"delivered","provider_event_id":"123"}' [--dry-run] [--error-format json]`
-  - Draft generation: `pnpm cli draft:generate --campaign-id <id> [--dry-run] [--fail-fast] [--limit 100]`
+  - Draft generation: `pnpm cli draft:generate --campaign-id <id> [--dry-run] [--fail-fast] [--limit 100] [--icp-profile-id <id>] [--icp-hypothesis-id <id>] [--variant <label>] [--graceful] [--preview-graceful] [--force-version]`
   - Campaign status change: `pnpm cli campaign:status --campaign-id <id> --status <nextStatus> [--error-format json]`
+  - Enrichment: `pnpm cli enrich:run --segment-id <id> [--adapter mock] [--limit <n>] [--run-now] [--legacy-sync] [--dry-run]`
+  - ICP utilities:  
+    - `pnpm cli icp:list [--columns id,name,description]`  
+    - `pnpm cli icp:hypothesis:list [--icp-profile-id <id>] [--segment-id <id>] [--columns id,icp_profile_id,segment_id,status]`
+  - Provider/model selection (curated): set defaults in Web Settings (assistant/icp/hypothesis/draft), override via CLI flags `--provider`/`--model` on `draft:generate` (openai|anthropic|gemini, catalog-validated).
   Ensure `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` env vars are present (see `.env.example` once added).
+- Apply migrations before exercising new analytics/enrichment features:
+  - `supabase db push` (dev) or `supabase db reset` (local only, destructive).
+  - Newest migrations: `20251201120000_add_email_event_fk_columns.sql`, `20251201120500_update_analytics_events_flat_view.sql`.
 
 ## Security Checks
 - ESLint security suite: `pnpm lint` (uses `eslint` + `@typescript-eslint` + `security` + `security-node`).

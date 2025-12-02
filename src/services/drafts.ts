@@ -14,6 +14,10 @@ interface GenerateDraftsOptions {
   variant?: string;
   interactionMode?: 'coach' | 'express';
   dataQualityMode?: 'strict' | 'graceful';
+  icpProfileId?: string;
+  icpHypothesisId?: string;
+  provider?: string;
+  model?: string;
 }
 
 interface SegmentMemberRow {
@@ -22,6 +26,17 @@ interface SegmentMemberRow {
   snapshot: {
     request?: EmailDraftRequest;
   };
+}
+
+function buildDraftPattern(metadata: Record<string, unknown>): string {
+  const coachId = typeof metadata.coach_prompt_id === 'string' ? metadata.coach_prompt_id : 'unknown';
+  const patternMode =
+    typeof metadata.pattern_mode === 'string' && metadata.pattern_mode.length > 0
+      ? (metadata.pattern_mode as string)
+      : 'standard';
+  const variant =
+    typeof metadata.variant === 'string' && metadata.variant.length > 0 ? (metadata.variant as string) : 'default';
+  return `${coachId}:${patternMode}:${variant}`;
 }
 
 export async function generateDrafts(
@@ -89,6 +104,10 @@ export async function generateDrafts(
       }
     }
 
+    const metadataWithVariant =
+      applyVariantToDraft({ metadata: response.metadata }, options.variant ?? '').metadata ?? {};
+    const draftPattern = buildDraftPattern(metadataWithVariant);
+
     draftsPayload.push({
       campaign_id: options.campaignId,
       contact_id: member.contact_id,
@@ -98,7 +117,15 @@ export async function generateDrafts(
       pattern_mode: response.metadata.pattern_mode,
       subject,
       body,
-      metadata: applyVariantToDraft({ metadata: response.metadata }, options.variant ?? '').metadata,
+      metadata: {
+        ...metadataWithVariant,
+        draft_pattern: draftPattern,
+        user_edited: false,
+        icp_profile_id: options.icpProfileId ?? null,
+        icp_hypothesis_id: options.icpHypothesisId ?? null,
+        provider: options.provider ?? metadataWithVariant.provider ?? null,
+        model: options.model ?? metadataWithVariant.model ?? null,
+      },
       status: 'generated',
     });
     summary.generated += 1;

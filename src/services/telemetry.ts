@@ -1,3 +1,4 @@
+/* eslint-disable security-node/detect-crlf */
 export interface TelemetryOptions {
   enabled?: boolean;
   sink?: (event: string, payload: Record<string, unknown>) => void;

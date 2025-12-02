@@ -19,6 +19,7 @@ interface CampaignCreateOptions {
   allowEmpty?: boolean;
   maxContacts?: number;
   forceVersion?: boolean;
+  dryRun?: boolean;
 }
 
 export async function campaignCreateHandler(
@@ -41,6 +42,16 @@ export async function campaignCreateHandler(
     maxContacts: options.maxContacts,
     forceVersion: options.forceVersion,
   });
+
+  if (options.dryRun) {
+    return {
+      dryRun: true,
+      name: options.name,
+      segmentId: options.segmentId,
+      segmentVersion: snapshot.version,
+      snapshot,
+    };
+  }
 
   return createCampaign(client, {
     name: options.name,

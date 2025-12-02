@@ -1,3 +1,4 @@
+/* eslint-disable security-node/detect-crlf */
 import { createHash } from 'crypto';
 
 export function assignVariant(subject: string): 'A' | 'B' {

@@ -77,7 +77,12 @@ describe('generateDrafts', () => {
     };
     const aiClient = new AiClient(vi.fn().mockResolvedValue(aiResponse));
 
-    const summary = await generateDrafts(supabase, aiClient, { campaignId: 'camp', variant: 'A' });
+    const summary = await generateDrafts(supabase, aiClient, {
+      campaignId: 'camp',
+      variant: 'A',
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+    });
 
     expect(eq).toHaveBeenCalledWith('id', 'camp');
     expect(membersMatch).toHaveBeenCalledWith({ segment_id: 'seg', segment_version: 1 });
@@ -85,6 +90,14 @@ describe('generateDrafts', () => {
     expect(insertSelect).toHaveBeenCalled();
     expect(summary.generated).toBe(1);
     expect(summary.gracefulUsed).toBe(0);
+
+    const insertedPayload = insert.mock.calls[0]?.[0] as any[];
+    expect(Array.isArray(insertedPayload)).toBe(true);
+    const draftRow = insertedPayload[0];
+    expect(draftRow.metadata?.draft_pattern).toBe('intro_v1:standard:A');
+    expect(draftRow.metadata?.user_edited).toBe(false);
+    expect(draftRow.metadata?.provider).toBe('openai');
+    expect(draftRow.metadata?.model).toBe('gpt-4o-mini');
   });
 
   it('supports dry-run without inserts', async () => {

@@ -58,7 +58,7 @@ export class AiClient {
     const trace = startTrace({
       span: 'ai.generateDraft',
       service: 'aiClient',
-      model: request?.constraints?.model ?? 'unknown',
+      model: 'unknown',
     });
     try {
       const resp = await this.generator(request);

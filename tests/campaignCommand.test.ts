@@ -48,4 +48,31 @@ describe('campaignCreateHandler', () => {
     });
     expect(result).toEqual({ id: 'camp-55' });
   });
+
+  it('supports dry-run and skips campaign insert', async () => {
+    const client = {} as any;
+    (createCampaign as any).mockClear();
+
+    const result = await campaignCreateHandler(client, {
+      name: 'Q1 Dry',
+      segmentId: 'seg',
+      dryRun: true,
+    } as any);
+
+    expect(ensureSegmentSnapshot).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({
+        segmentId: 'seg',
+        mode: 'reuse',
+      })
+    );
+    expect(createCampaign).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      dryRun: true,
+      name: 'Q1 Dry',
+      segmentId: 'seg',
+      segmentVersion: 3,
+      snapshot: { version: 3, count: 120 },
+    });
+  });
 });

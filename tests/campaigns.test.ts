@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { describe, expect, it, vi } from 'vitest';
 
-import { createCampaign } from '../src/services/campaigns';
+import { createCampaign, getCampaignSpineContext } from '../src/services/campaigns';
 import { assertCampaignStatusTransition, getAllowedTransitions } from '../src/status';
 
 describe('createCampaign', () => {
@@ -65,6 +66,28 @@ describe('createCampaign', () => {
 
     invalid.forEach(([from, to]) => {
       expect(() => assertCampaignStatusTransition(from as any, to as any)).toThrow(/ERR_STATUS_INVALID/);
+    });
+  });
+
+  it('campaign_spine_context_returns_segment_and_version_for_send', async () => {
+    const single = vi.fn().mockResolvedValue({
+      data: { id: 'camp-1', segment_id: 'segment-1', segment_version: 2 },
+      error: null,
+    });
+    const eq = vi.fn().mockReturnValue({ single });
+    const select = vi.fn().mockReturnValue({ eq });
+    const from = vi.fn().mockReturnValue({ select });
+    const supabase = { from } as any;
+
+    const ctx = await getCampaignSpineContext(supabase, 'camp-1');
+
+    expect(from).toHaveBeenCalledWith('campaigns');
+    expect(select).toHaveBeenCalledWith('id, segment_id, segment_version');
+    expect(eq).toHaveBeenCalledWith('id', 'camp-1');
+    expect(ctx).toEqual({
+      id: 'camp-1',
+      segment_id: 'segment-1',
+      segment_version: 2,
     });
   });
 });

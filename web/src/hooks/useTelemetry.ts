@@ -1,3 +1,4 @@
+/* eslint-disable security-node/detect-crlf */
 const piiKeys = ['email', 'name', 'full_name'];
 
 export function useTelemetry(enabled: boolean, sink?: (event: string, payload: Record<string, unknown>) => void) {

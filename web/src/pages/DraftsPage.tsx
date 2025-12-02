@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { fetchCampaigns, fetchDrafts, triggerDraftGenerate, type Campaign } from '../apiClient';
 import { Alert } from '../components/Alert';
+import { loadSettings } from '../hooks/useSettingsStore';
 
 export type DraftRow = {
   id: string;
@@ -48,8 +49,15 @@ export function DraftsPage() {
     if (!selected) return;
     setLoading(true);
     setError(null);
+    const settings = loadSettings();
+    const draftModel = settings.providers.draft;
     try {
-      const res = await triggerDraftGenerate(selected, { dryRun, limit });
+      const res = await triggerDraftGenerate(selected, {
+        dryRun,
+        limit,
+        provider: draftModel.provider,
+        model: draftModel.model,
+      });
       setMessage(`Generated=${res.generated} dryRun=${res.dryRun}`);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to generate drafts');

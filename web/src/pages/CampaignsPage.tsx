@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { fetchCampaigns, triggerDraftGenerate, triggerSmartleadSend, type Campaign } from '../apiClient';
 import { Alert } from '../components/Alert';
+import { loadSettings } from '../hooks/useSettingsStore';
 
 export function modeSummary(
   dataQuality: 'strict' | 'graceful',
@@ -33,8 +34,15 @@ export function CampaignsPage() {
     setSummary(null);
     setError(null);
     setLoading(true);
+    const settings = loadSettings();
+    const draftModel = settings.providers.draft;
     try {
-      const result = await triggerDraftGenerate(id, { dryRun, limit });
+      const result = await triggerDraftGenerate(id, {
+        dryRun,
+        limit,
+        provider: draftModel.provider,
+        model: draftModel.model,
+      });
       setSummary(
         `Drafts: generated=${result.generated}, dryRun=${result.dryRun}, modes=${modeSummary(
           dataQualityMode,

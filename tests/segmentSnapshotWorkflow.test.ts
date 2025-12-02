@@ -1,6 +1,11 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { describe, expect, it, vi } from 'vitest';
 
-import { ensureSegmentSnapshot, snapshotExists } from '../src/services/segmentSnapshotWorkflow';
+import {
+  ensureFinalSegmentSnapshot,
+  ensureSegmentSnapshot,
+  snapshotExists,
+} from '../src/services/segmentSnapshotWorkflow';
 
 vi.mock('../src/services/segments', () => ({
   getSegmentById: vi.fn().mockResolvedValue({
@@ -176,5 +181,61 @@ describe('ensureSegmentSnapshot guardrails', () => {
 
     expect(setSegmentVersion).toHaveBeenCalledWith(client, 'segment-1', 2);
     expect(createSegmentSnapshot).toHaveBeenCalled();
+  });
+});
+
+describe('ensureFinalSegmentSnapshot', () => {
+  it('throws when segment version is not finalized', async () => {
+    vi.mocked(getSegmentById).mockResolvedValueOnce({
+      id: 'segment-1',
+      version: 0,
+      filter_definition: {},
+    } as any);
+    const client = { from: vi.fn() } as any;
+
+    await expect(ensureFinalSegmentSnapshot(client, 'segment-1')).rejects.toThrow(/not finalized/);
+  });
+
+  it('throws when no snapshot exists for finalized segment', async () => {
+    vi.mocked(getSegmentById).mockResolvedValueOnce({
+      id: 'segment-1',
+      version: 1,
+      filter_definition: {},
+    } as any);
+    const match = vi.fn().mockResolvedValue({ data: null, count: 0, error: null });
+    const select = vi.fn().mockReturnValue({ match });
+    const client = { from: vi.fn().mockReturnValue({ select }) } as any;
+
+    await expect(ensureFinalSegmentSnapshot(client, 'segment-1')).rejects.toThrow(/No finalized snapshot/);
+  });
+
+  it('returns version and count when snapshot exists', async () => {
+    vi.mocked(getSegmentById).mockResolvedValueOnce({
+      id: 'segment-1',
+      version: 2,
+      filter_definition: {},
+    } as any);
+    const match = vi.fn().mockResolvedValue({ data: null, count: 5, error: null });
+    const select = vi.fn().mockReturnValue({ match });
+    const client = { from: vi.fn().mockReturnValue({ select }) } as any;
+
+    const result = await ensureFinalSegmentSnapshot(client, 'segment-1');
+    expect(result.version).toBe(2);
+    expect(result.count).toBe(5);
+  });
+
+  it('throws when expectedVersion differs and forceVersion is false', async () => {
+    vi.mocked(getSegmentById).mockResolvedValueOnce({
+      id: 'segment-1',
+      version: 3,
+      filter_definition: {},
+    } as any);
+    const match = vi.fn().mockResolvedValue({ data: null, count: 5, error: null });
+    const select = vi.fn().mockReturnValue({ match });
+    const client = { from: vi.fn().mockReturnValue({ select }) } as any;
+
+    await expect(
+      ensureFinalSegmentSnapshot(client, 'segment-1', { expectedVersion: 1, forceVersion: false })
+    ).rejects.toThrow(/mismatch/);
   });
 });

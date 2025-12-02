@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { assertCampaignStatusTransition, CampaignStatus, getAllowedTransitions } from '../status';
+import { CampaignStatus, getAllowedTransitions } from '../status';
 
 export interface CampaignInput {
   name: string;
@@ -108,4 +108,31 @@ export async function updateCampaign(
   }
 
   return data;
+}
+
+export interface CampaignSpineContext {
+  id: string;
+  segment_id: string;
+  segment_version: number;
+}
+
+export async function getCampaignSpineContext(
+  client: SupabaseClient,
+  campaignId: string
+): Promise<CampaignSpineContext> {
+  const { data, error } = await client
+    .from('campaigns')
+    .select('id, segment_id, segment_version')
+    .eq('id', campaignId)
+    .single();
+
+  if (error || !data) {
+    throw error ?? new Error('Campaign not found');
+  }
+
+  if (typeof data.segment_version !== 'number') {
+    throw new Error('Campaign missing segment_version');
+  }
+
+  return data as CampaignSpineContext;
 }

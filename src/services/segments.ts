@@ -66,6 +66,12 @@ export async function getSegmentById(client: SupabaseClient, id: string) {
   return data;
 }
 
+export async function getFinalizedSegmentVersion(client: SupabaseClient, segmentId: string): Promise<number> {
+  const segment = await getSegmentById(client, segmentId);
+  const version = typeof segment.version === 'number' ? segment.version : 1;
+  return version < 1 ? 1 : version;
+}
+
 export async function setSegmentVersion(
   client: SupabaseClient,
   segmentId: string,

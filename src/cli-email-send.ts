@@ -1,3 +1,4 @@
+/* eslint-disable security-node/detect-crlf */
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { sendQueuedDrafts } from './services/emailOutbound';

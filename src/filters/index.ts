@@ -19,6 +19,16 @@ function ensureFieldAllowed(field: string) {
   }
 }
 
+function mapFilterFieldToSupabaseColumn(field: string): string {
+  if (field.startsWith('employees.')) {
+    return field.slice('employees.'.length);
+  }
+  if (field.startsWith('companies.')) {
+    return `company.${field.slice('companies.'.length)}`;
+  }
+  return field;
+}
+
 export function parseSegmentFilters(definition: unknown): FilterClause[] {
   if (!Array.isArray(definition) || definition.length === 0) {
     throw new Error('filter_definition must contain at least one filter');
@@ -58,7 +68,9 @@ export function parseSegmentFilters(definition: unknown): FilterClause[] {
   });
 }
 
-export function validateFilters(definition: unknown): { ok: true; filters: FilterClause[] } | { ok: false; error: { message: string; details?: Record<string, unknown> } } {
+export function validateFilters(
+  definition: unknown
+): { ok: true; filters: FilterClause[] } | { ok: false; error: { code?: string; message: string; details?: Record<string, unknown> } } {
   try {
     const filters = parseSegmentFilters(definition);
     return { ok: true, filters };
@@ -91,16 +103,17 @@ export function buildContactQuery(client: SupabaseClient, filters: FilterClause[
     );
 
   for (const filter of filters) {
+    const column = mapFilterFieldToSupabaseColumn(filter.field);
     if (filter.op === 'eq') {
-      query = query.eq(filter.field, filter.value);
+      query = query.eq(column, filter.value);
     } else if (filter.op === 'in') {
-      query = query.in(filter.field, filter.value as any[]);
+      query = query.in(column, filter.value as any[]);
     } else if (filter.op === 'not_in') {
-      query = query.not(filter.field, 'in', filter.value as any[]);
+      query = query.not(column, 'in', filter.value as any[]);
     } else if (filter.op === 'gte') {
-      query = query.gte(filter.field, filter.value as number);
+      query = query.gte(column, filter.value as number);
     } else if (filter.op === 'lte') {
-      query = query.lte(filter.field, filter.value as number);
+      query = query.lte(column, filter.value as number);
     }
   }
 

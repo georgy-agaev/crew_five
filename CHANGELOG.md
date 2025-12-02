@@ -2,6 +2,72 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.53] - 2025-12-01
+### Added
+- `docs/web_ui_requirements.md` as the authoritative Web UI specification (tab order, workflows, analytics, SIM) with cross-references to existing workflow docs and priority note.
+- Prompt templates for ICP profile generation and hypothesis+segment filter generation to guide UI coach surfaces.
+- Session log updated (`docs/sessions/2025-12-01_2_web-ui-w0v3-w1v2-anv2-plan.md`) to reflect the new UI requirements doc and ICP draft-generation guardrails.
+- Web adapter now exposes coach ICP/HYP generation and prompt registry create routes; Web UI pulls prompt registry into draft generation and adds coach generate buttons on the ICP tab; apiClient and tests updated.
+
+## [0.1.52] - 2025-12-01
+### Added
+- Segment version guardrails: draft and enrichment commands now require a snapshot for the exact `campaign.segment_version` and reject mismatches unless `--force-version` is provided.
+- Email event analytics FKs are auto-populated from outbound/draft/campaign context during ingest; idempotency hashing is stable even without `provider_event_id`.
+- Analytics view updated to prefer event-level FKs (segment, ICP, pattern, coach prompt) with a new migration.
+- ICP list commands whitelist allowed columns and reject unknown selections.
+
+## [0.1.51] - 2025-12-01
+### Added
+- Async-first enrichment CLI path with `--run-now` and `--legacy-sync` flags plus resolved mode in output; enrichment and draft runs now enforce finalized snapshots via `ensureFinalSegmentSnapshot`.
+- ICP-aware draft generation flags (`--icp-profile-id`, `--icp-hypothesis-id`) routed through coach helpers; draft metadata now records ICP IDs for analytics.
+- Analytics formatter `formatAnalyticsOutput` to keep `analytics:summary` JSON stable across groupings; additional pattern-group CLI test coverage.
+- Email events FK migration `supabase/migrations/20251201120000_add_email_event_fk_columns.sql` adding segment/draft/job/ICP fields for analytics joins; `mapProviderEvent` now emits these keys.
+- New list commands `icp:list` and `icp:hypothesis:list` with column filtering and CLI wiring.
+- README updated with new CLI flags/commands; full `pnpm vitest run` (185 tests) passing.
+
+## [0.1.50] - 2025-12-01
+### Changed
+- Workflow and roadmap docs updated to reflect W0.v3, W1.v2, and AN.v2 as implemented and SIM (W2) as contracts-only (Option 2):
+  - `docs/workflow_2_sim_replies_prd.md` explicitly notes SIM jobs/requests are defined but not executed yet.
+  - `docs/GMT_system_plan_v0.4_roadmap.md` and `docs/gtm_system_workflows_versions_v_0.md` annotate the implementation status of W0.v3, W1.v2, AN.v2, and W2.
+- Session log `docs/sessions/2025-11-30_1_w0v3-w1v2-anv2_session-plans.md` updated to mark Session 8 (hardening and W2 Option 2 sanity) as completed; test suite remains green.
+
+## [0.1.49] - 2025-12-01
+### Added
+- Prompt registry migration `supabase/migrations/20251201102000_add_prompt_registry.sql` and service `src/services/promptRegistry.ts` to record prompt versions (`coach_prompt_id`, description, version, rollout_status`) for later analysis.
+- AN.v2 helpers in `src/services/analytics.ts` (`getPromptPatternPerformance`, `getSimJobSummaryForAnalytics`, `suggestPromptPatternAdjustments`) plus tests in `tests/experiments.test.ts` to aggregate pattern performance, summarize SIM job statuses, and generate simple scale/keep/retire recommendations.
+- New CLI command `analytics:optimize` in `src/cli.ts` that prints `{ suggestions, simSummary }` based on analytics; Session 7 in `docs/sessions/2025-11-30_1_w0v3-w1v2-anv2_session-plans.md` marked as completed.
+
+## [0.1.48] - 2025-12-01
+### Added
+- Analytics view `analytics_events_flat` via `supabase/migrations/20251201043000_add_analytics_events_flat_view.sql` joining events, outbound, drafts, campaigns, segments, and employees to expose ICP, segment, pattern, role, and event fields for reporting.
+- Analytics service `src/services/analytics.ts` with helpers to compute baseline metrics (delivered/opened/replied/positive replies) grouped by ICP+hypothesis, segment+role, and pattern+user_edited, plus unit tests in `tests/analytics.test.ts`.
+- New CLI command `analytics:summary` in `src/cli.ts` that supports `--group-by icp|segment|pattern` and optional `--since`, printing a JSON summary; Session 6 in `docs/sessions/2025-11-30_1_w0v3-w1v2-anv2_session-plans.md` marked as completed.
+
+## [0.1.47] - 2025-12-01
+### Added
+- Research storage columns `company_research` and `ai_research_data` via `supabase/migrations/20251201040000_add_research_columns.sql` to hold enrichment output for companies and employees.
+- Segment-level enrichment service `src/services/enrichSegment.ts` with helpers to enqueue enrich jobs (`enqueueSegmentEnrichment`), run a single job (`runSegmentEnrichmentOnce`), and inspect status (`getSegmentEnrichmentStatus`), plus tests in `tests/enrichment.test.ts`.
+- `enrich:run` command in `src/commands/enrich.ts` now writes mock enrichment results into `employees.ai_research_data` while preserving the existing CLI behaviour; Session 5 in `docs/sessions/2025-11-30_1_w0v3-w1v2-anv2_session-plans.md` updated as completed, test suite remains green.
+
+## [0.1.46] - 2025-12-01
+### Added
+- Coach service `src/services/coach.ts` introducing helpers to generate ICP profiles from briefs, create hypotheses for segments, and delegate draft generation to the existing `generateDrafts` implementation.
+- New unit tests in `tests/coach.test.ts` covering ICP profile and hypothesis creation via the coach layer and verifying that coach-driven draft generation still produces correct `draft_pattern` and `user_edited` metadata.
+- Session 4 in `docs/sessions/2025-11-30_1_w0v3-w1v2-anv2_session-plans.md` updated to reflect the coach split helpers as completed, while leaving `draft:generate` behaviour unchanged for now.
+
+## [0.1.45] - 2025-12-01
+### Added
+- ICP schema migration `supabase/migrations/20251130220000_add_icp_profiles_and_hypotheses.sql` creating `icp_profiles`/`icp_hypotheses` tables and adding `icp_profile_id`/`icp_hypothesis_id` FKs on `segments`.
+- ICP service `src/services/icp.ts` with helpers to create profiles and hypotheses and attach them to segments, plus coverage in `tests/icp.test.ts`.
+- New CLI commands `icp:create` and `icp:hypothesis:create` wired in `src/cli.ts` via `src/commands/icpCreate.ts` and `src/commands/icpHypothesisCreate.ts`, with CLI tests in `tests/cli.test.ts`; Session 3 in `docs/sessions/2025-11-30_1_w0v3-w1v2-anv2_session-plans.md` marked as completed.
+
+## [0.1.44] - 2025-11-30
+### Added
+- Generic `jobs` table via `supabase/migrations/20251130205000_add_jobs_table.sql` to track `send`, `enrich`, and `sim` jobs with shared lifecycle fields.
+- Jobs service (`src/services/jobs.ts`) with helpers to create and update jobs, plus unit tests in `tests/jobs.test.ts`.
+- SIM Option 2 stub service (`src/services/sim.ts`) that accepts structured SIM requests, records them as `sim` jobs, and marks them as `not_implemented` with clear reasons for future W2 work. Session roadmap doc `docs/sessions/2025-11-30_1_w0v3-w1v2-anv2_session-plans.md` updated to mark Session 1 as completed; lint, build, and full test suite remain green.
+
 ## [0.1.43] - 2025-11-30
 ### Added
 - `public-docs/` folder with public-facing getting started, architecture, and extensibility guides to support the open-core OSS audience.
@@ -101,7 +167,7 @@ All notable changes to this project will be documented in this file.
 ## [0.1.28] - 2025-11-25
 ### Added
 - Enrichment stub (adapter registry + mock) with CLI `enrich:run` (dry-run/limit).
-- Graceful fallback service (catalog lookup, apply, guard) with tests.
+- Graceful fallback service (catalog lookup, apply, guard) with tests).
 - Judge scaffold for draft scoring + CLI `judge:drafts` (dry-run/limit).
 - ast-grep guardrails tightened (errors on key rules); docs updated.
 

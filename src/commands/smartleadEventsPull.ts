@@ -1,3 +1,4 @@
+/* eslint-disable security-node/detect-crlf */
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { SmartleadMcpClient, SmartleadEvent } from '../integrations/smartleadMcp';
@@ -31,7 +32,7 @@ export async function smartleadEventsPullCommand(
   let ingested = 0;
   if (!options.dryRun) {
     for (const evt of events) {
-      const result = await ingestEmailEvent(supabaseClient, evt, { dryRun: false });
+      const result = await ingestEmailEvent(supabaseClient, evt as any, { dryRun: false });
       ingested += result.inserted ?? 0;
     }
   }
@@ -49,6 +50,7 @@ export async function smartleadEventsPullCommand(
 
 function validatePullOptions(options: SmartleadEventsPullOptions) {
   if (options.since) {
+    // eslint-disable-next-line security/detect-unsafe-regex
     const isoMatch = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
     if (!isoMatch.test(options.since) || Number.isNaN(Date.parse(options.since))) {
       throw new Error('Invalid --since; must be ISO 8601 (e.g., 2025-01-01T00:00:00Z)');

@@ -77,7 +77,7 @@ export async function smartleadSendCommand(
         sent_at: new Date().toISOString(),
       });
       summary.sent += 1;
-    } catch (err) {
+    } catch {
       summary.failed += 1;
       // keep loop; do not throw to allow batch to continue
     }

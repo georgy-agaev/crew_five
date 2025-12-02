@@ -25,10 +25,10 @@ describe('fetchContactsForSegment', () => {
 
     expect(from).toHaveBeenCalledWith('employees');
     expect(chain.select).toHaveBeenCalled();
-    expect(chain.eq).toHaveBeenCalledWith('employees.role', 'CTO');
-    expect(chain.gte).toHaveBeenCalledWith('employees.headcount', 50);
-    expect(chain.lte).toHaveBeenCalledWith('employees.headcount', 500);
-    expect(chain.in).toHaveBeenCalledWith('companies.segment', ['Fintech', 'AI']);
+    expect(chain.eq).toHaveBeenCalledWith('role', 'CTO');
+    expect(chain.gte).toHaveBeenCalledWith('headcount', 50);
+    expect(chain.lte).toHaveBeenCalledWith('headcount', 500);
+    expect(chain.in).toHaveBeenCalledWith('company.segment', ['Fintech', 'AI']);
   });
 
   it('throws when Supabase returns an error', async () => {
