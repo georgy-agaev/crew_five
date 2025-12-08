@@ -2,6 +2,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createProgram } from '../src/cli';
+import { AiClient } from '../src/services/aiClient';
+import * as icpDiscoverySvc from '../src/services/icpDiscovery';
 
 describe('createProgram', () => {
   it('handles draft:generate errors without throwing from parseAsync', async () => {
@@ -109,7 +111,8 @@ describe('createProgram', () => {
     expect(errorSpy).toHaveBeenCalled();
     const payload = JSON.parse((errorSpy.mock.calls[0] as any)[0] as string);
     expect(payload.ok).toBe(false);
-    expect(payload.error?.message).toMatch(/not valid json/i);
+    expect(payload.error?.code).toBe('INVALID_JSON');
+    expect(payload.error?.message).toMatch(/payload is not valid json/i);
 
     errorSpy.mockRestore();
     process.exitCode = originalExitCode;
@@ -144,6 +147,50 @@ describe('createProgram', () => {
     if (originalToken !== undefined) process.env.SMARTLEAD_MCP_TOKEN = originalToken;
     if (originalApiBase !== undefined) process.env.SMARTLEAD_API_BASE = originalApiBase;
     if (originalApiKey !== undefined) process.env.SMARTLEAD_API_KEY = originalApiKey;
+  });
+
+  it('emits friendly Smartlead config error with code when error-format=json', async () => {
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+    });
+
+    const originalExitCode = process.exitCode;
+    const originalEnv = {
+      url: process.env.SMARTLEAD_MCP_URL,
+      token: process.env.SMARTLEAD_MCP_TOKEN,
+      apiBase: process.env.SMARTLEAD_API_BASE,
+      apiKey: process.env.SMARTLEAD_API_KEY,
+    };
+    delete process.env.SMARTLEAD_MCP_URL;
+    delete process.env.SMARTLEAD_MCP_TOKEN;
+    delete process.env.SMARTLEAD_API_BASE;
+    delete process.env.SMARTLEAD_API_KEY;
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'smartlead:campaigns:list',
+      '--dry-run',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(errorSpy).toHaveBeenCalled();
+    const payload = JSON.parse((errorSpy.mock.calls[0] as any)[0] as string);
+    expect(payload.ok).toBe(false);
+    expect(payload.error?.code).toBe('SMARTLEAD_CONFIG_MISSING');
+    expect(payload.error?.message).toMatch(/SMARTLEAD_API_BASE|SMARTLEAD_MCP_URL/);
+
+    errorSpy.mockRestore();
+    process.exitCode = originalExitCode;
+    if (originalEnv.url !== undefined) process.env.SMARTLEAD_MCP_URL = originalEnv.url;
+    if (originalEnv.token !== undefined) process.env.SMARTLEAD_MCP_TOKEN = originalEnv.token;
+    if (originalEnv.apiBase !== undefined) process.env.SMARTLEAD_API_BASE = originalEnv.apiBase;
+    if (originalEnv.apiKey !== undefined) process.env.SMARTLEAD_API_KEY = originalEnv.apiKey;
   });
 
   it('wires campaign:create dry-run flag into handler', async () => {
@@ -209,6 +256,147 @@ describe('createProgram', () => {
     expect(payload.error?.message).toBe('campaign create failed');
 
     errorSpy.mockRestore();
+    process.exitCode = originalExitCode;
+  });
+
+  it('wires icp:discover with minimal args and returns summary json', async () => {
+    const supabaseClient = {
+      from: (table: string) => {
+        if (table === 'jobs') {
+          return {
+            insert: () => ({
+              select: () => ({
+                single: async () => ({ data: { id: 'job-1' }, error: null }),
+              }),
+            }),
+            update: () => ({
+              eq: () => ({
+                select: () => ({
+                  single: async () => ({ data: { id: 'job-1', status: 'running', result: {} }, error: null }),
+                }),
+              }),
+            }),
+            select: () => ({
+              eq: () => ({
+                single: () =>
+                  Promise.resolve({
+                    data: { id: 'job-1', status: 'running', result: {} },
+                    error: null,
+                  }),
+              }),
+            }),
+          };
+        }
+        if (table === 'icp_discovery_runs') {
+          return {
+            insert: () => ({
+              select: () => ({
+                single: async () => ({ data: { id: 'run-1', metadata: {} }, error: null }),
+              }),
+            }),
+            update: () => ({
+              eq: () => ({
+                select: () => ({
+                  single: async () => ({
+                    data: { id: 'run-1', metadata: { provider_run_id: 'ws-1' } },
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+            select: () => ({
+              eq: () => ({
+                single: () =>
+                  Promise.resolve({
+                    data: { id: 'run-1', icp_profile_id: 'icp-1', icp_hypothesis_id: 'hypo-1' },
+                    error: null,
+                  }),
+              }),
+            }),
+          };
+        }
+        throw new Error(`Unexpected table ${table}`);
+      },
+    } as any;
+
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const originalExitCode = process.exitCode;
+
+    process.env.EXA_API_KEY = 'test-key';
+    process.env.EXA_API_BASE = 'https://api.exa.example';
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch' as any)
+      .mockResolvedValue({ ok: true, json: async () => ({ id: 'ws-1', items: [] }) } as any);
+
+    await program.parseAsync(['node', 'gtm', 'icp:discover', '--icp-profile-id', 'icp-1']);
+
+    expect(logSpy).toHaveBeenCalled();
+    const payload = JSON.parse((logSpy.mock.calls[0] as any)[0] as string);
+    expect(payload.jobId).toBe('job-1');
+    expect(payload.runId).toBe('run-1');
+    expect(payload.provider).toBe('exa');
+
+    logSpy.mockRestore();
+    fetchSpy.mockRestore();
+    process.exitCode = originalExitCode;
+  });
+
+  it('icp_discover_cli_with_promote_returns_promoted_count', async () => {
+    const supabaseClient = { from: vi.fn() } as any;
+    const discoverSpy = vi
+      .spyOn(icpDiscoverySvc, 'runIcpDiscoveryWithExa')
+      .mockResolvedValue({ jobId: 'job-1', runId: 'run-1', provider: 'exa', status: 'running' } as any);
+    const promoteSpy = vi
+      .spyOn(icpDiscoverySvc, 'promoteIcpDiscoveryCandidatesToSegment')
+      .mockResolvedValue({ promotedCount: 1 });
+
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const originalExitCode = process.exitCode;
+
+    process.env.EXA_API_KEY = 'test-key';
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'icp:discover',
+      '--icp-profile-id',
+      'icp-1',
+      '--promote',
+      '--segment-id',
+      'seg-1',
+      '--candidate-ids',
+      'cand-1',
+    ]);
+
+    expect(discoverSpy).toHaveBeenCalledWith(supabaseClient, expect.anything(), {
+      icpProfileId: 'icp-1',
+      icpHypothesisId: undefined,
+      limit: undefined,
+    });
+    expect(promoteSpy).toHaveBeenCalledWith(supabaseClient, {
+      runId: 'run-1',
+      candidateIds: ['cand-1'],
+      segmentId: 'seg-1',
+    });
+    expect(logSpy).toHaveBeenCalled();
+    const payload = JSON.parse((logSpy.mock.calls[0] as any)[0] as string);
+    expect(payload.jobId).toBe('job-1');
+    expect(payload.runId).toBe('run-1');
+    expect(payload.promotedCount).toBe(1);
+
+    logSpy.mockRestore();
+    discoverSpy.mockRestore();
+    promoteSpy.mockRestore();
     process.exitCode = originalExitCode;
   });
 
@@ -894,6 +1082,37 @@ describe('createProgram', () => {
     expect(segmentMembersSelect).toHaveBeenCalled();
   });
 
+  it('enrich_run_emits_json_error_for_unknown_provider', async () => {
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+    });
+
+    const originalExitCode = process.exitCode;
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'enrich:run',
+      '--segment-id',
+      'seg-err',
+      '--provider',
+      'unknown-provider',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(errorSpy).toHaveBeenCalled();
+    const payload = JSON.parse((errorSpy.mock.calls[0] as any)[0] as string);
+    expect(payload.ok).toBe(false);
+    expect(payload.error?.code).toBe('ENRICHMENT_PROVIDER_UNKNOWN');
+
+    errorSpy.mockRestore();
+    process.exitCode = originalExitCode;
+  });
+
   it('wires icp:create and prints profile id', async () => {
     const from = vi.fn().mockReturnValue({
       insert: vi.fn().mockReturnValue({
@@ -1031,6 +1250,126 @@ describe('createProgram', () => {
     expect(from).toHaveBeenCalledWith('icp_hypotheses');
     const payload = JSON.parse((logSpy.mock.calls[0] as any[])[0] as string);
     expect(payload[0].id).toBe('hyp-1');
+    logSpy.mockRestore();
+  });
+
+  it('cli_icp_coach_profile_calls_orchestrator_and_prints_json', async () => {
+    const from = vi.fn().mockReturnValue({
+      insert: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({
+            data: { id: 'icp-1', name: 'ICP' },
+            error: null,
+          }),
+        }),
+      }),
+      update: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({
+              data: { id: 'job-1', status: 'completed', result: {} },
+              error: null,
+            }),
+          }),
+        }),
+      }),
+    });
+    const supabaseClient = { from } as any;
+    const chatClient = {
+      complete: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          name: 'ICP',
+          companyCriteria: {},
+          personaCriteria: {},
+        })
+      ),
+    };
+    const program = createProgram({
+      supabaseClient,
+      aiClient: new AiClient(chatClient as any),
+      smartleadClient: {} as any,
+      chatClient: chatClient as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await program.parseAsync(['node', 'gtm', 'icp:coach:profile', '--name', 'ICP']);
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const printed = (logSpy.mock.calls[0] as any[])[0] as string;
+    const parsed = JSON.parse(printed);
+    expect(parsed).toHaveProperty('jobId');
+    expect(parsed).toHaveProperty('profileId', 'icp-1');
+    logSpy.mockRestore();
+  });
+
+  it('cli_icp_coach_hypothesis_calls_orchestrator_and_prints_json', async () => {
+    const from = vi.fn((table: string) => {
+      if (table === 'icp_hypotheses') {
+        return {
+          insert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({
+                data: { id: 'hypo-1', icp_id: 'icp-1' },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'jobs') {
+        return {
+          insert: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({
+                data: { id: 'job-2', type: 'icp', status: 'created', result: {} },
+                error: null,
+              }),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              select: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({
+                  data: { id: 'job-2', type: 'icp', status: 'completed', result: {} },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+      return { select: vi.fn(), insert: vi.fn(), update: vi.fn() };
+    });
+    const supabaseClient = { from } as any;
+    const chatClient = {
+      complete: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          hypothesisLabel: 'H1',
+          searchConfig: {},
+        })
+      ),
+    };
+    const program = createProgram({
+      supabaseClient,
+      aiClient: new AiClient(chatClient as any),
+      smartleadClient: {} as any,
+      chatClient: chatClient as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'icp:coach:hypothesis',
+      '--icp-profile-id',
+      'icp-1',
+    ]);
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const printed = (logSpy.mock.calls[0] as any[])[0] as string;
+    const parsed = JSON.parse(printed);
+    expect(parsed).toHaveProperty('jobId', 'job-2');
+    expect(parsed).toHaveProperty('hypothesisId', 'hypo-1');
     logSpy.mockRestore();
   });
 

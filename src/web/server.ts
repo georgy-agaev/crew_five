@@ -3,7 +3,8 @@ import http from 'node:http';
 import { URL, fileURLToPath } from 'node:url';
 
 import { loadEnv } from '../config/env';
-import { AiClient } from '../services/aiClient';
+import { AiClient, type EmailDraftRequest } from '../services/aiClient';
+import type { ChatClient } from '../services/chatClient';
 import { generateDrafts } from '../services/drafts';
 import { getReplyPatterns } from '../services/emailEvents';
 import { initSupabaseClient } from '../services/supabaseClient';
@@ -14,6 +15,11 @@ import { ensureSegmentSnapshot } from '../services/segmentSnapshotWorkflow';
 import { enqueueSegmentEnrichment, getSegmentEnrichmentStatus, runSegmentEnrichmentOnce } from '../services/enrichSegment';
 import { getSegmentById } from '../services/segments';
 import { createIcpHypothesis, createIcpProfile } from '../services/icp';
+import { createIcpHypothesisViaCoach, createIcpProfileViaCoach } from '../services/coach';
+import {
+  getActivePromptForStep as getActivePromptForStepService,
+  setActivePromptForStep as setActivePromptForStepService,
+} from '../services/promptRegistry';
 import {
   getAnalyticsByIcpAndHypothesis,
   getAnalyticsByPatternAndUserEdit,
@@ -22,6 +28,12 @@ import {
   suggestPromptPatternAdjustments,
 } from '../services/analytics';
 import { completeSimAsNotImplemented, createSimRequest } from '../services/sim';
+import { buildExaClientFromEnv } from '../integrations/exa';
+import {
+  listIcpDiscoveryCandidates,
+  promoteIcpDiscoveryCandidatesToSegment,
+  runIcpDiscoveryWithExa,
+} from '../services/icpDiscovery';
 
 type Campaign = { id: string; name: string; status?: string; segment_id?: string | null; segment_version?: number | null };
 type DraftRow = { id: string; status?: string; contact?: string };
@@ -54,6 +66,8 @@ type AdapterDeps = {
     dataQualityMode?: 'strict' | 'graceful';
     icpProfileId?: string;
     icpHypothesisId?: string;
+    coachPromptStep?: string;
+    explicitCoachPromptId?: string;
   }) => Promise<DraftSummary>;
   sendSmartlead: (payload: { dryRun?: boolean; batchSize?: number; leadIds?: string[] }) => Promise<SendSummary>;
   listEvents: (params: { since?: string; limit?: number }) => Promise<EventRow[]>;
@@ -62,9 +76,22 @@ type AdapterDeps = {
   analyticsOptimize?: (params: { since?: string }) => Promise<any>;
   listPromptRegistry?: () => Promise<any[]>;
   createPromptRegistryEntry?: (payload: Record<string, unknown>) => Promise<any>;
-  createSimJobStub?: (payload: { mode?: string }) => Promise<any>;
+  getActivePromptForStep?: (step: string) => Promise<string | null>;
+  setActivePromptForStep?: (step: string, coachPromptId: string) => Promise<void>;
+  createSimJobStub?: (payload: { mode?: string; segmentId?: string | null; segmentVersion?: number | null; draftIds?: string[] }) => Promise<any>;
   generateIcpProfile?: (payload: Record<string, unknown>) => Promise<any>;
   generateIcpHypothesis?: (payload: Record<string, unknown>) => Promise<any>;
+  runIcpDiscovery?: (payload: { icpProfileId: string; icpHypothesisId?: string; limit?: number }) => Promise<any>;
+  listIcpDiscoveryCandidates?: (filters: {
+    runId?: string;
+    icpProfileId?: string;
+    icpHypothesisId?: string;
+  }) => Promise<any[]>;
+  promoteIcpDiscoveryCandidates?: (payload: {
+    runId: string;
+    candidateIds: string[];
+    segmentId: string;
+  }) => Promise<{ promotedCount: number }>;
 };
 
 async function readJson<T>(req: http.IncomingMessage): Promise<T> {
@@ -239,6 +266,56 @@ export async function dispatch(
     return { status: 200, body: await deps.generateIcpHypothesis(req.body ?? {}) };
   }
 
+  if (method === 'POST' && pathname === '/api/icp/discovery') {
+    if (!deps.runIcpDiscovery) return { status: 501, body: { error: 'ICP discovery not configured' } };
+    const body = req.body ?? {};
+    const icpProfileId = body.icpProfileId as string | undefined;
+    if (!icpProfileId) {
+      return { status: 400, body: { error: 'icpProfileId is required' } };
+    }
+    const icpHypothesisId = body.icpHypothesisId as string | undefined;
+    const limit = body.limit ? Number(body.limit) : undefined;
+    return {
+      status: 200,
+      body: await deps.runIcpDiscovery({ icpProfileId, icpHypothesisId, limit }),
+    };
+  }
+
+  if (method === 'GET' && pathname === '/api/icp/discovery/candidates') {
+    if (!deps.listIcpDiscoveryCandidates) {
+      return { status: 501, body: { error: 'ICP discovery not configured' } };
+    }
+    const runId = searchParams.get('runId') ?? undefined;
+    const icpProfileId = searchParams.get('icpProfileId') ?? undefined;
+    const icpHypothesisId = searchParams.get('icpHypothesisId') ?? undefined;
+    return {
+      status: 200,
+      body: await deps.listIcpDiscoveryCandidates({ runId, icpProfileId, icpHypothesisId }),
+    };
+  }
+
+  if (method === 'POST' && pathname === '/api/icp/discovery/promote') {
+    if (!deps.promoteIcpDiscoveryCandidates) {
+      return { status: 501, body: { error: 'ICP discovery promotion not configured' } };
+    }
+    const body = req.body ?? {};
+    const runId = body.runId as string | undefined;
+    const segmentId = body.segmentId as string | undefined;
+    const candidateIds = Array.isArray(body.candidateIds) ? (body.candidateIds as string[]) : [];
+    if (!runId) {
+      return { status: 400, body: { error: 'runId is required' } };
+    }
+    if (!segmentId) {
+      return { status: 400, body: { error: 'segmentId is required' } };
+    }
+    const result = await deps.promoteIcpDiscoveryCandidates({
+      runId,
+      segmentId,
+      candidateIds,
+    });
+    return { status: 200, body: result };
+  }
+
   if (method === 'GET' && pathname === '/api/events') {
     return {
       status: 200,
@@ -274,12 +351,48 @@ export async function dispatch(
 
   if (method === 'GET' && pathname === '/api/prompt-registry') {
     if (!deps.listPromptRegistry) return { status: 501, body: { error: 'Prompt registry not configured' } };
-    return { status: 200, body: await deps.listPromptRegistry() };
+    const rows = await deps.listPromptRegistry();
+    const stepFilter = searchParams.get('step') ?? undefined;
+    const enriched = (rows ?? []).map((row: any) => ({
+      ...row,
+      is_active: row.rollout_status === 'active',
+    }));
+    const filtered = stepFilter ? enriched.filter((row) => row.step === stepFilter) : enriched;
+    return { status: 200, body: filtered };
   }
 
   if (method === 'POST' && pathname === '/api/prompt-registry') {
     if (!deps.createPromptRegistryEntry) return { status: 501, body: { error: 'Prompt registry not configured' } };
     return { status: 200, body: await deps.createPromptRegistryEntry(req.body ?? {}) };
+  }
+
+  if (method === 'GET' && pathname === '/api/prompt-registry/active') {
+    if (!deps.getActivePromptForStep) {
+      return { status: 501, body: { error: 'Prompt registry not configured' } };
+    }
+    const step = searchParams.get('step');
+    if (!step) {
+      return { status: 400, body: { error: 'step is required' } };
+    }
+    const coachPromptId = await deps.getActivePromptForStep(step);
+    return { status: 200, body: { step, coach_prompt_id: coachPromptId ?? null } };
+  }
+
+  if (method === 'POST' && pathname === '/api/prompt-registry/active') {
+    if (!deps.setActivePromptForStep) {
+      return { status: 501, body: { error: 'Prompt registry not configured' } };
+    }
+    const body = req.body ?? {};
+    const step = body.step as string | undefined;
+    const coachPromptId = body.coach_prompt_id as string | undefined;
+    if (!step) {
+      return { status: 400, body: { error: 'step is required' } };
+    }
+    if (!coachPromptId) {
+      return { status: 400, body: { error: 'coach_prompt_id is required' } };
+    }
+    await deps.setActivePromptForStep(step, coachPromptId);
+    return { status: 200, body: { ok: true } };
   }
 
   if (method === 'GET' && pathname === '/api/meta') {
@@ -416,6 +529,17 @@ export function createMockDeps(): AdapterDeps {
     generateIcpProfile: async (payload) => ({ id: `p-${mockIcpProfiles.length + 1}`, ...payload }),
     generateIcpHypothesis: async (payload) => ({ id: `h-${mockHypotheses.length + 1}`, ...payload }),
     listPromptRegistry: async () => mockPromptRegistry,
+    getActivePromptForStep: async (step: string) => {
+      const row = mockPromptRegistry.find((entry) => entry.step === step && entry.rollout_status === 'active');
+      return row ? (row.id as string) : null;
+    },
+	    setActivePromptForStep: async (step: string, coachPromptId: string) => {
+	      mockPromptRegistry.forEach((entry) => {
+	        if (entry.step === step) {
+	          (entry as any).rollout_status = entry.id === coachPromptId ? 'active' : 'pilot';
+	        }
+      });
+    },
     createPromptRegistryEntry: async (payload) => {
       const created = { id: payload.id ?? `pr-${mockPromptRegistry.length + 1}`, ...payload };
       mockPromptRegistry.push(created as any);
@@ -437,6 +561,9 @@ export function createMockDeps(): AdapterDeps {
     },
     listEvents: async () => [],
     listReplyPatterns: async () => [],
+    runIcpDiscovery: async () => ({ jobId: 'job-mock', runId: 'run-mock', provider: 'exa', status: 'running' }),
+    listIcpDiscoveryCandidates: async () => [],
+	    promoteIcpDiscoveryCandidates: async ({ candidateIds }) => ({ promotedCount: candidateIds.length }),
   };
 }
 
@@ -449,19 +576,71 @@ export function createLiveDeps(
 ): AdapterDeps {
   const env = loadEnv();
   const supabase = opts.supabase ?? initSupabaseClient(env);
-  const aiClient =
-    opts.aiClient ??
-    new AiClient(async () => ({
-      subject: 'Draft subject',
-      body: 'Draft body',
-      metadata: {
-        model: 'mock-model',
-        language: 'en',
-        pattern_mode: null,
-        email_type: 'intro',
-        coach_prompt_id: 'mock',
-      },
-    }));
+  const chatClient: ChatClient = {
+    complete: async (messages) => {
+      const last = messages[messages.length - 1];
+      let request: EmailDraftRequest | null = null;
+      try {
+        request = JSON.parse(last.content) as EmailDraftRequest;
+      } catch {
+        request = null;
+      }
+
+      if (request) {
+        return JSON.stringify({
+          subject: `${request.brief.offer.product_name} for ${request.brief.prospect.company_name}`,
+          body: `Hi ${request.brief.prospect.full_name},\n\n${request.brief.offer.one_liner}\n`,
+          metadata: {
+            model: 'pipeline-express-stub',
+            language: request.language,
+            pattern_mode: request.pattern_mode,
+            email_type: request.email_type,
+            coach_prompt_id: 'express_stub',
+          },
+        });
+      }
+
+      // Simple stubs for ICP coach usage in live adapter mode.
+      const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+      const content = lastUser?.content ?? '';
+      if (content.includes('ICP profile id:')) {
+        return JSON.stringify({
+          hypothesisLabel: 'Stub Hypothesis',
+          searchConfig: {},
+        });
+      }
+      if (content.includes('ICP profile name:')) {
+        return JSON.stringify({
+          name: 'Stub ICP Profile',
+          description: 'Stub ICP profile generated by live adapter',
+          companyCriteria: {},
+          personaCriteria: {},
+        });
+      }
+
+      return JSON.stringify({
+        subject: 'Draft subject',
+        body: 'Draft body',
+        metadata: {
+          model: 'mock-model',
+          language: 'en',
+          pattern_mode: null,
+          email_type: 'intro',
+          coach_prompt_id: 'mock',
+        },
+      });
+    },
+  };
+  const aiClient = opts.aiClient ?? new AiClient(chatClient);
+
+  let exaClient: ReturnType<typeof buildExaClientFromEnv> | null = null;
+  if (process.env.EXA_API_KEY) {
+    try {
+      exaClient = buildExaClientFromEnv();
+    } catch {
+      exaClient = null;
+    }
+  }
 
   const smartlead = opts.smartlead ?? buildSmartleadClientFromEnv();
 
@@ -533,7 +712,17 @@ export function createLiveDeps(
         segmentId,
         searchConfig,
       }),
-    generateDrafts: async ({ campaignId, dryRun, limit, interactionMode, dataQualityMode, icpProfileId, icpHypothesisId }) => {
+    generateDrafts: async ({
+      campaignId,
+      dryRun,
+      limit,
+      interactionMode,
+      dataQualityMode,
+      icpProfileId,
+      icpHypothesisId,
+      coachPromptStep,
+      explicitCoachPromptId,
+    }) => {
       return generateDrafts(supabase, aiClient, {
         campaignId,
         dryRun,
@@ -543,6 +732,8 @@ export function createLiveDeps(
         dataQualityMode,
         icpProfileId,
         icpHypothesisId,
+        coachPromptStep,
+        explicitCoachPromptId,
       } as any);
     },
     sendSmartlead: async ({ dryRun, batchSize, leadIds }) => {
@@ -590,6 +781,9 @@ export function createLiveDeps(
       if (error) throw error;
       return data ?? [];
     },
+    getActivePromptForStep: async (step: string) => getActivePromptForStepService(supabase, step),
+    setActivePromptForStep: async (step: string, coachPromptId: string) =>
+      setActivePromptForStepService(supabase, step, coachPromptId),
     createPromptRegistryEntry: async (payload: Record<string, unknown>) => {
       const insertPayload = {
         id: payload.id ?? undefined,
@@ -604,7 +798,7 @@ export function createLiveDeps(
       if (error || !data) throw error ?? new Error('Failed to insert prompt registry entry');
       return data;
     },
-    createSimJobStub: async (payload: { mode?: string }) => {
+    createSimJobStub: async (payload) => {
       if (!payload.segmentId && !(Array.isArray(payload.draftIds) && payload.draftIds.length > 0)) {
         throw new Error('segmentId or draftIds is required');
       }
@@ -614,26 +808,34 @@ export function createLiveDeps(
         segmentVersion: payload.segmentVersion ?? null,
         draftIds: payload.draftIds ?? [],
       } as any);
-      await completeSimAsNotImplemented(supabase, job.id, 'SIM not implemented (coming soon)');
-      return { status: 'coming_soon', jobId: job.id };
+      await completeSimAsNotImplemented(supabase, job.jobId, 'SIM not implemented (coming soon)');
+      return { status: 'coming_soon', jobId: job.jobId };
     },
     generateIcpProfile: async (payload: Record<string, unknown>) => {
-      const name = (payload.name as string) ?? 'ICP Profile';
-      return createIcpProfile(supabase, {
+      const name = (payload.name as string) ?? '';
+      if (!name) {
+        throw new Error('name is required');
+      }
+      const description = (payload.description as string) ?? undefined;
+      const websiteUrl = (payload.websiteUrl as string) ?? undefined;
+      const valueProp = (payload.valueProp as string) ?? undefined;
+      const { jobId, profile } = await createIcpProfileViaCoach(supabase, chatClient, {
         name,
-        description: (payload.description as string) ?? null ?? undefined,
-        companyCriteria: payload.companyCriteria as any,
-        personaCriteria: payload.personaCriteria as any,
+        description,
+        websiteUrl,
+        valueProp,
       });
+      return { jobId, ...profile };
     },
     generateIcpHypothesis: async (payload: Record<string, unknown>) => {
       const icpProfileId = payload.icpProfileId as string | undefined;
       if (!icpProfileId) throw new Error('icpProfileId is required');
-      return createIcpHypothesis(supabase, {
+      const icpDescription = (payload.icpDescription as string) ?? undefined;
+      const { jobId, hypothesis } = await createIcpHypothesisViaCoach(supabase, chatClient, {
         icpProfileId,
-        hypothesisLabel: (payload.hypothesisLabel as string) ?? (payload.label as string) ?? 'Hypothesis',
-        searchConfig: payload.searchConfig as any,
+        icpDescription,
       });
+      return { jobId, ...hypothesis };
     },
     listSmartleadCampaigns: async () => {
       const campaigns = (await smartlead.listCampaigns({ dryRun: false })).campaigns;
@@ -675,6 +877,26 @@ export function createLiveDeps(
       if (error) throw error;
       return data ?? [];
     },
+    runIcpDiscovery: exaClient
+      ? async ({ icpProfileId, icpHypothesisId, limit }) =>
+          runIcpDiscoveryWithExa(supabase, exaClient!, {
+            icpProfileId,
+            icpHypothesisId,
+            limit,
+          })
+      : undefined,
+    listIcpDiscoveryCandidates: exaClient
+      ? async ({ runId }) => {
+          if (!runId) {
+            throw new Error('runId is required');
+          }
+          return listIcpDiscoveryCandidates(supabase, { runId });
+        }
+      : undefined,
+    promoteIcpDiscoveryCandidates: exaClient
+      ? async ({ runId, candidateIds, segmentId }) =>
+          promoteIcpDiscoveryCandidatesToSegment(supabase, { runId, candidateIds, segmentId })
+      : undefined,
   };
 }
 

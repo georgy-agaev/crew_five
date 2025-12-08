@@ -62,4 +62,38 @@ describe('smartleadSendCommand', () => {
     expect(summary.skipped).toBe(1);
     expect(insert).not.toHaveBeenCalled();
   });
+
+  it('continues_on_send_errors_and_counts_failures', async () => {
+    const drafts = [
+      { id: 'd1', campaign_id: 'c1', contact_id: 'lead1@example.com', company_id: 'co1', subject: 'Hi', body: 'Hello', metadata: {} },
+    ];
+
+    const select = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        limit: vi.fn().mockResolvedValue({ data: drafts, error: null }),
+      }),
+    });
+    const update = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+      in: vi.fn().mockResolvedValue({ error: null }),
+    });
+    const insert = vi.fn().mockResolvedValue({ error: null });
+    const supabaseClient = {
+      from: (table: string) => {
+        if (table === 'drafts') return { select, update };
+        if (table === 'email_outbound') return { insert };
+        return { insert, update };
+      },
+    } as any;
+
+    const sendEmail = vi.fn().mockRejectedValue(new Error('remote 500'));
+    const mcp = { sendEmail } as any;
+
+    const summary = await smartleadSendCommand(mcp, supabaseClient, { dryRun: false, batchSize: 10 });
+
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(summary.failed).toBe(1);
+    expect(summary.sent).toBe(0);
+    expect(insert).not.toHaveBeenCalled();
+  });
 });

@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AiClient, EmailDraftRequest } from './aiClient';
 import { applyGracefulFallback, ensureGracefulToggle, getFallbackTemplate } from './fallbackTemplates';
 import { applyVariantToDraft } from './experiments';
+import { resolvePromptForStep } from './promptRegistry';
 
 interface GenerateDraftsOptions {
   campaignId: string;
@@ -18,6 +19,8 @@ interface GenerateDraftsOptions {
   icpHypothesisId?: string;
   provider?: string;
   model?: string;
+   coachPromptStep?: string;
+   explicitCoachPromptId?: string;
 }
 
 interface SegmentMemberRow {
@@ -75,6 +78,14 @@ export async function generateDrafts(
     ensureGracefulToggle(false);
   }
 
+  let resolvedCoachPromptId: string | undefined;
+  if (options.coachPromptStep) {
+    resolvedCoachPromptId = await resolvePromptForStep(client, {
+      step: options.coachPromptStep,
+      explicitId: options.explicitCoachPromptId,
+    });
+  }
+
   for (const member of membersRes.data as SegmentMemberRow[]) {
     if (!member.snapshot?.request) {
       continue;
@@ -106,7 +117,12 @@ export async function generateDrafts(
 
     const metadataWithVariant =
       applyVariantToDraft({ metadata: response.metadata }, options.variant ?? '').metadata ?? {};
+    if (resolvedCoachPromptId) {
+      (metadataWithVariant as any).coach_prompt_id = resolvedCoachPromptId;
+    }
     const draftPattern = buildDraftPattern(metadataWithVariant);
+    const existingProvider = (metadataWithVariant as any).provider;
+    const existingModel = (metadataWithVariant as any).model;
 
     draftsPayload.push({
       campaign_id: options.campaignId,
@@ -123,8 +139,8 @@ export async function generateDrafts(
         user_edited: false,
         icp_profile_id: options.icpProfileId ?? null,
         icp_hypothesis_id: options.icpHypothesisId ?? null,
-        provider: options.provider ?? metadataWithVariant.provider ?? null,
-        model: options.model ?? metadataWithVariant.model ?? null,
+        provider: options.provider ?? existingProvider ?? null,
+        model: options.model ?? existingModel ?? null,
       },
       status: 'generated',
     });

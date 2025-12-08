@@ -21,6 +21,14 @@ architecture docs live in `public-docs/`.
 - `ast-grep.yml` – AST guardrails for CLI/web patterns and error handling.
 - `.env` – local environment configuration (create based on your own setup).
 
+### Provider Env Summary
+- Supabase: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required by `loadEnv` and web adapter live mode).
+- Smartlead: `SMARTLEAD_API_BASE`/`SMARTLEAD_API_KEY` or legacy MCP envs (see Smartlead section below).
+- Exa (ICP discovery + enrichment): `EXA_API_KEY` (and optional `EXA_API_BASE`) used by Websets discovery and the Exa research client for `enrich:run --provider exa`.
+- Parallel (planned research provider): `PARALLEL_API_KEY` (required) and optional `PARALLEL_API_BASE` (defaults to `https://api.parallel.ai`), validated by `loadParallelEnv`.
+- Firecrawl (planned crawl provider): `FIRECRAWL_API_KEY` (required) and optional `FIRECRAWL_API_BASE` (defaults to `https://api.firecrawl.dev`), validated by `loadFirecrawlEnv`.
+- Anysite (planned profile lookup provider): `ANYSITE_API_KEY` (required) and optional `ANYSITE_API_BASE` (defaults to `https://api.anysite.io`), validated by `loadAnySiteEnv`.
+
 ## Working Agreements
 1. **Single Spine**: all GTM flows must traverse `segment → segment_members → campaign → drafts → email_outbound → email_events`.
 2. **AI Contract**: every draft generation call uses the `generate_email_draft` interface (a versioned contract maintained privately); prompt updates stay behind this contract.
@@ -48,7 +56,7 @@ architecture docs live in `public-docs/`.
   - Event ingest stub: `pnpm cli event:ingest --payload '{"provider":"stub","event_type":"delivered","provider_event_id":"123"}' [--dry-run] [--error-format json]`
   - Draft generation: `pnpm cli draft:generate --campaign-id <id> [--dry-run] [--fail-fast] [--limit 100] [--icp-profile-id <id>] [--icp-hypothesis-id <id>] [--variant <label>] [--graceful] [--preview-graceful] [--force-version]`
   - Campaign status change: `pnpm cli campaign:status --campaign-id <id> --status <nextStatus> [--error-format json]`
-  - Enrichment: `pnpm cli enrich:run --segment-id <id> [--adapter mock] [--limit <n>] [--run-now] [--legacy-sync] [--dry-run]`
+  - Enrichment: `pnpm cli enrich:run --segment-id <id> [--adapter mock] [--provider exa|parallel|firecrawl|anysite] [--limit <n>] [--run-now] [--legacy-sync] [--dry-run]`
   - ICP utilities:  
     - `pnpm cli icp:list [--columns id,name,description]`  
     - `pnpm cli icp:hypothesis:list [--icp-profile-id <id>] [--segment-id <id>] [--columns id,icp_profile_id,segment_id,status]`
@@ -76,13 +84,14 @@ architecture docs live in `public-docs/`.
 - Start with a minimal loop (list campaigns, push leads, sync sequences) before automating any
   Smartlead-side sends; always support `--dry-run` when mutating remote state.
 - CLI commands:
-  - List campaigns: `pnpm cli smartlead:campaigns:list [--dry-run] [--format json|text]`
+  - List campaigns: `pnpm cli smartlead:campaigns:list [--dry-run] [--format json|text] [--error-format json]`
   - Push leads into a Smartlead campaign:  
     `pnpm cli smartlead:leads:push --campaign-id <id> [--limit <n>] [--dry-run] [--error-format json]`
    - Sync a primary email sequence to Smartlead:  
      `pnpm cli smartlead:sequences:sync --campaign-id <id> [--step <n>] [--variant-label <label>] [--dry-run]`
    - Advanced/legacy commands (MCP-based ingest) are available but outside the direct API scope for
-     now (`smartlead:events:pull`, `smartlead:send`).
+     now (`smartlead:events:pull`, `smartlead:send` which remains experimental; prefer dry-run and treat as preview-only).
+- Missing Smartlead envs fail fast with `SMARTLEAD_CONFIG_MISSING`; use `--error-format json` on Smartlead commands to capture structured errors in automation pipelines.
 
 ### Web UI Workflow Hub
 - Run the mock/live adapter: `cd web && pnpm install && pnpm dev` (env: `VITE_API_BASE` defaults to `/api`).

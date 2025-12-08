@@ -74,7 +74,8 @@ export function resolveModelConfig(input: {
   return { provider, model };
 }
 
-function defaultProviderForTask(): Provider {
+function defaultProviderForTask(task: Task): Provider {
+  void task;
   return 'openai';
 }
 

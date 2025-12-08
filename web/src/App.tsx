@@ -3,16 +3,16 @@ import { useEffect, useState } from 'react';
 import './index.css';
 import { CampaignsPage } from './pages/CampaignsPage';
 import { DraftsPage } from './pages/DraftsPage';
-import { SendPage } from './pages/SendPage';
 import { EventsPage } from './pages/EventsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { WorkflowZeroPage } from './pages/WorkflowZeroPage';
 import { IcpDiscoveryPage } from './pages/IcpDiscoveryPage';
 import { SimPage } from './pages/SimPage';
+import { PromptRegistryPage } from './pages/PromptRegistryPage';
 import { fetchMeta, type MetaStatus } from './apiClient';
 
 function App() {
-  const [view, setView] = useState<'icp' | 'segments' | 'sim' | 'analytics' | 'settings'>('icp');
+  const [view, setView] = useState<'icp' | 'segments' | 'sim' | 'analytics' | 'prompts' | 'settings'>('icp');
   const apiBase = import.meta.env.VITE_API_BASE ?? '/api';
   const adapterMode = import.meta.env.VITE_WEB_ADAPTER_MODE ?? 'live';
   const [meta, setMeta] = useState<MetaStatus | null>(null);
@@ -66,6 +66,9 @@ function App() {
         <button className={view === 'analytics' ? 'tab active' : 'tab'} onClick={() => setView('analytics')}>
           Analytics
         </button>
+        <button className={view === 'prompts' ? 'tab active' : 'tab'} onClick={() => setView('prompts')}>
+          Prompt Registry
+        </button>
         <button className={view === 'settings' ? 'tab active' : 'tab'} onClick={() => setView('settings')}>
           Settings
         </button>
@@ -78,6 +81,13 @@ function App() {
         <div className="grid">
           <div className="card">
             <EventsPage />
+          </div>
+        </div>
+      )}
+      {view === 'prompts' && (
+        <div className="grid">
+          <div className="card">
+            <PromptRegistryPage />
           </div>
         </div>
       )}

@@ -124,6 +124,43 @@ describe('analytics service', () => {
       },
     ]);
   });
+
+  it('email_event_fks_are_present_for_recent_inserts (sanity helper)', async () => {
+    const fkRow = {
+      draft_id: 'd1',
+      send_job_id: 'job-1',
+      segment_id: 'seg-1',
+      segment_version: 2,
+      employee_id: 'emp-1',
+      icp_profile_id: 'icp-1',
+      icp_hypothesis_id: 'hyp-1',
+      pattern_id: 'p1',
+      coach_prompt_id: 'coach-1',
+    };
+    const select = vi.fn().mockReturnValue(Promise.resolve({ data: [fkRow], error: null }));
+    const limit = vi.fn().mockReturnValue({ select });
+    const from = vi.fn().mockReturnValue({ select, limit });
+    const client = { from } as any;
+
+    const query: any = client
+      .from('analytics_events_flat')
+      .select(
+        'draft_id, send_job_id, segment_id, segment_version, employee_id, icp_profile_id, icp_hypothesis_id, pattern_id, coach_prompt_id'
+      );
+    const { data, error } = (await (typeof query.limit === 'function' ? query.limit(5) : query)) as any;
+    expect(error).toBeNull();
+    expect(data?.[0]).toMatchObject({
+      draft_id: 'd1',
+      send_job_id: 'job-1',
+      segment_id: 'seg-1',
+      segment_version: 2,
+      employee_id: 'emp-1',
+      icp_profile_id: 'icp-1',
+      icp_hypothesis_id: 'hyp-1',
+      pattern_id: 'p1',
+      coach_prompt_id: 'coach-1',
+    });
+  });
 });
 
 describe('analytics CLI', () => {

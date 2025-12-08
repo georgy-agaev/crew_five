@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import {
   createPromptRegistryEntry,
   fetchPromptRegistry,
+  setActivePrompt,
   type PromptEntry,
   type PromptStep,
 } from '../apiClient';
@@ -25,6 +26,7 @@ export function PromptRegistryPage() {
   const [entries, setEntries] = useState<PromptEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedStep, setSelectedStep] = useState<PromptStep>('draft');
   const [form, setForm] = useState({
     id: '',
     step: 'draft' as PromptStep,
@@ -34,11 +36,11 @@ export function PromptRegistryPage() {
     prompt_text: '',
   });
 
-  const load = async () => {
+  const load = async (step: PromptStep = selectedStep) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchPromptRegistry();
+      const data = await fetchPromptRegistry(step);
       setEntries(data);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to load prompt registry');
@@ -48,8 +50,9 @@ export function PromptRegistryPage() {
   };
 
   useEffect(() => {
-    load().catch(() => undefined);
-  }, []);
+    load(selectedStep).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStep]);
 
   const onCreate = async () => {
     if (!form.id.trim()) {
@@ -68,9 +71,22 @@ export function PromptRegistryPage() {
         prompt_text: form.prompt_text || undefined,
       });
       setForm({ ...form, description: '', prompt_text: '' });
-      await load();
+      await load(form.step);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to create prompt entry');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onSetActive = async (step: PromptStep, promptId: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      await setActivePrompt(step, promptId);
+      await load(step);
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to set active prompt');
     } finally {
       setLoading(false);
     }
@@ -90,7 +106,14 @@ export function PromptRegistryPage() {
             value={form.id}
             onChange={(e) => setForm({ ...form, id: e.target.value })}
           />
-          <select value={form.step} onChange={(e) => setForm({ ...form, step: e.target.value as PromptStep })}>
+          <select
+            value={selectedStep}
+            onChange={(e) => {
+              const step = e.target.value as PromptStep;
+              setSelectedStep(step);
+              setForm((prev) => ({ ...prev, step }));
+            }}
+          >
             {steps.map((s) => (
               <option key={s.key} value={s.key}>
                 {s.label}
@@ -141,11 +164,16 @@ export function PromptRegistryPage() {
       </div>
 
       <div style={{ marginTop: 24 }}>
-        <h3>Entries</h3>
+        <h3>Entries for step: {selectedStep}</h3>
         <ul>
           {entries.map((entry) => (
             <li key={entry.id}>
               <strong>{formatPromptLabel(entry)}</strong>
+              {entry.is_active && (
+                <span className="pill pill--subtle" style={{ marginLeft: 8 }}>
+                  Active
+                </span>
+              )}
               {entry.description ? ` — ${entry.description}` : ''}
               {entry.prompt_text ? (
                 <div className="muted small">Variant text: {entry.prompt_text.slice(0, 80)}...</div>
@@ -154,6 +182,13 @@ export function PromptRegistryPage() {
                   No variant text stored. Refer to template repo for scaffold + variant content.
                 </div>
               )}
+              <button
+                style={{ marginLeft: 8 }}
+                disabled={loading || entry.is_active}
+                onClick={() => onSetActive(entry.step, entry.id)}
+              >
+                {entry.is_active ? 'Active' : 'Set active'}
+              </button>
             </li>
           ))}
           {entries.length === 0 && <li>No entries</li>}

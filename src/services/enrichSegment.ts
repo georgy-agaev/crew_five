@@ -69,7 +69,7 @@ export async function runSegmentEnrichmentOnce(
   const contactIds: string[] = Array.isArray(payload.member_contact_ids) ? payload.member_contact_ids : [];
   const companyIds: string[] = Array.isArray(payload.member_company_ids) ? payload.member_company_ids : [];
 
-  const adapter = getEnrichmentAdapter(adapterName);
+  const adapter = getEnrichmentAdapter(adapterName, client);
 
   const summary: SegmentEnrichmentSummary = {
     processed: 0,
@@ -156,4 +156,3 @@ export async function getSegmentEnrichmentStatus(
   const row = data[0] as { id: string; status: string };
   return { jobId: row.id, status: row.status };
 }
-

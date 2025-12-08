@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { AiClient } from '../src/services/aiClient';
+import type { ChatClient } from '../src/services/chatClient';
 
 const baseRequest = {
   email_type: 'intro' as const,
@@ -16,23 +17,25 @@ const baseRequest = {
 };
 
 describe('AiClient', () => {
-  it('delegates to generator and enforces JSON contract structure', async () => {
-    const generator = vi.fn().mockResolvedValue({
-      subject: 'Hello',
-      body: 'World',
-      metadata: {
-        model: 'mock',
-        language: 'en',
-        pattern_mode: 'standard',
-        email_type: 'intro',
-        coach_prompt_id: 'intro_v1',
-      },
-    });
+  it('throws when chat client returns non-JSON', async () => {
+    const chatClient: ChatClient = {
+      complete: vi.fn().mockResolvedValue('not-json'),
+    };
 
-    const client = new AiClient(generator);
-    const response = await client.generateDraft(baseRequest);
+    const client = new AiClient(chatClient);
+    await expect(client.generateDraft(baseRequest as any)).rejects.toThrow(
+      /non-JSON response/i
+    );
+  });
 
-    expect(generator).toHaveBeenCalledWith(baseRequest);
-    expect(response.subject).toBe('Hello');
+  it('throws when JSON is missing required fields', async () => {
+    const chatClient: ChatClient = {
+      complete: vi.fn().mockResolvedValue(JSON.stringify({ subject: 'Missing body' })),
+    };
+
+    const client = new AiClient(chatClient);
+    await expect(client.generateDraft(baseRequest as any)).rejects.toThrow(
+      /missing subject\/body\/metadata/i
+    );
   });
 });

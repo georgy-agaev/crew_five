@@ -5,11 +5,14 @@ import {
   createIcpHypothesis,
   createIcpProfile,
   fetchCampaigns,
+  fetchIcpDiscoveryCandidates,
   fetchIcpHypotheses,
   fetchIcpProfiles,
   fetchSegments,
   generateHypothesisViaCoach,
   generateIcpProfileViaCoach,
+  triggerIcpDiscovery,
+  promoteIcpDiscoveryCandidates,
   type Campaign,
   type SegmentRow as ApiSegmentRow,
 } from '../apiClient';
@@ -33,12 +36,26 @@ type CandidateCompany = {
   confidence: number;
 };
 
-const candidates: CandidateCompany[] = [
-  { id: 'cc1', name: 'Voltworks Energy', domain: 'voltworks.io', country: 'US', size: '200-500', confidence: 0.78 },
-  { id: 'cc2', name: 'Atlas Robotics', domain: 'atlasrobotics.ai', country: 'DE', size: '50-200', confidence: 0.62 },
-  { id: 'cc3', name: 'Nova Freight', domain: 'novafreight.com', country: 'US', size: '500-1000', confidence: 0.55 },
-  { id: 'cc4', name: 'CarePoint Health', domain: 'carepoint.health', country: 'UK', size: '200-500', confidence: 0.7 },
-];
+export function mapDiscoveryCandidatesToCompanies(
+  apiCandidates: Array<{
+    id: string;
+    name: string | null;
+    domain: string | null;
+    url: string | null;
+    country: string | null;
+    size: string | null;
+    confidence: number | null;
+  }>
+): CandidateCompany[] {
+  return apiCandidates.map((c) => ({
+    id: c.id,
+    name: c.name ?? c.domain ?? c.url ?? c.id,
+    domain: c.domain ?? '',
+    country: c.country ?? '',
+    size: c.size ?? '',
+    confidence: typeof c.confidence === 'number' ? c.confidence : 0,
+  }));
+}
 
 export function deriveQueries(form: IcpForm) {
   const base = `${form.industry} ${form.persona} ${form.geo}`.trim();
@@ -72,15 +89,24 @@ export function IcpDiscoveryPage() {
   const [hypotheses, setHypotheses] = useState<Array<{ id: string; hypothesis_label: string }>>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
   const [selectedHypothesisId, setSelectedHypothesisId] = useState<string>('');
-  const [generatedIcp, setGeneratedIcp] = useState<any | null>(null);
-  const [generatedHypothesis, setGeneratedHypothesis] = useState<any | null>(null);
+  const [generatedIcp, setGeneratedIcp] = useState<{ id: string; name?: string; jobId?: string } | null>(null);
+  const [generatedHypothesis, setGeneratedHypothesis] = useState<{
+    id: string;
+    hypothesis_label?: string;
+    jobId?: string;
+  } | null>(null);
   const [newProfileName, setNewProfileName] = useState('AI SDR ICP');
   const [newHypothesisLabel, setNewHypothesisLabel] = useState('High-volume inbound → triage');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(['cc1', 'cc4']));
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState('Focus on ops-heavy teams with distributed offices and noisy inbound.');
+  const [discoveryRunId, setDiscoveryRunId] = useState('');
+  const [candidateCompanies, setCandidateCompanies] = useState<CandidateCompany[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [promotionStatus, setPromotionStatus] = useState<string | null>(null);
   const queries = useMemo(() => deriveQueries(form), [form]);
+  const [discoveryStatus, setDiscoveryStatus] = useState<string | null>(null);
 
   const toggle = (id: string) => {
     const next = new Set(selectedIds);
@@ -195,9 +221,9 @@ export function IcpDiscoveryPage() {
     setError(null);
     try {
       const icp = await generateIcpProfileViaCoach({ name: newProfileName.trim() });
-      setGeneratedIcp(icp);
+      setGeneratedIcp(icp as any);
       await refreshProfiles();
-      setSelectedProfileId((icp as any).id ?? selectedProfileId);
+      setSelectedProfileId(icp.id ?? selectedProfileId);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to generate ICP via coach');
     } finally {
@@ -215,11 +241,92 @@ export function IcpDiscoveryPage() {
     setError(null);
     try {
       const hyp = await generateHypothesisViaCoach({ icpProfileId: selectedProfileId, hypothesisLabel: label });
-      setGeneratedHypothesis(hyp);
+      setGeneratedHypothesis(hyp as any);
       await refreshHypotheses(selectedProfileId);
-      setSelectedHypothesisId((hyp as any).id ?? selectedHypothesisId);
+      setSelectedHypothesisId(hyp.id ?? selectedHypothesisId);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to generate hypothesis via coach');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadCandidatesForRun = async () => {
+    if (!discoveryRunId.trim()) {
+      setError('Discovery run id is required to load candidates.');
+      return;
+    }
+    setCandidatesLoading(true);
+    setError(null);
+    try {
+      const apiCandidates = await fetchIcpDiscoveryCandidates({
+        runId: discoveryRunId.trim(),
+        icpProfileId: selectedProfileId || undefined,
+        icpHypothesisId: selectedHypothesisId || undefined,
+      });
+      const companies = mapDiscoveryCandidatesToCompanies(apiCandidates as any);
+      setCandidateCompanies(companies);
+      setSelectedIds(new Set(companies.map((c) => c.id)));
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to load discovery candidates');
+    } finally {
+      setCandidatesLoading(false);
+    }
+  };
+
+  const handleRunDiscovery = async () => {
+    if (!selectedProfileId) {
+      setError('Select an ICP profile before running discovery.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setDiscoveryStatus(null);
+    try {
+      const result = await triggerIcpDiscovery({
+        icpProfileId: selectedProfileId,
+        icpHypothesisId: selectedHypothesisId || undefined,
+      });
+      setDiscoveryRunId(result.runId);
+      setDiscoveryStatus(`Discovery run ${result.runId} started (${result.status}).`);
+      await loadCandidatesForRun();
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to run ICP discovery');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePromoteCandidates = async () => {
+    if (!discoveryRunId.trim()) {
+      setError('Discovery run id is required to promote candidates.');
+      return;
+    }
+    if (!selectedSegmentId) {
+      setError('Select a target segment before promoting.');
+      return;
+    }
+    const approvedIds = candidateCompanies
+      .map((c) => c.id)
+      .filter((id) => selectedIds.has(id));
+    if (approvedIds.length === 0) {
+      setError('Select at least one approved candidate to promote.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setPromotionStatus(null);
+    try {
+      const result = await promoteIcpDiscoveryCandidates({
+        runId: discoveryRunId.trim(),
+        candidateIds: approvedIds,
+        segmentId: selectedSegmentId,
+      });
+      const targetSegment = segments.find((s) => s.id === selectedSegmentId);
+      const segmentLabel = targetSegment?.name ?? selectedSegmentId;
+      setPromotionStatus(`Promoted ${result.promotedCount} companies from run ${discoveryRunId} into segment “${segmentLabel}”.`);
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to promote candidates into segment');
     } finally {
       setLoading(false);
     }
@@ -272,7 +379,9 @@ export function IcpDiscoveryPage() {
               </div>
               {generatedIcp && (
                 <div className="muted small" style={{ marginTop: 6 }}>
-                  Generated ICP id: {(generatedIcp as any).id}
+                  Coach result:{' '}
+                  <strong>{generatedIcp.name ?? 'ICP profile'}</strong> ({generatedIcp.id}
+                  {generatedIcp.jobId ? ` · job ${generatedIcp.jobId}` : ''})
                 </div>
               )}
             </div>
@@ -306,7 +415,10 @@ export function IcpDiscoveryPage() {
               </div>
               {generatedHypothesis && (
                 <div className="muted small" style={{ marginTop: 6 }}>
-                  Generated hypothesis id: {(generatedHypothesis as any).id}
+                  Coach result:{' '}
+                  <strong>{generatedHypothesis.hypothesis_label ?? 'ICP hypothesis'}</strong> (
+                  {generatedHypothesis.id}
+                  {generatedHypothesis.jobId ? ` · job ${generatedHypothesis.jobId}` : ''})
                 </div>
               )}
             </div>
@@ -372,6 +484,16 @@ export function IcpDiscoveryPage() {
                 Run notes
                 <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
               </label>
+              <div className="pill-row" style={{ marginTop: 8 }}>
+                <button className="ghost" onClick={handleRunDiscovery} disabled={loading || !selectedProfileId}>
+                  {loading ? 'Starting…' : 'Run discovery'}
+                </button>
+              </div>
+              {discoveryStatus && (
+                <div className="muted small" style={{ marginTop: 6 }}>
+                  {discoveryStatus}
+                </div>
+              )}
               <Alert kind="info">
                 Keep MCP surface minimal: `exa_websets_search` + controlled AnySite for LinkedIn enrichment. Capture
                 cost estimates before running.
@@ -383,6 +505,25 @@ export function IcpDiscoveryPage() {
         <div className="panel">
           <div className="panel__title">Pre-import review</div>
           <div className="panel__content">
+            <div style={{ marginBottom: 8 }}>
+              <label>
+                Discovery run id
+                <input
+                  style={{ marginLeft: 8, width: '60%' }}
+                  placeholder="Paste run id from icp:discover output"
+                  value={discoveryRunId}
+                  onChange={(e) => setDiscoveryRunId(e.target.value)}
+                />
+              </label>
+              <button
+                className="ghost"
+                style={{ marginLeft: 8 }}
+                onClick={loadCandidatesForRun}
+                disabled={candidatesLoading}
+              >
+                {candidatesLoading ? 'Loading...' : 'Load candidates'}
+              </button>
+            </div>
             <div className="table-lite">
               <div className="table-lite__head">
                 <span>Company</span>
@@ -391,7 +532,14 @@ export function IcpDiscoveryPage() {
                 <span>Confidence</span>
                 <span>Decision</span>
               </div>
-              {candidates.map((c) => (
+              {candidateCompanies.length === 0 && discoveryRunId.trim() && !candidatesLoading && (
+                <div className="table-lite__row">
+                  <span className="muted small" style={{ gridColumn: '1 / -1' }}>
+                    No candidates found for this run. Check your ICP filters or rerun discovery.
+                  </span>
+                </div>
+              )}
+              {candidateCompanies.map((c) => (
                 <div key={c.id} className="table-lite__row">
                   <span>
                     <strong>{c.name}</strong> <span className="muted small">{c.domain}</span>
@@ -409,7 +557,7 @@ export function IcpDiscoveryPage() {
             </div>
             <div className="pill-row" style={{ marginTop: 12 }}>
               <span className="pill pill--accent">
-                {selectedIds.size} approved / {candidates.length} candidates
+                {selectedIds.size} approved / {candidateCompanies.length} candidates
               </span>
               <span className="pill pill--subtle">LinkedIn enrichment follows approval</span>
             </div>
@@ -431,17 +579,31 @@ export function IcpDiscoveryPage() {
               </div>
             </div>
             <div>
-              <ul className="checklist">
-                <li>
-                  <input type="checkbox" defaultChecked /> Hypothesis stored for analytics
-                </li>
-                <li>
-                  <input type="checkbox" /> Apply confidence + source metadata
-                </li>
-                <li>
-                  <input type="checkbox" /> Enrichment capped per run
-                </li>
-              </ul>
+              <label>
+                Target segment
+                <select value={selectedSegmentId} onChange={(e) => setSelectedSegmentId(e.target.value)}>
+                  <option value="">Select segment</option>
+                  {segments.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name ?? s.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="pill-row" style={{ marginTop: 8 }}>
+                <button
+                  className="ghost"
+                  onClick={handlePromoteCandidates}
+                  disabled={loading || !selectedSegmentId || selectedIds.size === 0}
+                >
+                  {loading ? 'Promoting...' : 'Promote approved candidates'}
+                </button>
+              </div>
+              {promotionStatus && (
+                <div className="muted small" style={{ marginTop: 6 }}>
+                  {promotionStatus}
+                </div>
+              )}
             </div>
           </div>
         </div>

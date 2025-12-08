@@ -7,6 +7,7 @@ import { enqueueSegmentEnrichment, runSegmentEnrichmentOnce } from '../services/
 interface EnrichOptions {
   segmentId: string;
   adapter?: string;
+  provider?: string;
   dryRun?: boolean;
   limit?: number;
   runNow?: boolean;
@@ -15,6 +16,11 @@ interface EnrichOptions {
 
 async function runLegacyEnrichment(client: SupabaseClient, options: EnrichOptions) {
   const adapterName = options.adapter ?? 'mock';
+  if (adapterName === 'exa') {
+    const err: any = new Error('Exa adapter does not support legacy synchronous enrichment; use async job flow instead.');
+    err.code = 'EXA_ENRICHMENT_LEGACY_UNSUPPORTED';
+    throw err;
+  }
   const { data, error } = await client
     .from('segment_members')
     .select('contact_id, company_id')
@@ -26,7 +32,7 @@ async function runLegacyEnrichment(client: SupabaseClient, options: EnrichOption
   const summary = { processed: 0, skipped: 0, failed: 0, dryRun: Boolean(options.dryRun) };
 
   if (members.length > 0) {
-    const adapter = getEnrichmentAdapter(adapterName);
+    const adapter = getEnrichmentAdapter(adapterName, client);
 
     for (const m of members) {
       if (!m.contact_id) {
@@ -57,7 +63,11 @@ export async function enrichCommand(client: SupabaseClient, options: EnrichOptio
     return { ...legacy, mode };
   }
 
-  const adapterName = options.adapter ?? 'mock';
+  const adapterName = options.provider ?? options.adapter ?? 'mock';
+  // Pre-validate adapter/provider so unknown or misconfigured providers
+  // surface immediately (and can be formatted consistently by the CLI).
+  getEnrichmentAdapter(adapterName, client);
+
   await ensureFinalSegmentSnapshot(client, options.segmentId);
   const job = await enqueueSegmentEnrichment(client, {
     segmentId: options.segmentId,

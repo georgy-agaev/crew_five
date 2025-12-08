@@ -10,6 +10,7 @@ import {
   type PatternRow,
 } from '../apiClient';
 import { Alert } from '../components/Alert';
+import { useAsyncState } from '../hooks/useAsyncState';
 
 export function formatGroupKey(groupBy: string, row: Record<string, any>) {
   if (groupBy === 'segment') {
@@ -27,15 +28,23 @@ export function EventsPage() {
   const [events, setEvents] = useState<EventRow[]>([]);
   const [patterns, setPatterns] = useState<PatternRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [groupBy, setGroupBy] = useState<'icp' | 'segment' | 'pattern'>('icp');
-  const [analyticsSummary, setAnalyticsSummary] = useState<any[]>([]);
-  const [analyticsOptimize, setAnalyticsOptimize] = useState<{ suggestions: any[]; simSummary?: any[] }>({
-    suggestions: [],
-    simSummary: [],
-  });
-  const [promptRegistry, setPromptRegistry] = useState<any[]>([]);
+
+  const [analyticsState, runAnalyticsLoad] = useAsyncState(
+    async (group: 'icp' | 'segment' | 'pattern', sinceValue: string) => {
+      const [summary, optimize, registry] = await Promise.all([
+        fetchAnalyticsSummary({ groupBy: group, since: sinceValue }),
+        fetchAnalyticsOptimize({ since: sinceValue }),
+        fetchPromptRegistry(),
+      ]);
+      return {
+        summary: summary as any[],
+        optimize: optimize as { suggestions: any[]; simSummary?: any[] },
+        registry: registry as any[],
+      };
+    }
+  );
 
   useEffect(() => {
     setLoading(true);
@@ -50,20 +59,7 @@ export function EventsPage() {
   }, [since, limit]);
 
   useEffect(() => {
-    setAnalyticsLoading(true);
-    setError(null);
-    Promise.all([
-      fetchAnalyticsSummary({ groupBy, since }),
-      fetchAnalyticsOptimize({ since }),
-      fetchPromptRegistry(),
-    ])
-      .then(([summary, optimize, registry]) => {
-        setAnalyticsSummary(summary as any[]);
-        setAnalyticsOptimize(optimize as any);
-        setPromptRegistry(registry as any[]);
-      })
-      .catch((err) => setError(err?.message ?? 'Failed to load analytics'))
-      .finally(() => setAnalyticsLoading(false));
+    runAnalyticsLoad(groupBy, since).catch(() => null);
   }, [groupBy, since]);
 
   return (
@@ -142,8 +138,9 @@ export function EventsPage() {
             />
           </label>
         </div>
-        {analyticsLoading && <Alert>Loading analytics...</Alert>}
-        {!analyticsLoading && (
+        {analyticsState.loading && <Alert>Loading analytics...</Alert>}
+        {analyticsState.error && <Alert kind="error">{analyticsState.error}</Alert>}
+        {!analyticsState.loading && (
           <div className="table-lite" style={{ marginTop: 8 }}>
             <div className="table-lite__head">
               <span>Group</span>
@@ -152,7 +149,7 @@ export function EventsPage() {
               <span>Replied</span>
               <span>Positive replies</span>
             </div>
-            {analyticsSummary.map((row, idx) => (
+            {(analyticsState.data?.summary ?? []).map((row, idx) => (
               <div key={idx} className="table-lite__row">
                 <span>{formatGroupKey(groupBy, row)}</span>
                 <span>{row.delivered ?? 0}</span>
@@ -161,31 +158,33 @@ export function EventsPage() {
                 <span>{row.positive_replies ?? 0}</span>
               </div>
             ))}
-            {analyticsSummary.length === 0 && <div className="table-lite__row">No analytics rows</div>}
+            {(analyticsState.data?.summary ?? []).length === 0 && (
+              <div className="table-lite__row">No analytics rows</div>
+            )}
           </div>
         )}
 
         <div style={{ marginTop: 16 }}>
           <h4>Prompt Registry</h4>
           <ul>
-            {promptRegistry.map((p) => (
+            {(analyticsState.data?.registry ?? []).map((p) => (
               <li key={p.id ?? p.coach_prompt_id}>
                 {p.coach_prompt_id ?? p.id} – {p.version ?? p.description ?? 'v1'}
               </li>
             ))}
-            {promptRegistry.length === 0 && <li>No prompt entries</li>}
+            {(analyticsState.data?.registry ?? []).length === 0 && <li>No prompt entries</li>}
           </ul>
         </div>
 
         <div style={{ marginTop: 16 }}>
           <h4>Optimize suggestions</h4>
           <ul>
-            {(analyticsOptimize.suggestions ?? []).map((s: any, idx: number) => (
+            {(analyticsState.data?.optimize?.suggestions ?? []).map((s: any, idx: number) => (
               <li key={idx}>
                 {s.draft_pattern ?? 'pattern'} → {s.recommendation}
               </li>
             ))}
-            {(analyticsOptimize.suggestions ?? []).length === 0 && <li>No suggestions</li>}
+            {(analyticsState.data?.optimize?.suggestions ?? []).length === 0 && <li>No suggestions</li>}
           </ul>
         </div>
       </div>

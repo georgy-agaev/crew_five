@@ -30,9 +30,12 @@ export function mapProviderEvent(payload: ProviderEventPayload) {
   if (!payload.provider || !payload.event_type) {
     throw new Error('provider and event_type are required');
   }
+  const occurredAtForKey = String(
+    payload.occurred_at ?? (payload.payload as any)?.occurred_at ?? 'missing_occurred_at'
+  );
   const occurred_at = payload.occurred_at ?? new Date().toISOString();
   const normalizedOutcome = normalizeOutcome(payload.outcome_classification);
-  const idempotency_key = buildIdempotencyKey(payload, occurred_at);
+  const idempotency_key = buildIdempotencyKey(payload, occurredAtForKey);
   const reply_label = classifyReply(payload.event_type, normalizedOutcome);
   return {
     provider: payload.provider,
@@ -57,7 +60,7 @@ export function mapProviderEvent(payload: ProviderEventPayload) {
   };
 }
 
-function normalizeOutcome(outcome?: string | null) {
+function normalizeOutcome(outcome?: string | null | undefined) {
   if (!outcome) return null;
   const allowed = ['meeting', 'soft_interest', 'decline', 'angry', 'neutral'];
   return allowed.includes(outcome) ? outcome : null;
@@ -93,21 +96,9 @@ export async function ingestEmailEvent(
     return { inserted: 0, dryRun: true };
   }
 
-  if (normalized.provider_event_id) {
-    const { data, error } = await client
-      .from('email_events')
-      .select('id')
-      .eq('provider', normalized.provider)
-      .eq('provider_event_id', normalized.provider_event_id)
-      .limit(1);
-
-    if (error) {
-      throw error;
-    }
-
-    if (data && data.length > 0) {
-      return { inserted: 0, deduped: true };
-    }
+  const existing = await findExistingEvent(client, normalized);
+  if (existing.found) {
+    return { inserted: 0, deduped: true };
   }
 
   const enriched = await maybeEnrichWithOutboundContext(client, normalized);
@@ -119,6 +110,26 @@ export async function ingestEmailEvent(
   }
 
   return { inserted: 1, event: data };
+}
+
+async function findExistingEvent(
+  client: SupabaseClient,
+  normalized: ReturnType<typeof mapProviderEvent>
+): Promise<{ found: boolean }> {
+  let query = client.from('email_events').select('id');
+
+  if (normalized.provider_event_id) {
+    query = (query as any).eq('provider', normalized.provider).eq('provider_event_id', normalized.provider_event_id);
+  } else {
+    query = (query as any).eq('idempotency_key', normalized.idempotency_key);
+  }
+
+  const { data, error } = await (query as any).limit(1);
+  if (error) {
+    throw error;
+  }
+
+  return { found: Array.isArray(data) && data.length > 0 };
 }
 
 async function maybeEnrichWithOutboundContext(

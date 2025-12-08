@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export type JobType = 'send' | 'enrich' | 'sim';
+export type JobType = 'send' | 'enrich' | 'sim' | 'icp';
 
 export type JobStatus = 'created' | 'running' | 'completed' | 'failed' | 'not_implemented';
 
@@ -66,4 +66,3 @@ export async function updateJobStatus(
 
   return data as JobRow;
 }
-

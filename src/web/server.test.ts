@@ -105,6 +105,58 @@ describe('web adapter server', () => {
     expect((resHypCreate.body as any).id).toBe('h1');
   });
 
+  it('routes ICP discovery run and candidate listing', async () => {
+    const runIcpDiscovery = vi.fn(async ({ icpProfileId, icpHypothesisId, limit }) => ({
+      jobId: 'job-1',
+      runId: 'run-1',
+      provider: 'exa',
+      status: 'running',
+    }));
+    const listIcpDiscoveryCandidates = vi.fn(async ({ runId }) => [
+      { id: 'cand-1', name: 'Example One', domain: 'example.com' },
+    ]);
+
+    const baseDeps: any = {
+      ...deps,
+      runIcpDiscovery,
+      listIcpDiscoveryCandidates,
+    };
+
+    const resRun = await dispatch(
+      baseDeps,
+      {
+        method: 'POST',
+        pathname: '/api/icp/discovery',
+        body: { icpProfileId: 'icp-1', icpHypothesisId: 'hypo-1', limit: 25 },
+      },
+      buildMeta({ mode: 'live' })
+    );
+    expect(runIcpDiscovery).toHaveBeenCalledWith({
+      icpProfileId: 'icp-1',
+      icpHypothesisId: 'hypo-1',
+      limit: 25,
+    });
+    expect((resRun.body as any).runId).toBe('run-1');
+
+    const resCandidates = await dispatch(
+      baseDeps,
+      {
+        method: 'GET',
+        pathname: '/api/icp/discovery/candidates',
+        searchParams: new URLSearchParams({ runId: 'run-1' }),
+      },
+      buildMeta({ mode: 'live' })
+    );
+    expect(listIcpDiscoveryCandidates).toHaveBeenCalledWith({
+      runId: 'run-1',
+      icpProfileId: undefined,
+      icpHypothesisId: undefined,
+    });
+    const list = resCandidates.body as any[];
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe('cand-1');
+  });
+
   it('routes analytics summary/optimize and prompt registry', async () => {
     const analyticsSummary = vi.fn(async ({ groupBy, since }) => [{ groupBy, since }]);
     const analyticsOptimize = vi.fn(async ({ since }) => ({ suggestions: [{ draft_pattern: 'p', recommendation: 'keep' }], simSummary: [] }));
@@ -147,6 +199,64 @@ describe('web adapter server', () => {
     );
     expect(listPromptRegistry).toHaveBeenCalledTimes(1);
     expect((resPromptRegistry.body as any[])[0].coach_prompt_id).toBe('cp1');
+  });
+
+  it('routes prompt registry active endpoints', async () => {
+    const listPromptRegistry = vi.fn(async () => [
+      { id: 'draft_intro_v1', step: 'draft', coach_prompt_id: 'draft_intro_v1', rollout_status: 'active' },
+      { id: 'draft_intro_v2', step: 'draft', coach_prompt_id: 'draft_intro_v2', rollout_status: 'pilot' },
+      { id: 'icp_intro_v1', step: 'icp_profile', coach_prompt_id: 'icp_intro_v1', rollout_status: 'active' },
+    ]);
+    const getActivePromptForStep = vi.fn(async (step: string) =>
+      step === 'draft' ? 'draft_intro_v1' : step === 'icp_profile' ? 'icp_intro_v1' : null
+    );
+    const setActivePromptForStep = vi.fn(async () => {});
+
+    const baseDeps: any = {
+      ...deps,
+      listPromptRegistry,
+      getActivePromptForStep,
+      setActivePromptForStep,
+    };
+
+    const resFiltered = await dispatch(
+      baseDeps,
+      {
+        method: 'GET',
+        pathname: '/api/prompt-registry',
+        searchParams: new URLSearchParams({ step: 'draft' }),
+      },
+      buildMeta({ mode: 'live' })
+    );
+    const filtered = resFiltered.body as any[];
+    expect(listPromptRegistry).toHaveBeenCalledTimes(1);
+    expect(filtered).toHaveLength(2);
+    expect(filtered[0].is_active).toBe(true);
+    expect(filtered[1].is_active).toBe(false);
+
+    const resActive = await dispatch(
+      baseDeps,
+      {
+        method: 'GET',
+        pathname: '/api/prompt-registry/active',
+        searchParams: new URLSearchParams({ step: 'draft' }),
+      },
+      buildMeta({ mode: 'live' })
+    );
+    expect(getActivePromptForStep).toHaveBeenCalledWith('draft');
+    expect(resActive.body).toEqual({ step: 'draft', coach_prompt_id: 'draft_intro_v1' });
+
+    const resSet = await dispatch(
+      baseDeps,
+      {
+        method: 'POST',
+        pathname: '/api/prompt-registry/active',
+        body: { step: 'icp_profile', coach_prompt_id: 'icp_intro_v1' },
+      },
+      buildMeta({ mode: 'live' })
+    );
+    expect(setActivePromptForStep).toHaveBeenCalledWith('icp_profile', 'icp_intro_v1');
+    expect(resSet.body).toEqual({ ok: true });
   });
 
   it('routes sim stub', async () => {
@@ -368,8 +478,11 @@ describe('web adapter server', () => {
   });
 
   it('routes coach icp/hypothesis generate and prompt registry create', async () => {
-    const generateIcpProfile = vi.fn(async (payload) => ({ id: 'p1', ...payload }));
-    const generateIcpHypothesis = vi.fn(async (payload) => ({ id: 'h1', ...payload }));
+    const generateIcpProfile = vi.fn(async (payload) => ({ jobId: 'job-1', profile: { id: 'p1', ...payload } }));
+    const generateIcpHypothesis = vi.fn(async (payload) => ({
+      jobId: 'job-2',
+      hypothesis: { id: 'h1', ...payload },
+    }));
     const createPromptRegistryEntry = vi.fn(async (payload) => ({ id: payload.id ?? 'pr1', ...payload }));
 
     const icpRes = await dispatch(
@@ -378,7 +491,8 @@ describe('web adapter server', () => {
       buildMeta({ mode: 'live' })
     );
     expect(generateIcpProfile).toHaveBeenCalledWith({ name: 'ICP' });
-    expect((icpRes.body as any).id).toBe('p1');
+    expect((icpRes.body as any).profile.id).toBe('p1');
+    expect((icpRes.body as any).jobId).toBe('job-1');
 
     const hypRes = await dispatch(
       { ...deps, generateIcpProfile, generateIcpHypothesis, createPromptRegistryEntry } as any,
@@ -386,7 +500,8 @@ describe('web adapter server', () => {
       buildMeta({ mode: 'live' })
     );
     expect(generateIcpHypothesis).toHaveBeenCalledWith({ icpProfileId: 'p1', label: 'H1' });
-    expect((hypRes.body as any).id).toBe('h1');
+    expect((hypRes.body as any).hypothesis.id).toBe('h1');
+    expect((hypRes.body as any).jobId).toBe('job-2');
 
     const prRes = await dispatch(
       { ...deps, generateIcpProfile, generateIcpHypothesis, createPromptRegistryEntry } as any,

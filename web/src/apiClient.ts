@@ -70,8 +70,9 @@ export interface PromptEntry {
   step: PromptStep;
   version: string;
   description?: string;
-  rollout_status?: 'pilot' | 'active' | 'retired';
+  rollout_status?: 'pilot' | 'active' | 'retired' | 'deprecated';
   prompt_text?: string;
+  is_active?: boolean;
 }
 
 const baseUrl = import.meta.env.VITE_API_BASE ?? '/api';
@@ -117,6 +118,8 @@ export async function triggerDraftGenerate(
     icpHypothesisId?: string;
     provider?: string;
     model?: string;
+    coachPromptStep?: PromptStep;
+    explicitCoachPromptId?: string;
   } = {}
 ): Promise<DraftSummary> {
   const body = {
@@ -129,6 +132,8 @@ export async function triggerDraftGenerate(
     icpHypothesisId: opts.icpHypothesisId,
     provider: opts.provider,
     model: opts.model,
+    coachPromptStep: opts.coachPromptStep,
+    explicitCoachPromptId: opts.explicitCoachPromptId,
   };
   return fetchJson<DraftSummary>('/drafts/generate', {
     method: 'POST',
@@ -300,8 +305,9 @@ export async function fetchAnalyticsOptimize(payload: { since?: string } = {}) {
   return fetchJson(`/analytics/optimize${qs ? `?${qs}` : ''}`);
 }
 
-export async function fetchPromptRegistry() {
-  return fetchJson<PromptEntry[]>('/prompt-registry');
+export async function fetchPromptRegistry(step?: PromptStep) {
+  const qs = step ? `?step=${encodeURIComponent(step)}` : '';
+  return fetchJson<PromptEntry[]>(`/prompt-registry${qs}`);
 }
 
 export async function createPromptRegistryEntry(entry: {
@@ -318,6 +324,20 @@ export async function createPromptRegistryEntry(entry: {
   });
 }
 
+export async function fetchActivePrompt(step: PromptStep) {
+  const params = new URLSearchParams({ step });
+  return fetchJson<{ step: PromptStep; coach_prompt_id: string | null }>(
+    `/prompt-registry/active?${params.toString()}`
+  );
+}
+
+export async function setActivePrompt(step: PromptStep, coachPromptId: string) {
+  await fetchJson<{ ok: boolean }>('/prompt-registry/active', {
+    method: 'POST',
+    body: JSON.stringify({ step, coach_prompt_id: coachPromptId }),
+  });
+}
+
 export async function createSimJob(payload: { segmentId: string; draftIds?: string[]; mode?: string }) {
   return fetchJson('/sim', {
     method: 'POST',
@@ -325,11 +345,65 @@ export async function createSimJob(payload: { segmentId: string; draftIds?: stri
   });
 }
 
-export async function generateIcpProfileViaCoach(payload: { name: string; description?: string; promptId?: string }) {
-  return fetchJson('/coach/icp', {
+export async function triggerIcpDiscovery(payload: {
+  icpProfileId: string;
+  icpHypothesisId?: string;
+  limit?: number;
+}) {
+  return fetchJson<{ jobId?: string; runId: string; provider: string; status: string }>('/icp/discovery', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+export async function fetchIcpDiscoveryCandidates(payload: {
+  runId: string;
+  icpProfileId?: string;
+  icpHypothesisId?: string;
+}) {
+  const params = new URLSearchParams();
+  params.set('runId', payload.runId);
+  if (payload.icpProfileId) params.set('icpProfileId', payload.icpProfileId);
+  if (payload.icpHypothesisId) params.set('icpHypothesisId', payload.icpHypothesisId);
+  const qs = params.toString();
+  return fetchJson<
+    {
+      id: string;
+      name: string | null;
+      domain: string | null;
+      url: string | null;
+      country: string | null;
+      size: string | null;
+      confidence: number | null;
+    }[]
+  >(`/icp/discovery/candidates?${qs}`);
+}
+
+export async function promoteIcpDiscoveryCandidates(payload: {
+  runId: string;
+  candidateIds: string[];
+  segmentId: string;
+}) {
+  return fetchJson<{ promotedCount: number }>('/icp/discovery/promote', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function generateIcpProfileViaCoach(payload: { name: string; description?: string; promptId?: string }) {
+  const res = await fetchJson<{ jobId?: string; profile: { id: string; name?: string; description?: string } }>(
+    '/coach/icp',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+  return {
+    id: res.profile.id,
+    jobId: res.jobId,
+    name: res.profile.name,
+    description: res.profile.description,
+  };
 }
 
 export async function generateHypothesisViaCoach(payload: {
@@ -338,8 +412,17 @@ export async function generateHypothesisViaCoach(payload: {
   searchConfig?: Record<string, unknown>;
   promptId?: string;
 }) {
-  return fetchJson('/coach/hypothesis', {
+  const res = await fetchJson<{
+    jobId?: string;
+    hypothesis: { id: string; icp_id?: string; hypothesis_label?: string };
+  }>('/coach/hypothesis', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+  return {
+    id: res.hypothesis.id,
+    jobId: res.jobId,
+    icp_profile_id: res.hypothesis.icp_id,
+    hypothesis_label: res.hypothesis.hypothesis_label,
+  };
 }

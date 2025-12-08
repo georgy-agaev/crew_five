@@ -2,6 +2,70 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.64] - 2025-12-06
+### Changed
+- `enrich:run` CLI now supports `--error-format text|json` and is wrapped with shared `wrapCliAction` error handling, so unknown or misconfigured enrichment providers (for example, an invalid `--provider` value) surface as structured `{ ok:false, error:{ code,message } }` payloads instead of unhandled exceptions.
+- Extensibility docs (`public-docs/EXTENSIBILITY_AND_CONNECTORS.md`) updated to describe `enrich:run --provider` routing through the enrichment provider registry and the use of stable error codes like `ENRICHMENT_PROVIDER_UNKNOWN` for automation.
+ - ICP discovery Web UI “Pre-import review” panel now disables “Promote approved candidates” when no segment or approvals are selected, shows a clear empty state when a discovery run returns zero candidates, and surfaces a richer promotion summary including run id and segment name; a `Run discovery` control has been added next to the Exa query plan in preparation for triggering discovery directly from the UI. 
+
+## [0.1.63] - 2025-12-05
+### Added
+- ICP discovery promotion helper `promoteIcpDiscoveryCandidatesToSegment` wired into the CLI (`icp:discover --promote --segment-id ... --candidate-ids ...`) and web adapter (`POST /api/icp/discovery/promote`), moving approved Exa candidates into `companies` / `segment_members` with ICP tags.
+- Web ICP discovery UI now includes a “Promote approved candidates” flow on `IcpDiscoveryPage`, calling the new promotion API and showing a small promotion summary; associated tests cover API usage and success messaging.
+- Enrichment provider registry (`createEnrichmentProviderRegistry`) supporting `mock`, `exa`, `parallel`, `firecrawl`, and `anysite` adapters, plus a `--provider` flag on `enrich:run` so enrichment sources can be selected via configuration without changing job semantics.
+
+## [0.1.62] - 2025-12-05
+### Added
+- Exa enrichment research client (`buildExaResearchClientFromEnv`) and Supabase-bound Exa enrichment adapter wired into the async job-backed `enrich:run --adapter exa` flow for companies and employees.
+- Enrichment registry updates and tests so `getEnrichmentAdapter('exa', supabase)` returns the Exa adapter, plus guards that keep Exa on the async path (legacy sync disabled).
+- Shape-only HTTP clients for Parallel.ai, Firecrawl.dev, and Anysite.io with env validation helpers and tests, ready to be routed via the enrichment registry in a later phase.
+- Database reference and session log updates documenting how Exa enrichment populates `companies.company_research` and `employees.ai_research_data`, with Phase 1 marked complete.
+
+## [0.1.61] - 2025-12-05
+### Added
+- Parallel.ai and Firecrawl.dev provider env helpers (`loadParallelEnv`, `loadFirecrawlEnv`) plus tests, with README and setup guide updates summarizing required keys and default base URLs.
+- Documentation updates clarifying research/enrichment integration: Exa is the primary discovery engine via a small HTTP client, AnySite is used as a targeted enrichment provider (LinkedIn/social/web parsing) via a narrow HTTP interface, and MCP servers for Exa/AnySite are optional façades for external agents.
+- Repository guidelines in `AGENTS.md` now explicitly recommend adding short, focused code comments on genuinely tricky parts (invariants, edge cases, non-obvious integrations) while keeping routine code self-explanatory.
+
+## [0.1.60] - 2025-12-05
+### Added
+- Prompt registry now supports an “active per step” prompt via new web adapter endpoints (`GET /api/prompt-registry?step=…`, `GET /api/prompt-registry/active`, `POST /api/prompt-registry/active`) with dispatch and client tests.
+- Web API client and `PromptRegistryPage` now filter entries by step, display an “Active” badge, and expose a “Set active” button that persists the active prompt through the new endpoints.
+- Draft generation threads resolved `coach_prompt_id` from the prompt registry into `drafts.metadata.draft_pattern`, so analytics can attribute patterns to the configured coach prompt instead of only the LLM default.
+
+## [0.1.59] - 2025-12-04
+### Added
+- Web ICP discovery UI now surfaces coach results and job ids next to the “Generate via coach” actions, auto-selects newly created profiles/hypotheses, and reuses existing error alerts for coach failures.
+- New CLI commands `icp:coach:profile` and `icp:coach:hypothesis` wrap the coach orchestrator and emit JSON-only `{ jobId, profileId }` / `{ jobId, hypothesisId }` payloads for scripting.
+- Coach HTTP responses are standardized to `{ jobId, profile }` / `{ jobId, hypothesis }`, with `web/src/apiClient.ts` returning typed coach results for the UI.
+
+## [0.1.58] - 2025-12-03
+### Added
+- Generic chat client abstraction `src/services/chatClient.ts` and refactored `AiClient` to delegate to it, with updated tests for draft generation and coach services.
+- ICP coach LLM helpers in `src/services/icpCoach.ts` plus orchestration functions `createIcpProfileViaCoach` / `createIcpHypothesisViaCoach` in `src/services/coach.ts`, including `jobs` support for a new `icp` job type via migration `supabase/migrations/20251203190000_extend_jobs_type_icp.sql`.
+- Web adapter and CLI wiring updated to construct `AiClient` from chat clients and to expose `/api/coach/icp` / `/api/coach/hypothesis` through the new coach orchestration layer; session plan `docs/sessions/2025-12-03_1_icp-coach-express-plan.md` documents the express ICP flow and prompt location.
+
+## [0.1.57] - 2025-12-02
+### Added
+- `docs/options/2025-12-02_icp_and_oss_reuse_options.md` capturing OSS reuse options for ICP creation and discovery (SalesGPT coach, AI Sales Assistant Chatbot RAG, Exa/AnySite pipelines, and data-driven ICP suggestions).
+
+## [0.1.56] - 2025-12-02
+### Changed
+- Web README now calls out Smartlead API as the primary integration path; MCP connector exists but lacks a
+  verified secure provider, so API envs should be used for live runs.
+- `.env.example` now highlights Smartlead API vars (`SMARTLEAD_API_BASE`/`SMARTLEAD_API_KEY`) and leaves MCP
+  entries as optional/fallback.
+
+## [0.1.55] - 2025-12-02
+### Changed
+- Web README now has step-by-step instructions to start the adapter (live vs mock) and Vite dev server,
+  including ports and env hints.
+
+## [0.1.54] - 2025-12-02
+### Changed
+- `event:ingest` now surfaces `INVALID_JSON` for bad payloads, keeps idempotency keys stable even when `occurred_at` is missing, and dedupes events without `provider_event_id` via `idempotency_key`; ingestion tests updated.
+- Smartlead CLI config validation emits `SMARTLEAD_CONFIG_MISSING`, and `smartlead:campaigns:list` accepts `--error-format json` to return structured errors; CLI tests updated.
+
 ## [0.1.53] - 2025-12-01
 ### Added
 - `docs/web_ui_requirements.md` as the authoritative Web UI specification (tab order, workflows, analytics, SIM) with cross-references to existing workflow docs and priority note.

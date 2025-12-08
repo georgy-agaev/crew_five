@@ -146,6 +146,22 @@ describe('emailEvents', () => {
     expect(normalizedA.idempotency_key).toBe(normalizedB.idempotency_key);
   });
 
+  it('builds stable idempotency when occurred_at is missing', () => {
+    const normalizedA = mapProviderEvent({
+      provider: 'stub',
+      event_type: 'opened',
+      contact_id: 'c1',
+      outbound_id: 'out1',
+    });
+    const normalizedB = mapProviderEvent({
+      provider: 'stub',
+      event_type: 'opened',
+      contact_id: 'c1',
+      outbound_id: 'out1',
+    });
+    expect(normalizedA.idempotency_key).toBe(normalizedB.idempotency_key);
+  });
+
   it('enriches events with outbound/draft/campaign context', async () => {
     const selectEvents = vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
@@ -220,5 +236,39 @@ describe('emailEvents', () => {
     expect(insertedPayload.icp_profile_id).toBe('icp-1');
     expect(insertedPayload.segment_version).toBe(2);
     expect(insertedPayload.employee_id).toBe('emp1');
+  });
+
+  it('dedupes by idempotency key when provider_event_id is absent', async () => {
+    const limit = vi.fn().mockResolvedValue({ data: [{ id: 'existing' }], error: null });
+    const eq = vi.fn().mockReturnValue({ limit });
+    const selectDedup = vi.fn().mockReturnValue({ eq });
+    const insert = vi.fn();
+    const client = {
+      from: (table: string) => {
+        if (table === 'email_events') return { select: selectDedup, insert };
+        if (table === 'email_outbound')
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: null, error: null }),
+              }),
+            }),
+          };
+        return { select: vi.fn(), insert: vi.fn() };
+      },
+    } as any;
+
+    const payload = {
+      provider: 'stub',
+      event_type: 'opened',
+      contact_id: 'c1',
+      outbound_id: 'out1',
+    };
+
+    const result = await ingestEmailEvent(client, payload);
+    expect(result.deduped).toBe(true);
+    expect(insert).not.toHaveBeenCalled();
+    expect(selectDedup).toHaveBeenCalled();
+    expect(eq).toHaveBeenCalledWith('idempotency_key', expect.any(String));
   });
 });

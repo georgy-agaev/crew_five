@@ -7,6 +7,13 @@ export async function eventIngestHandler(
   payloadJson: string,
   options: { dryRun?: boolean }
 ) {
-  const payload = JSON.parse(payloadJson) as ProviderEventPayload;
+  let payload: ProviderEventPayload;
+  try {
+    payload = JSON.parse(payloadJson) as ProviderEventPayload;
+  } catch {
+    const err: any = new Error('payload is not valid JSON');
+    err.code = 'INVALID_JSON';
+    throw err;
+  }
   return ingestEmailEvent(client, payload, { dryRun: options.dryRun });
 }

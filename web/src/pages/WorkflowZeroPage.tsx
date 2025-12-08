@@ -16,6 +16,7 @@ import {
   type Campaign,
   type CompanyRow as ApiCompanyRow,
   type ContactRow as ApiContactRow,
+  type PromptStep,
 } from '../apiClient';
 import { Alert } from '../components/Alert';
 import { loadSettings } from '../hooks/useSettingsStore';
@@ -151,6 +152,7 @@ type WorkflowZeroPageProps = {
 
 const COHORT_CAP = 5000;
 const SMARTLEAD_PREVIEW_CAP = 200;
+export const DRAFT_PROMPT_STEP: PromptStep = 'draft';
 
 export function WorkflowZeroPage({ smartleadReady = true }: WorkflowZeroPageProps) {
   const [filters, setFilters] = useState<CompanyFilters>({
@@ -272,7 +274,7 @@ export function WorkflowZeroPage({ smartleadReady = true }: WorkflowZeroPageProp
   }, [filters.segment]);
 
   useEffect(() => {
-    fetchPromptRegistry()
+    fetchPromptRegistry(DRAFT_PROMPT_STEP)
       .then((res) => {
         setPromptRegistry(res as any[]);
         if (!selectedPromptId && (res as any[])[0]) {
@@ -407,7 +409,8 @@ export function WorkflowZeroPage({ smartleadReady = true }: WorkflowZeroPageProp
         interactionMode,
         provider: draftModel.provider,
         model: draftModel.model,
-        promptId: selectedPromptId,
+        coachPromptStep: DRAFT_PROMPT_STEP,
+        explicitCoachPromptId: selectedPromptId,
       });
       setDraftSummary(
         `Drafts ready: generated=${res.generated}, dryRun=${res.dryRun}, modes=${dataQualityMode}/${interactionMode}`

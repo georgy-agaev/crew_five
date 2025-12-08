@@ -48,6 +48,18 @@ describe('web api client (live adapter)', () => {
     expect(body.model).toBe('gpt-4o-mini');
   });
 
+  it('triggerDraftGenerate passes coach prompt options', async () => {
+    const { triggerDraftGenerate } = await loadClient();
+    (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ generated: 0, dryRun: true }) });
+    await triggerDraftGenerate('c1', {
+      coachPromptStep: 'draft',
+      explicitCoachPromptId: 'draft_intro_v1',
+    } as any);
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body);
+    expect(body.coachPromptStep).toBe('draft');
+    expect(body.explicitCoachPromptId).toBe('draft_intro_v1');
+  });
+
   it('triggerSmartleadSend passes batch size and dry-run', async () => {
     const { triggerSmartleadSend } = await loadClient();
     (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ sent: 0, skipped: 1, failed: 0, fetched: 5 }) });
@@ -213,6 +225,8 @@ describe('web api client (live adapter)', () => {
       fetchAnalyticsOptimize,
       fetchPromptRegistry,
       createPromptRegistryEntry,
+      fetchActivePrompt,
+      setActivePrompt,
       generateIcpProfileViaCoach,
       generateHypothesisViaCoach,
     } = await loadClient();
@@ -232,6 +246,10 @@ describe('web api client (live adapter)', () => {
     await fetchPromptRegistry();
     expect((fetch as any).mock.calls.at(-1)[0]).toBe('/api/prompt-registry');
 
+    (fetch as any).mockResolvedValueOnce({ ok: true, json: async () => [] });
+    await fetchPromptRegistry('draft');
+    expect((fetch as any).mock.calls.at(-1)[0]).toBe('/api/prompt-registry?step=draft');
+
     (fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'draft_intro_v4' }) });
     await createPromptRegistryEntry({
       id: 'draft_intro_v4',
@@ -246,13 +264,40 @@ describe('web api client (live adapter)', () => {
     expect(createBody.id).toBe('draft_intro_v4');
     expect(createBody.step).toBe('draft');
 
-    (fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'p1' }) });
-    await generateIcpProfileViaCoach({ name: 'ICP' });
-    expect((fetch as any).mock.calls.at(-1)[0]).toBe('/api/coach/icp');
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ step: 'draft', coach_prompt_id: 'draft_intro_v1' }),
+    });
+    await fetchActivePrompt('draft');
+    expect((fetch as any).mock.calls.at(-1)[0]).toBe('/api/prompt-registry/active?step=draft');
 
-    (fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'h1' }) });
-    await generateHypothesisViaCoach({ icpProfileId: 'p1', hypothesisLabel: 'H1' });
-    expect((fetch as any).mock.calls.at(-1)[0]).toBe('/api/coach/hypothesis');
+    (fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) });
+    await setActivePrompt('draft', 'draft_intro_v2');
+    const activeCall = (fetch as any).mock.calls.at(-1);
+    expect(activeCall[0]).toBe('/api/prompt-registry/active');
+    const activeBody = JSON.parse(activeCall[1].body);
+    expect(activeBody.step).toBe('draft');
+    expect(activeBody.coach_prompt_id).toBe('draft_intro_v2');
+
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ jobId: 'job-1', profile: { id: 'p1', name: 'ICP' } }),
+    });
+    const coachProfile = await generateIcpProfileViaCoach({ name: 'ICP' });
+    const coachProfileCall = (fetch as any).mock.calls.at(-1);
+    expect(coachProfileCall[0]).toBe('/api/coach/icp');
+    expect(coachProfile.id).toBe('p1');
+    expect(coachProfile.jobId).toBe('job-1');
+
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ jobId: 'job-2', hypothesis: { id: 'h1', hypothesis_label: 'H1' } }),
+    });
+    const coachHypo = await generateHypothesisViaCoach({ icpProfileId: 'p1', hypothesisLabel: 'H1' });
+    const coachHypoCall = (fetch as any).mock.calls.at(-1);
+    expect(coachHypoCall[0]).toBe('/api/coach/hypothesis');
+    expect(coachHypo.id).toBe('h1');
+    expect(coachHypo.jobId).toBe('job-2');
   });
 
   it('createSimJob posts payload to /api/sim', async () => {
@@ -264,5 +309,33 @@ describe('web api client (live adapter)', () => {
     const body = JSON.parse(simCall[1].body);
     expect(body.segmentId).toBe('s1');
     expect(body.mode).toBe('light_roast');
+  });
+
+  it('icp discovery endpoints are called', async () => {
+    const { triggerIcpDiscovery, fetchIcpDiscoveryCandidates } = await loadClient();
+
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ jobId: 'job-1', runId: 'run-1', provider: 'exa', status: 'running' }),
+    });
+    await triggerIcpDiscovery({ icpProfileId: 'icp-1', icpHypothesisId: 'hypo-1', limit: 25 });
+    const discoverCall = (fetch as any).mock.calls.at(-1);
+    expect(discoverCall[0]).toBe('/api/icp/discovery');
+    const discoverBody = JSON.parse(discoverCall[1].body);
+    expect(discoverBody.icpProfileId).toBe('icp-1');
+    expect(discoverBody.icpHypothesisId).toBe('hypo-1');
+    expect(discoverBody.limit).toBe(25);
+
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => [
+        { id: 'cand-1', name: 'Example One', domain: 'example.com', url: 'https://example.com' },
+      ],
+    });
+    await fetchIcpDiscoveryCandidates({ runId: 'run-1', icpProfileId: 'icp-1' });
+    const candidatesCall = (fetch as any).mock.calls.at(-1);
+    expect(candidatesCall[0]).toContain('/api/icp/discovery/candidates?');
+    expect(candidatesCall[0]).toContain('runId=run-1');
+    expect(candidatesCall[0]).toContain('icpProfileId=icp-1');
   });
 });

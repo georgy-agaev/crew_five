@@ -29,8 +29,12 @@ import { validateFilters } from './filters';
 import { emailSendHandler } from './cli-email-send';
 import { eventIngestHandler } from './cli-event-ingest';
 import { buildSmartleadMcpClient, type SmartleadMcpClient } from './integrations/smartleadMcp';
-import { AiClient } from './services/aiClient';
+import { AiClient, type EmailDraftRequest } from './services/aiClient';
 import { initSupabaseClient } from './services/supabaseClient';
+import type { ChatClient } from './services/chatClient';
+import { icpCoachProfileCommand } from './commands/icpCoachProfile';
+import { icpCoachHypothesisCommand } from './commands/icpCoachHypothesis';
+import { icpDiscoverCommand } from './commands/icpDiscover';
 
 interface CliHandlers {
   segmentCreate: typeof segmentCreateHandler;
@@ -43,6 +47,7 @@ interface CliHandlers {
 interface CliDependencies {
   supabaseClient: any;
   aiClient: AiClient;
+  chatClient?: ChatClient;
   handlers?: Partial<CliHandlers>;
   smartleadClient?: SmartleadMcpClient;
 }
@@ -144,7 +149,11 @@ export function createProgram(deps: CliDependencies) {
     const token = process.env.SMARTLEAD_API_KEY ?? process.env.SMARTLEAD_MCP_TOKEN;
     const workspaceId = process.env.SMARTLEAD_WORKSPACE_ID ?? process.env.SMARTLEAD_MCP_WORKSPACE_ID;
     if (!url || !token) {
-      throw new Error('SMARTLEAD_MCP_URL and SMARTLEAD_MCP_TOKEN are required for smartlead:* commands');
+      const err: any = new Error(
+        'Smartlead configuration missing: set SMARTLEAD_API_BASE and SMARTLEAD_API_KEY (or SMARTLEAD_MCP_URL and SMARTLEAD_MCP_TOKEN).'
+      );
+      err.code = 'SMARTLEAD_CONFIG_MISSING';
+      throw err;
     }
     return buildSmartleadMcpClient({ url, token, workspaceId });
   };
@@ -401,6 +410,7 @@ export function createProgram(deps: CliDependencies) {
     .option('--dry-run', 'Skip remote call and print summary only')
     .option('--format <format>', 'Output format: json|text', 'json')
     .option('--telemetry', 'Emit telemetry event')
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
     .action(
       wrapCliAction(async (options) => {
         const client = getSmartleadClient();
@@ -521,21 +531,26 @@ export function createProgram(deps: CliDependencies) {
     .command('enrich:run')
     .requiredOption('--segment-id <segmentId>')
     .option('--adapter <adapter>', 'Enrichment adapter', 'mock')
+    .option('--provider <provider>', 'Enrichment provider: mock|exa|parallel|firecrawl|anysite')
     .option('--dry-run', 'Skip enrichment, print summary')
     .option('--limit <limit>', 'Max members to enrich', '10')
     .option('--run-now', 'Execute immediately after enqueueing')
     .option('--legacy-sync', 'Use legacy synchronous enrichment path')
-    .action(async (options) => {
-      const summary = await enrichCommand(deps.supabaseClient, {
-        segmentId: options.segmentId,
-        adapter: options.adapter,
-        dryRun: Boolean(options.dryRun),
-        limit: options.limit ? Number(options.limit) : undefined,
-        runNow: Boolean(options.runNow),
-        legacySync: Boolean(options.legacySync),
-      });
-      console.log(JSON.stringify(summary));
-    });
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
+    .action(
+      wrapCliAction(async (options) => {
+        const summary = await enrichCommand(deps.supabaseClient, {
+          segmentId: options.segmentId,
+          adapter: options.adapter,
+          provider: options.provider,
+          dryRun: Boolean(options.dryRun),
+          limit: options.limit ? Number(options.limit) : undefined,
+          runNow: Boolean(options.runNow),
+          legacySync: Boolean(options.legacySync),
+        });
+        console.log(JSON.stringify(summary));
+      })
+    );
 
   program
     .command('analytics:summary')
@@ -651,25 +666,125 @@ export function createProgram(deps: CliDependencies) {
       console.log(JSON.stringify(rows));
     });
 
+  program
+    .command('icp:discover')
+    .requiredOption('--icp-profile-id <icpProfileId>')
+    .option('--icp-hypothesis-id <icpHypothesisId>')
+    .option('--limit <limit>', 'Max candidates to request')
+    .option('--promote', 'Promote candidates into a segment after discovery')
+    .option('--segment-id <segmentId>', 'Segment id to promote approved candidates into')
+    .option(
+      '--candidate-ids <candidateIds>',
+      'Comma-separated candidate ids to promote (defaults to all approved in UI)'
+    )
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
+    .action(
+      wrapCliAction(async (options) => {
+        const limit = options.limit ? Number(options.limit) : undefined;
+        await icpDiscoverCommand(deps.supabaseClient, {
+          icpProfileId: options.icpProfileId,
+          icpHypothesisId: options.icpHypothesisId,
+          limit,
+          promote: Boolean(options.promote),
+          segmentId: options.segmentId,
+          candidateIds: options.candidateIds
+            ? String(options.candidateIds)
+                .split(',')
+                .map((id: string) => id.trim())
+                .filter(Boolean)
+            : undefined,
+        });
+      })
+    );
+
+  program
+    .command('icp:coach:profile')
+    .requiredOption('--name <name>')
+    .option('--description <description>')
+    .option('--website-url <url>')
+    .option('--value-prop <valueProp>')
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
+    .action(
+      wrapCliAction(async (options) => {
+        if (!deps.chatClient) {
+          throw new Error('Chat client is required for icp:coach:profile');
+        }
+        await icpCoachProfileCommand(deps.supabaseClient, deps.chatClient, {
+          name: options.name,
+          description: options.description,
+          websiteUrl: options.websiteUrl,
+          valueProp: options.valueProp,
+        });
+      })
+    );
+
+  program
+    .command('icp:coach:hypothesis')
+    .requiredOption('--icp-profile-id <icpProfileId>')
+    .option('--label <label>')
+    .option('--icp-description <icpDescription>')
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
+    .action(
+      wrapCliAction(async (options) => {
+        if (!deps.chatClient) {
+          throw new Error('Chat client is required for icp:coach:hypothesis');
+        }
+        await icpCoachHypothesisCommand(deps.supabaseClient, deps.chatClient, {
+          icpProfileId: options.icpProfileId,
+          label: options.label,
+          icpDescription: options.icpDescription,
+        });
+      })
+    );
+
   return program;
 }
 
 export async function runCli(argv = process.argv) {
   const env = loadEnv();
   const supabaseClient = initSupabaseClient(env);
-  const aiClient = new AiClient(async (request) => ({
-    subject: `${request.brief.offer.product_name} for ${request.brief.prospect.company_name}`,
-    body: `Hi ${request.brief.prospect.full_name},\n\n${request.brief.offer.one_liner}\n`,
-    metadata: {
-      model: 'pipeline-express-stub',
-      language: request.language,
-      pattern_mode: request.pattern_mode,
-      email_type: request.email_type,
-      coach_prompt_id: 'express_stub',
-    },
-  }));
+  const chatClient: ChatClient = {
+    complete: async (messages) => {
+      const last = messages[messages.length - 1];
+      let request: EmailDraftRequest | null = null;
+      try {
+        request = JSON.parse(last.content) as EmailDraftRequest;
+      } catch {
+        request = null;
+      }
 
-  const program = createProgram({ supabaseClient, aiClient });
+      const fallback = {
+        subject: 'Draft subject',
+        body: 'Draft body',
+        metadata: {
+          model: 'pipeline-express-stub',
+          language: 'en',
+          pattern_mode: null,
+          email_type: 'intro' as const,
+          coach_prompt_id: 'express_stub',
+        },
+      };
+
+      if (!request) {
+        return JSON.stringify(fallback);
+      }
+
+      return JSON.stringify({
+        subject: `${request.brief.offer.product_name} for ${request.brief.prospect.company_name}`,
+        body: `Hi ${request.brief.prospect.full_name},\n\n${request.brief.offer.one_liner}\n`,
+        metadata: {
+          model: 'pipeline-express-stub',
+          language: request.language,
+          pattern_mode: request.pattern_mode,
+          email_type: request.email_type,
+          coach_prompt_id: 'express_stub',
+        },
+      });
+    },
+  };
+  const aiClient = new AiClient(chatClient);
+
+  const program = createProgram({ supabaseClient, aiClient, chatClient });
   await program.parseAsync(argv);
 }
 

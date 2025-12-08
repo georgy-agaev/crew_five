@@ -1,3 +1,6 @@
+import type { ChatClient, ChatMessage } from './chatClient';
+import { emitTrace, finishTrace, isTracingEnabled, startTrace } from './tracing';
+
 export type EmailType = 'intro' | 'bump';
 export type PatternMode =
   | 'standard'
@@ -46,22 +49,60 @@ export interface EmailDraftResponse {
   };
 }
 
-export type AiGenerator = (payload: EmailDraftRequest) => Promise<EmailDraftResponse>;
-
 export class AiClient {
-  constructor(private readonly generator: AiGenerator) {}
+  constructor(private readonly chatClient: ChatClient) {}
+
+  private buildMessages(request: EmailDraftRequest): ChatMessage[] {
+    const system: ChatMessage = {
+      role: 'system',
+      content:
+        'You are an email draft generator. You receive a JSON payload describing the prospect, company, context, and offer. ' +
+        'Respond with a single JSON object containing {subject, body, metadata} only. Do not include any extra text.',
+    };
+
+    const user: ChatMessage = {
+      role: 'user',
+      content: JSON.stringify(request),
+    };
+
+    return [system, user];
+  }
 
   async generateDraft(request: EmailDraftRequest): Promise<EmailDraftResponse> {
+    const messages = this.buildMessages(request);
+
+    const run = async () => {
+      const raw = await this.chatClient.complete(messages);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        throw new Error('AI draft generator returned non-JSON response');
+      }
+
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('AI draft generator returned invalid JSON payload');
+      }
+
+      const obj = parsed as any;
+      if (typeof obj.subject !== 'string' || typeof obj.body !== 'string' || typeof obj.metadata !== 'object') {
+        throw new Error('AI draft generator returned payload missing subject/body/metadata');
+      }
+
+      return obj as EmailDraftResponse;
+    };
+
     if (!isTracingEnabled()) {
-      return this.generator(request);
+      return run();
     }
+
     const trace = startTrace({
       span: 'ai.generateDraft',
       service: 'aiClient',
       model: 'unknown',
     });
     try {
-      const resp = await this.generator(request);
+      const resp = await run();
       emitTrace(finishTrace(trace, 'ok'));
       return resp;
     } catch (err: any) {
@@ -70,4 +111,3 @@ export class AiClient {
     }
   }
 }
-import { emitTrace, finishTrace, isTracingEnabled, startTrace } from './tracing';

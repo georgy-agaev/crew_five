@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatEnrichmentStatus, isSnapshotFinalized, shouldBlockDrafts } from './WorkflowZeroPage';
+import { DRAFT_PROMPT_STEP, formatEnrichmentStatus, isSnapshotFinalized, shouldBlockDrafts } from './WorkflowZeroPage';
 
 describe('WorkflowZeroPage helpers', () => {
   it('workflow0_requires_finalized_snapshot_before_drafts', () => {
@@ -15,5 +15,9 @@ describe('WorkflowZeroPage helpers', () => {
     expect(formatEnrichmentStatus(null, null)).toBe('Not started');
     expect(formatEnrichmentStatus('queued', null)).toBe('queued');
     expect(formatEnrichmentStatus('completed', 'job1')).toBe('completed (#job1)');
+  });
+
+  it('workflow_zero_prompt_selector_defaults_to_draft_step', () => {
+    expect(DRAFT_PROMPT_STEP).toBe('draft');
   });
 });
