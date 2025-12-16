@@ -23,6 +23,11 @@ architecture docs live in `public-docs/`.
 
 ### Provider Env Summary
 - Supabase: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required by `loadEnv` and web adapter live mode).
+- LLMs (live model listing + draft/coach flows):
+  - OpenAI: `OPENAI_API_KEY` (required), optional `OPENAI_API_BASE` (defaults to `https://api.openai.com/v1`).
+  - Anthropic: `ANTHROPIC_API_KEY` (required), optional `ANTHROPIC_API_BASE` (defaults to `https://api.anthropic.com/v1`) and `ANTHROPIC_API_VERSION` (defaults to `2023-06-01`).
+  - Gemini: `GEMINI_API_KEY` (used by draft generation/catalog but not yet wired to live `/models` listing).
+  - The web adapter exposes `GET /api/llm/models?provider=openai|anthropic`, backed by the provider `/v1/models` endpoints; the Prompts tab and Settings use these responses to populate Provider/Model dropdowns.
 - Smartlead: `SMARTLEAD_API_BASE`/`SMARTLEAD_API_KEY` or legacy MCP envs (see Smartlead section below).
 - Exa (ICP discovery + enrichment): `EXA_API_KEY` (and optional `EXA_API_BASE`) used by Websets discovery and the Exa research client for `enrich:run --provider exa`.
 - Parallel (planned research provider): `PARALLEL_API_KEY` (required) and optional `PARALLEL_API_BASE` (defaults to `https://api.parallel.ai`), validated by `loadParallelEnv`.
@@ -60,7 +65,13 @@ architecture docs live in `public-docs/`.
   - ICP utilities:  
     - `pnpm cli icp:list [--columns id,name,description]`  
     - `pnpm cli icp:hypothesis:list [--icp-profile-id <id>] [--segment-id <id>] [--columns id,icp_profile_id,segment_id,status]`
-  - Provider/model selection (curated): set defaults in Web Settings (assistant/icp/hypothesis/draft), override via CLI flags `--provider`/`--model` on `draft:generate` (openai|anthropic|gemini, catalog-validated).
+  - Provider/model selection:
+    - Web UI: set defaults in Settings (assistant/icp/hypothesis/draft). The Prompts tab Task Configuration uses live provider `/models` output (via `/api/llm/models`) to populate Model dropdowns; if the provider is unreachable, the UI falls back to the curated catalog and shows an error.
+    - CLI: override via `--provider`/`--model` on `draft:generate` (openai|anthropic|gemini, catalog-validated). Use `pnpm cli llm:models --provider openai|anthropic` to list live models for debugging.
+- If the Web UI or CLI reports a models error (for example, `OpenAI models error 401: Invalid API key provided.` or `Anthropic models error 404: Not Found`), the Workspace Hub surfaces the provider's message directly in the "Live LLM models" panel. Check that:
+  - The corresponding `*_API_KEY` env var is set and valid.
+  - Any custom `*_API_BASE` value includes the correct `/v1` segment or matches your proxy's `/models` routing.
+  - You can reproduce the error by calling `pnpm cli llm:models --provider openai|anthropic` from the CLI.
   Ensure `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` env vars are present (see `.env.example` once added).
 - Apply migrations before exercising new analytics/enrichment features:
   - `supabase db push` (dev) or `supabase db reset` (local only, destructive).

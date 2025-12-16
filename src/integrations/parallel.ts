@@ -22,15 +22,39 @@ export function buildParallelClientFromEnv(
   const config = envLoader();
 
   const client: ParallelClient = {
-    async researchCompany() {
-      throw new Error(
-        'Parallel.ai enrichment client is not wired yet; use Exa enrichment for now.'
-      );
+    async researchCompany(input) {
+      const name = input.companyName ?? 'Unknown company';
+      const website = input.website ?? null;
+      const country = input.country ?? null;
+
+      const sources =
+        website != null
+          ? [
+              {
+                url: website,
+                title: `Parallel.ai stub source for ${name}`,
+              },
+            ]
+          : [];
+
+      return {
+        provider: 'parallel',
+        summary: `Parallel.ai stub research for ${name}${country ? ` in ${country}` : ''}.`,
+        sources,
+      };
     },
-    async researchContact() {
-      throw new Error(
-        'Parallel.ai enrichment client is not wired yet; use Exa enrichment for now.'
-      );
+    async researchContact(input) {
+      const fullName = input.fullName ?? 'Unknown contact';
+      const role = input.role ?? null;
+      const companyName = input.companyName ?? null;
+
+      return {
+        provider: 'parallel',
+        summary: `Parallel.ai stub research for ${fullName}${
+          role ? ` (${role})` : ''
+        }${companyName ? ` at ${companyName}` : ''}.`,
+        sources: [],
+      };
     },
   };
 
@@ -39,4 +63,3 @@ export function buildParallelClientFromEnv(
 
   return client;
 }
-

@@ -2,11 +2,101 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.74] - 2025-12-15
+### Changed
+- Updated `docs/web_ui_endpoints.md` to include the `/api/services`, `/api/llm/models`, and
+  `/api/inbox/messages` web adapter endpoints, refreshed the Settings and Pipeline workspace screen
+  mappings to reflect live usage of these APIs, and bumped the document version to `v0.2` so the
+  Web UI endpoint catalog remains in sync with `src/web/server.ts` and `web/src/apiClient.ts`.
+ - Added an explicit cross-link from `docs/web_ui_requirements.md` to `docs/web_ui_endpoints.md` so
+   readers can jump directly from behaviour/navigation requirements to the concrete Web adapter
+   endpoint map.
+ - Extended `AGENTS.md` with a Web adapter rule: any creation, modification, or removal of HTTP
+   endpoints in `src/web/server.ts` (or their clients in `web/src/apiClient.ts`) must be accompanied
+   by an update to `docs/web_ui_endpoints.md` to keep the catalog authoritative.
+
+## [0.1.73] - 2025-12-13
+### Added
+- Pipeline segment step now surfaces a “Review candidates in ICP Discovery” call-to-action whenever an Exa discovery run has been persisted, using `hasPersistedDiscoveryRun` and `openIcpDiscoveryForLatestRun` to deep-link into the `?view=icp-discovery` web view without adding a new router.  
+- `IcpDiscoveryPage` now hydrates `discoveryRunId`, ICP profile, and hypothesis selection from the latest persisted discovery record and auto-loads candidates once on deep-linked visits, while keeping the manual “Load candidates” path unchanged for hand-typed run ids.  
+- Parallel.ai enrichment now uses a minimal non-throwing stub client built by `buildParallelClientFromEnv`; `researchCompany` / `researchContact` return `{ provider: 'parallel', summary, sources }`, and the `parallel` adapter in `createEnrichmentProviderRegistry` maps this into a stable `{ provider, entity, company_id/contact_id, summary, sources, payload }` shape for `runSegmentEnrichmentOnce`.
+### Changed
+- Updated session doc `docs/sessions/2025-12-13_4_exa-discovery-multisource-and-icp-deep-interactive-plan.md` to record the new Exa discovery UX behaviour, the Parallel enrichment stub, and the first ICP Deep Interactive helpers (`resolveCoachRunMode` / `applyCoachResultToState` wired into `handleAiSend`), with further UI toggles deferred to a follow-up session.
+
+## [0.1.72] - 2025-12-13
+### Added
+- Interactive ICP/Hypothesis coach refinements in the Pipeline Workspace AI Assistant: new helpers
+  `appendInteractiveCoachMessage`, `buildInteractiveIcpPrompt`, and `buildInteractiveHypothesisPrompt` now
+  construct `userPrompt` strings that combine the latest ICP/hypothesis summaries with the user’s message, and
+  transcript entries are tagged with step/entity id while being trimmed to the most recent messages for
+  readability.  
+- Exa discovery entry improvements in the Pipeline segment step: `handleRunDiscovery` now persists the latest
+  discovery metadata via `persistLatestDiscoveryRun`, and the **EXA Web Search** and **Search Database** tiles
+  either trigger a discovery run or open the AI Assistant with a guided prompt instead of remaining visual-only.  
+### Changed
+- Enrichment provider registry tests now assert that unknown providers raise a coded
+  `ENRICHMENT_PROVIDER_UNKNOWN` error, documenting the error surface for future Parallel/Firecrawl/Anysite
+  routing without changing existing Exa behaviour.
+
+## [0.1.71] - 2025-12-13
+### Added
+- IcpDiscoveryPage now includes a lightweight “Coach conversation (latest runs)” panel that records user prompts and assistant summaries for ICP and Hypothesis coach runs, using the same phase-derived summary helpers as the Pipeline workspace; helper functions `appendDiscoveryChatMessage`, `formatIcpSummaryForChatDiscovery`, and `formatHypothesisSummaryForChatDiscovery` are covered by new tests and keep formatting logic DRY by delegating to the shared Pipeline helpers.
+
+## [0.1.70] - 2025-12-12
+### Changed
+- Normalized OpenAI and Anthropic base URLs for both `/models` listing and chat-completion endpoints via `normalizeOpenAiBaseUrl` / `normalizeAnthropicBaseUrl`, reducing 404s when using custom proxies or non-`/v1` bases and aligning the ChatClient tests with the new behaviour.
+- Relaxed `resolveModelConfig` so explicit `provider`/`model` pairs from the Web UI or CLI are accepted without requiring a catalog entry, while still providing curated defaults when flags are omitted; this ensures Settings and Prompts tab selections map directly to the provider APIs without hidden overrides.
+- Updated live web adapter coach endpoints to always honour `provider`/`model` flags (using `buildChatClientForModel`) for ICP and Hypothesis coach runs instead of silently falling back to the default client when configuration is present but not in the catalog.
+- Wired ICP discovery page coach actions to forward both provider/model and the selected Prompt Registry IDs (`taskPrompts.icpDiscovery`/`taskPrompts.hypothesisGen`), so ICP/Hypothesis “Chat with AI” now uses the same prompt + model configuration as the Pipeline workspace.
+- Extended the Pipeline Workspace “Current Configuration” sidebar to render ICP and Hypothesis summaries via `buildIcpSummaryFromProfile` / `buildHypothesisSummaryFromSearchConfig`, preferring `icp_profiles.phase_outputs` and `icp_hypotheses.search_config.phases` when present and falling back to existing criteria, with helper-level Vitest coverage and a Playwright-driven browser run validating quick ICP/hypothesis creation and LLM connectivity.
+
+## [0.1.69] - 2025-12-11
+### Added
+- LLM model listing helpers in `src/services/providers/llmModels.ts` plus a new CLI command `gtm llm:models --provider openai|anthropic` and web endpoint `GET /api/llm/models?provider=…`, providing a concrete proof of OpenAI/Anthropic connectivity using the configured API keys.
+- ICP coach Express mode now returns strongly-typed phase payloads for profiles and hypotheses; `createIcpProfileViaCoach` maps these into structured `company_criteria`/`persona_criteria` and a new `icp_profiles.phase_outputs` snapshot column, while hypotheses persist phase 4–5 offers/critiques under `icp_hypotheses.search_config.phases`.
+- Web Pipeline Workspace now surfaces provider `/models` errors (for example, OpenAI/Anthropic 401/404 responses) directly in the "Live LLM models" panel via `mapLlmModelsErrorMessage`, making misconfigured keys or base URLs easier to troubleshoot.
+- ICP and Hypothesis coach flows now consume `prompt_registry.prompt_text` as the system prompt when a `promptId` is configured, and use the free-text message from the UI as the user prompt; prompt resolution errors (missing row or `prompt_text` column) surface as clear HTTP/CLI errors instead of falling back silently.
+- Web API client and Pipeline/ICP pages now forward `userPrompt` and `promptId` fields into `/api/coach/icp` and `/api/coach/hypothesis`, so the Prompts tab Task Configuration directly drives the LLM messages used for ICP/Hypothesis generation.
+### Changed
+- Provider/Model dropdowns in the Settings modal and Prompts tab Task Configuration now derive their options from the shared model catalog in `src/config/modelCatalog.ts`, filtering models per provider/task and automatically correcting invalid persisted combinations to the nearest valid default.
+- Live web adapter `createLiveDeps` continues to fall back to a stub ChatClient when provider env is missing, but per-request overrides for coach/draft generation now rely on the curated model catalog and no longer introduce new silent fallbacks when provider/model flags are misconfigured.
+
+## [0.1.68] - 2025-12-11
+### Changed
+- Prompts tab creation flows are now step-less in the Web UI: both the dedicated `PromptRegistryPage` and the inline “New prompt entry” form in the Pipeline workspace create registry rows without requiring a `step` value, while still working against environments where the `prompt_registry.step` column is absent.
+- Task Configuration on the Prompts tab now uses a flat list of prompts for all tasks (ICP Discovery, Hypothesis Generation, Email Draft, LinkedIn Message); selections are stored per task in local state instead of relying on step-based active prompts.
+- Web coach flows (`icp`/`hypothesis`) and draft generation now pass the Task Configuration selections through as explicit prompt IDs (`promptId` / `explicitCoachPromptId`), and `generateDrafts` prefers these explicit IDs over step-based resolution so backend behaviour matches the Prompts tab configuration without hidden fallbacks.
+- Task Configuration prompt selections are now persisted per browser via the existing `useSettingsStore` (`localStorage`): after reloading the page, each task’s selected prompt ID is restored and continues to drive coach and draft flows.
+- Web adapter coach endpoints `/api/coach/icp` and `/api/coach/hypothesis` now return `{ jobId, profile }` / `{ jobId, hypothesis }` to match existing tests and the Web API client expectations, fixing a runtime `Cannot read properties of undefined (reading 'id')` error in AI-assisted ICP/Hypothesis flows after the `jobs_type_check` constraint was updated to allow `icp` jobs.
+- Added first-class OpenAI and Anthropic ChatClients plus a `buildChatClientForModel` factory; the live web adapter now uses the curated model catalog to select a provider/model and build a real LLM client when API keys are present, while tests inject stub chat clients to avoid network calls.
+- CLI `runCli` now builds its `ChatClient` via the same model catalog + `buildChatClientForModel` pipeline as the web adapter, with a JSON stub fallback when provider env is missing; helper tests cover both real and stub paths.
+- Prompts tab Task Configuration `Provider`/`Model` selectors now read/write the shared Settings store and are used for ICP coach and draft generation: the web adapter builds per-request chat clients based on the selected provider/model when those values are passed in, while unsupported providers (for now, Gemini) surface as runtime errors instead of silently falling back.
+
+## [0.1.67] - 2025-12-10
+### Changed
+- Prompts tab Task Configuration now reads from the live prompt registry: prompt dropdowns for ICP Discovery, Hypothesis Generation, and Email Draft are populated from `prompt_registry` by step, and the "Active prompt" labels under each task reflect the current active prompt per step.
+- Selecting a prompt in Task Configuration or clicking "Set active" in the Prompt Registry table now use a shared helper that calls `/api/prompt-registry/active` and refreshes the registry, keeping task summaries and the registry table in sync without adding new schema or legacy fallbacks.
+
+## [0.1.66] - 2025-12-09
+### Changed
+- ICP and Hypothesis “Chat with AI” in the Pipeline workspace now resolve the active prompts for `icp_profile` and `icp_hypothesis` from the prompt registry and pass the selected `promptId` through `/api/coach/icp` and `/api/coach/hypothesis`, so coach runs are explicitly tied to Prompts tab configuration.
+- The workspace Prompts tab has been wired to the live prompt registry: it loads entries via `/api/prompt-registry`, surfaces rollout status labels, and adds a “Set active” action per prompt that calls `/api/prompt-registry/active` and refreshes the list; draft generation continues to use the active `draft` prompt as before.
+- Prompt reference documentation now describes how ICP coach flows use `promptId` from the registry, aligning Web UI, coach services, and analytics with a single prompt-selection mechanism.
+- Prompt registry endpoints now normalize rows so the UI works with human `coach_prompt_id` values (not internal UUIDs), and the Prompts tab includes an inline “Create prompt” form that posts to `/api/prompt-registry` and immediately refreshes the table so new `icp_profile`, `icp_hypothesis`, and `draft` prompts can be created without leaving the workspace.
+- Live web adapter ICP coach helpers (`generateIcpProfile` / `generateIcpHypothesis`) and coach services now thread optional `promptId` metadata into job payloads, allowing analytics and future tooling to attribute ICP/hypothesis generations to specific prompt variants.
+- The inline Create Prompt form now persistently stores `prompt_text` in a new `prompt_registry.prompt_text` column so the textarea saves instead of being a stub, and the compact left sidebar centers the `P/I/A/PR` labels so the collapsed tabs feel aligned.
+
+## [0.1.65] - 2025-12-09
+### Added
+- Pipeline workspace (`web/src/pages/PipelineWorkspaceWithSidebar.tsx`) is now wired end-to-end for ICP → Hypothesis → Segment → Enrichment → Draft → Send, using the live web adapter endpoints for ICP, hypotheses, segments, enrichment, draft generation (`POST /api/drafts/generate`), campaigns (`GET /api/campaigns`), Smartlead preview (`GET /api/smartlead/campaigns`, `POST /api/smartlead/send`), and the unified services inventory (`GET /api/services`); the UI remains aligned with the original design but now reflects all `.env`-backed providers.
+- Web docs (`docs/options/Pipeline Workspace - API Endpoints Inventory.md`) updated to document the implemented services inventory, draft, and Smartlead preview wiring for the pipeline workspace, clarifying that Send runs in dry-run/preview mode from the UI while full delivery remains CLI/Smartlead-dashboard driven.
+
 ## [0.1.64] - 2025-12-06
 ### Changed
 - `enrich:run` CLI now supports `--error-format text|json` and is wrapped with shared `wrapCliAction` error handling, so unknown or misconfigured enrichment providers (for example, an invalid `--provider` value) surface as structured `{ ok:false, error:{ code,message } }` payloads instead of unhandled exceptions.
 - Extensibility docs (`public-docs/EXTENSIBILITY_AND_CONNECTORS.md`) updated to describe `enrich:run --provider` routing through the enrichment provider registry and the use of stable error codes like `ENRICHMENT_PROVIDER_UNKNOWN` for automation.
  - ICP discovery Web UI “Pre-import review” panel now disables “Promote approved candidates” when no segment or approvals are selected, shows a clear empty state when a discovery run returns zero candidates, and surfaces a richer promotion summary including run id and segment name; a `Run discovery` control has been added next to the Exa query plan in preparation for triggering discovery directly from the UI. 
+ - `docs/web_ui_endpoints.md` added as a Web adapter reference, cataloguing all `/api` endpoints in `src/web/server.ts` and mapping them to the Web UI screens and `web/src/apiClient.ts` helpers.
 
 ## [0.1.63] - 2025-12-05
 ### Added
@@ -63,329 +153,3 @@ All notable changes to this project will be documented in this file.
 
 ## [0.1.54] - 2025-12-02
 ### Changed
-- `event:ingest` now surfaces `INVALID_JSON` for bad payloads, keeps idempotency keys stable even when `occurred_at` is missing, and dedupes events without `provider_event_id` via `idempotency_key`; ingestion tests updated.
-- Smartlead CLI config validation emits `SMARTLEAD_CONFIG_MISSING`, and `smartlead:campaigns:list` accepts `--error-format json` to return structured errors; CLI tests updated.
-
-## [0.1.53] - 2025-12-01
-### Added
-- `docs/web_ui_requirements.md` as the authoritative Web UI specification (tab order, workflows, analytics, SIM) with cross-references to existing workflow docs and priority note.
-- Prompt templates for ICP profile generation and hypothesis+segment filter generation to guide UI coach surfaces.
-- Session log updated (`docs/sessions/2025-12-01_2_web-ui-w0v3-w1v2-anv2-plan.md`) to reflect the new UI requirements doc and ICP draft-generation guardrails.
-- Web adapter now exposes coach ICP/HYP generation and prompt registry create routes; Web UI pulls prompt registry into draft generation and adds coach generate buttons on the ICP tab; apiClient and tests updated.
-
-## [0.1.52] - 2025-12-01
-### Added
-- Segment version guardrails: draft and enrichment commands now require a snapshot for the exact `campaign.segment_version` and reject mismatches unless `--force-version` is provided.
-- Email event analytics FKs are auto-populated from outbound/draft/campaign context during ingest; idempotency hashing is stable even without `provider_event_id`.
-- Analytics view updated to prefer event-level FKs (segment, ICP, pattern, coach prompt) with a new migration.
-- ICP list commands whitelist allowed columns and reject unknown selections.
-
-## [0.1.51] - 2025-12-01
-### Added
-- Async-first enrichment CLI path with `--run-now` and `--legacy-sync` flags plus resolved mode in output; enrichment and draft runs now enforce finalized snapshots via `ensureFinalSegmentSnapshot`.
-- ICP-aware draft generation flags (`--icp-profile-id`, `--icp-hypothesis-id`) routed through coach helpers; draft metadata now records ICP IDs for analytics.
-- Analytics formatter `formatAnalyticsOutput` to keep `analytics:summary` JSON stable across groupings; additional pattern-group CLI test coverage.
-- Email events FK migration `supabase/migrations/20251201120000_add_email_event_fk_columns.sql` adding segment/draft/job/ICP fields for analytics joins; `mapProviderEvent` now emits these keys.
-- New list commands `icp:list` and `icp:hypothesis:list` with column filtering and CLI wiring.
-- README updated with new CLI flags/commands; full `pnpm vitest run` (185 tests) passing.
-
-## [0.1.50] - 2025-12-01
-### Changed
-- Workflow and roadmap docs updated to reflect W0.v3, W1.v2, and AN.v2 as implemented and SIM (W2) as contracts-only (Option 2):
-  - `docs/workflow_2_sim_replies_prd.md` explicitly notes SIM jobs/requests are defined but not executed yet.
-  - `docs/GMT_system_plan_v0.4_roadmap.md` and `docs/gtm_system_workflows_versions_v_0.md` annotate the implementation status of W0.v3, W1.v2, AN.v2, and W2.
-- Session log `docs/sessions/2025-11-30_1_w0v3-w1v2-anv2_session-plans.md` updated to mark Session 8 (hardening and W2 Option 2 sanity) as completed; test suite remains green.
-
-## [0.1.49] - 2025-12-01
-### Added
-- Prompt registry migration `supabase/migrations/20251201102000_add_prompt_registry.sql` and service `src/services/promptRegistry.ts` to record prompt versions (`coach_prompt_id`, description, version, rollout_status`) for later analysis.
-- AN.v2 helpers in `src/services/analytics.ts` (`getPromptPatternPerformance`, `getSimJobSummaryForAnalytics`, `suggestPromptPatternAdjustments`) plus tests in `tests/experiments.test.ts` to aggregate pattern performance, summarize SIM job statuses, and generate simple scale/keep/retire recommendations.
-- New CLI command `analytics:optimize` in `src/cli.ts` that prints `{ suggestions, simSummary }` based on analytics; Session 7 in `docs/sessions/2025-11-30_1_w0v3-w1v2-anv2_session-plans.md` marked as completed.
-
-## [0.1.48] - 2025-12-01
-### Added
-- Analytics view `analytics_events_flat` via `supabase/migrations/20251201043000_add_analytics_events_flat_view.sql` joining events, outbound, drafts, campaigns, segments, and employees to expose ICP, segment, pattern, role, and event fields for reporting.
-- Analytics service `src/services/analytics.ts` with helpers to compute baseline metrics (delivered/opened/replied/positive replies) grouped by ICP+hypothesis, segment+role, and pattern+user_edited, plus unit tests in `tests/analytics.test.ts`.
-- New CLI command `analytics:summary` in `src/cli.ts` that supports `--group-by icp|segment|pattern` and optional `--since`, printing a JSON summary; Session 6 in `docs/sessions/2025-11-30_1_w0v3-w1v2-anv2_session-plans.md` marked as completed.
-
-## [0.1.47] - 2025-12-01
-### Added
-- Research storage columns `company_research` and `ai_research_data` via `supabase/migrations/20251201040000_add_research_columns.sql` to hold enrichment output for companies and employees.
-- Segment-level enrichment service `src/services/enrichSegment.ts` with helpers to enqueue enrich jobs (`enqueueSegmentEnrichment`), run a single job (`runSegmentEnrichmentOnce`), and inspect status (`getSegmentEnrichmentStatus`), plus tests in `tests/enrichment.test.ts`.
-- `enrich:run` command in `src/commands/enrich.ts` now writes mock enrichment results into `employees.ai_research_data` while preserving the existing CLI behaviour; Session 5 in `docs/sessions/2025-11-30_1_w0v3-w1v2-anv2_session-plans.md` updated as completed, test suite remains green.
-
-## [0.1.46] - 2025-12-01
-### Added
-- Coach service `src/services/coach.ts` introducing helpers to generate ICP profiles from briefs, create hypotheses for segments, and delegate draft generation to the existing `generateDrafts` implementation.
-- New unit tests in `tests/coach.test.ts` covering ICP profile and hypothesis creation via the coach layer and verifying that coach-driven draft generation still produces correct `draft_pattern` and `user_edited` metadata.
-- Session 4 in `docs/sessions/2025-11-30_1_w0v3-w1v2-anv2_session-plans.md` updated to reflect the coach split helpers as completed, while leaving `draft:generate` behaviour unchanged for now.
-
-## [0.1.45] - 2025-12-01
-### Added
-- ICP schema migration `supabase/migrations/20251130220000_add_icp_profiles_and_hypotheses.sql` creating `icp_profiles`/`icp_hypotheses` tables and adding `icp_profile_id`/`icp_hypothesis_id` FKs on `segments`.
-- ICP service `src/services/icp.ts` with helpers to create profiles and hypotheses and attach them to segments, plus coverage in `tests/icp.test.ts`.
-- New CLI commands `icp:create` and `icp:hypothesis:create` wired in `src/cli.ts` via `src/commands/icpCreate.ts` and `src/commands/icpHypothesisCreate.ts`, with CLI tests in `tests/cli.test.ts`; Session 3 in `docs/sessions/2025-11-30_1_w0v3-w1v2-anv2_session-plans.md` marked as completed.
-
-## [0.1.44] - 2025-11-30
-### Added
-- Generic `jobs` table via `supabase/migrations/20251130205000_add_jobs_table.sql` to track `send`, `enrich`, and `sim` jobs with shared lifecycle fields.
-- Jobs service (`src/services/jobs.ts`) with helpers to create and update jobs, plus unit tests in `tests/jobs.test.ts`.
-- SIM Option 2 stub service (`src/services/sim.ts`) that accepts structured SIM requests, records them as `sim` jobs, and marks them as `not_implemented` with clear reasons for future W2 work. Session roadmap doc `docs/sessions/2025-11-30_1_w0v3-w1v2-anv2_session-plans.md` updated to mark Session 1 as completed; lint, build, and full test suite remain green.
-
-## [0.1.43] - 2025-11-30
-### Added
-- `public-docs/` folder with public-facing getting started, architecture, and extensibility guides to support the open-core OSS audience.
-- README refocused on the open-core toolkit (CLI + Web + Supabase) and wired to the new `public-docs` entry points instead of internal-only docs.
-- Open-core code boundaries documented in `AGENTS.md` so future CRM/connectors can live outside the public repo while reusing core interfaces.
-
-## [0.1.42] - 2025-11-30
-### Changed
-- Updated `.gitignore` and git tracking so `docs/` and `AGENTS.md` are kept local-only and no longer pushed to the public GitHub repo; future changes to internal docs stay off the public history.
-
-## [0.1.41] - 2025-11-28
-### Added
-- Security sweep workflow running ESLint security config, ast-grep guardrails, gitleaks secret scan, and `pnpm audit --prod --audit-level high` with install safety (`--ignore-scripts`).
-- ESLint security-focused config and scripts for linting, ast-grep scans, secret scans, and audits; README documents the new commands.
-- ast-grep setup doc now reflects the current guardrails enforced in `ast-grep.yml`.
-
-## [0.1.40] - 2025-11-27
-### Added
-- Smartlead direct API wiring for campaigns/leads/sequences: new helpers in `src/integrations/smartleadMcp.ts` plus CLI commands `smartlead:leads:push` and `smartlead:sequences:sync` with dry-run and Supabase-backed mapping.
-- Draft generation now records a stable `draft_pattern` (prompt pack + Pattern Breaker mode + variant) and `user_edited` flag in `drafts.metadata` for later analysis of AI-only vs user-edited emails.
-- Requirements ID scheme documented in `docs/Requirements_ID_Scheme.md` and referenced from PRD v0.2 and the v0.3/v0.4 roadmaps to tie features to explicit IDs.
-
-## [0.1.39] - 2025-11-27
-### Added
-- Web adapter routes for Workflow 0: companies/contacts fetch with caps and Smartlead send defaulting to dry-run; mock/live deps updated.
-- Workflow 0 UI now pulls live Supabase companies/contacts, applies cohort caps, auto-excludes missing emails, and triggers Smartlead preview send.
-- API client helpers for companies/contacts and Smartlead preview; tests cover URL construction and payload defaults.
-
-## [0.1.38] - 2025-11-27
-### Added
-- Workflow Hub web UI covering PRD v0.2 flows: client selection → base email → bump setup, ICP discovery/Exa query planning, and SIM/offer roast planner with readiness cues.
-- New helper pages (`WorkflowZeroPage`, `IcpDiscoveryPage`, `SimPage`) with mock data, guardrails, and Smartlead/Supabase readiness badges; updated layout, typography, and cards/tabs for clearer navigation.
-- Tests for new workflow helpers (filters, ICP query derivation, SIM scoring); README updated with Web UI workflow guidance.
-
-## [0.1.37] - 2025-11-27
-### Added
-- Direct Smartlead API client (`addLeadsToCampaign`, `saveCampaignSequences`) gated by `SMARTLEAD_API_BASE` / `SMARTLEAD_API_KEY`, retaining MCP compatibility and stubbing sendEmail for adapter parity.
-- New CLI commands `smartlead:leads:push` and `smartlead:sequences:sync` wired through `src/cli.ts` with dry-run, limit/step/variant flags, and Supabase contact-to-lead mapping.
-- Web adapter readiness meta now respects Smartlead API envs; server tests cover missing Smartlead env validation.
-- Documentation updates (`README.md`, `docs/Setup_smartlead_mcp.md`) describing Smartlead direct API setup and new commands; CLI and integration tests added for Smartlead flows.
-
-## [0.1.36] - 2025-11-26
-### Added
-- Shared CLI error-handling helper (`wrapCliAction`/`formatCliError`) for `draft:generate`, `segment:snapshot`, `event:ingest`, and Smartlead commands to surface clean messages and stable exit codes instead of unhandled promise rejections.
-- `campaign:create --dry-run` flag wired through `campaignCreateHandler`, which now runs snapshot workflow without inserting a campaign and returns a summary payload.
-- `draft:generate --limit` flag exposed at the CLI and threaded into `generateDrafts` to cap work per run; handler and CLI wiring covered by tests.
-### Added
-- Optional JSON error output via `--error-format json` on `campaign:status`, `event:ingest`, and `smartlead:events:pull` so automation can consume structured `{ ok:false, error:{ code,message,details } }` payloads.
-### Changed
-- Smartlead CLI tests updated to assert validation behaviour for bad `--since`/`--limit` and missing MCP env; CLI now logs concise errors rather than throwing.
-
-## [0.1.35] - 2025-11-25
-### Added
-- Sub-agent roster with commands/boundaries in `AGENTS.md` aligned to docs/CLI/prompt/DB/UI/test/ops roles.
-- Individual Copilot agent personas in `.github/agents/*.md` for docs, cli, prompt, db, test, ui, and ops.
-
-## [0.1.33] - 2025-11-25
-### Added
-- Live web adapter wiring option with Supabase-backed deps and stub AI/Smartlead, env-switchable mock mode.
-- App base URL notice and adapter config docs; adapter dispatch tests cover live deps.
-
-## [0.1.34] - 2025-11-25
-### Added
-- Live adapter env validation for Smartlead MCP; buildSmartlead client helper.
-- Events/reply-pattern dispatch tests for filters; UI badge shows adapter mode.
-- Docs updated with Smartlead env requirements for web adapter.
-### Changed
-- Draft generate payload now carries interaction/data-quality mode flags through adapter.
-- Added adapter meta endpoint and readiness cues in UI; send disabled when Smartlead not ready.
-
-## [0.1.32] - 2025-11-25
-### Added
-- Web UI parity pass: shared alert component, drafts table with status filter, mode toggles (Strict + Pipeline
-  Express defaults), send gating confirmation, and helper tests.
-- Thin HTTP adapter with mock deps (`src/web/server.ts`) plus dispatch tests; web README documents adapter
-  endpoints and dev flow.
-### Changed
-- Hardened web API client tests (env base URL/error) and removed legacy mock client/test.
-
-## [0.1.24] - 2025-11-24
-### Added
-- Smartlead outbound send command (`smartlead:send`) with dry-run, batch size, and summary logging,
-  plus MCP send wrapper and outbound recording.
-
-## [0.1.25] - 2025-11-24
-### Added
-- Reply classification and pattern counting: `reply_label` mapping, pattern helper, and tests.
-
-## [0.1.26] - 2025-11-24
-### Added
-- Smartlead MCP docs: noted reply labels/pattern usage for prompt/enrichment feedback and `assume-now` logging guidance.
-
-## [0.1.27] - 2025-11-24
-### Added
-- Documented telemetry/log guidance for `onAssumeNow` and reply pattern usage to feed prompt/enrichment updates.
-
-## [0.1.28] - 2025-11-25
-### Added
-- Enrichment stub (adapter registry + mock) with CLI `enrich:run` (dry-run/limit).
-- Graceful fallback service (catalog lookup, apply, guard) with tests).
-- Judge scaffold for draft scoring + CLI `judge:drafts` (dry-run/limit).
-- ast-grep guardrails tightened (errors on key rules); docs updated.
-
-## [0.1.29] - 2025-11-25
-### Added
-- Tracing service + instrumentation for AI drafts and Smartlead MCP calls (env toggle/cap; traces to console/file).
-- Telemetry service and `--telemetry` flag on Smartlead CLI commands (PII validation).
-- Prompt experiments helpers (deterministic variant assignment/outcome logging).
-- Smartlead send dedupe/batch summary, graceful preview wiring, reply pattern filters; tests updated.
-
-## [0.1.30] - 2025-11-25
-### Added
-- Web UI prep: mock API client (`src/web/apiClient.ts`) for campaigns/draft generation/send with tests; session plan updated. Full UI scaffold pending.
-
-## [0.1.31] - 2025-11-25
-### Added
-- Web UI scaffold expanded: Drafts, Send, Events/Patterns, Settings pages wired to mock API; settings/telemetry hooks; styles and navigation.
-- Web package tests added for API client, settings store, telemetry hook.
-
-## [0.1.23] - 2025-11-24
-### Added
-- Smartlead MCP polish: capped error snippets with truncation note, per-pull timestamp for assume-now,
-  optional logging hook for assume-now usage, and env override for Retry-After cap.
-
-## [0.1.22] - 2025-11-24
-### Added
-- Smartlead MCP ingest consistency: single pull timestamp for `--assume-now-occurred-at`, centralized
-  Retry-After cap constant, and aligned error hints (code for missing `occurred_at`).
-
-## [0.1.21] - 2025-11-24
-### Added
-- Smartlead MCP ingest guardrails: Retry-After respected (cap/override), non-mutating error cache, CLI
-  flags for retry cap and `--assume-now-occurred-at`, and clearer error guidance.
-
-## [0.1.20] - 2025-11-24
-### Added
-- Smartlead MCP ingest polish: require `occurred_at` for events, deterministic hash remains; errors cache body/JSON once; 4xx/5xx paths tested for single body read; docs clarify Zulu-only `--since`.
-
-## [0.1.19] - 2025-11-24
-### Added
-- Smartlead MCP ingest robustness: deterministic idempotency hash when provider_event_id is missing,
-  enriched error messages (status + body), simple retry on 5xx, and CLI validation for `since`/`limit`
-  with max cap.
-
-## [0.1.18] - 2025-11-24
-### Added
-- Smartlead MCP ingest hardening: `since`/`limit` filters on event pulls, provider_event_id fallback
-  for idempotency, CLI wiring for filters, and single-summary outputs with dry-run parity.
-- Docs updated (README, Smartlead setup) and tests expanded for MCP URL params and idempotency.
-
-## [0.1.17] - 2025-11-24
-### Added
-- Smartlead MCP ingest-first integration: typed client wrapper, CLI commands `smartlead:campaigns:list`
-  and `smartlead:events:pull` with `--dry-run` and summaries; events flow through existing
-  `event:ingest` path.
-- Tests cover MCP client auth/dry-run/normalization and CLI wiring.
-
-## [0.1.16] - 2025-11-23
-### Added
-- Documented Smartlead MCP setup/integration options (env vars, guardrails, ingest-first path) to
-  reuse the MCP server instead of building a custom connector first.
-- README now calls out Smartlead MCP as optional and `.env.example` includes MCP placeholders.
-
-## [0.1.15] - 2025-11-23
-### Added
-- Campaign status CLI rewired to use guarded handler with dry-run; invalid transitions exit non-zero.
-- Draft orchestrator adds dry-run/fail-fast/limit with summary; CLI flags documented; tests updated.
-
-## [0.1.14] - 2025-11-23
-### Added
-- Event ingest stub (`event:ingest`) with validation, dedupe on provider_event_id, and dry-run support; service normalizes payloads and inserts into `email_events`.
-- CLI wiring for event ingest; README lists the stub; tests cover validation, dedupe, dry-run.
-
-## [0.1.13] - 2025-11-23
-### Added
-- Send scaffold now supports batch_id override, logger callback, fail-on-error flag, and keeps dry-run semantics; summary logging is single-source.
-- Email send CLI exposes batch-id/fail-on-error flags; tests add dry-run and summary format coverage; docs updated.
-
-## [0.1.12] - 2025-11-23
-### Added
-- Email send CLI now supports summary formats (json/text), dry-run, and JSON logging; send scaffold returns batch_id/timestamp summary.
-- Tests cover throttle/skip and retry logging; docs updated with CLI options.
-
-## [0.1.11] - 2025-11-23
-### Added
-- Hardened send scaffold with per-minute throttling, duplicate guard (mark drafts sending), retry-once stub, and summary logging (`sent/failed/skipped`).
-- CLI send wiring retains stub provider and supports JSON logs; tests cover throttle/skip and retry logging.
-
-## [0.1.10] - 2025-11-23
-### Added
-- Email send scaffold (`email:send` CLI) with stubbed SMTP send/log/throttle and outbound recording.
-- README documents the send scaffold command; tests cover stub send and throttle behavior.
-
-## [0.1.9] - 2025-11-23
-### Added
-- Centralized status transitions in `src/status.ts` (typed union + helper); errors carry `ERR_STATUS_INVALID` with allowed transitions in details.
-- Validation CLI formats refined (json/text/terse) with codes/hints and consistent exit codes; telemetry stub retained.
-- Roadmap/session updated to reflect finalized status/validation UX.
-
-## [0.1.8] - 2025-11-23
-### Added
-- Campaign status typed union plus exported transition map helper; invalid transitions now use `ERR_STATUS_INVALID`.
-- `filters:validate` supports `json|text|terse` formats, returns codes/hints, sets exit codes, and includes a telemetry stub.
-- README (validate command formats) and appendix link to status/validation sections; session log added.
-
-## [0.1.7] - 2025-11-22
-### Added
-- Structured filter validation errors with `ERR_FILTER_VALIDATION` code, JSON/text output formats, and CLI wiring that exits non-zero on failure.
-- Status transition helper exposed and documented; campaign updates continue to enforce allowed statuses/fields.
-- Session docs/roadmap updated to reflect status enforcement/validation UX refinements.
-
-## [0.1.6] - 2025-11-22
-### Added
-- Campaign status transition map (including pause/resume) with table tests; `campaign:update` still limited to prompt_pack_id/schedule/throttle and blocked outside draft/ready/review.
-- `filters:validate` CLI command outputs structured JSON and exits non-zero on errors; filter validation now returns friendly messages with allowed prefixes/operators.
-- README updated with status transition table and validate command; session logs/roadmap refreshed.
-
-## [0.1.5] - 2025-11-22
-### Added
-- Snapshot hashing for reuse/refresh with hash mismatch rejection, filter validation errors improved, and `--force-version` wiring/guardrails in CLI/handlers.
-- Campaign update guardrails block non-draft/ready/review statuses; filter DSL tests expanded (`not_in`, range/list), and docs updated (README, appendix).
-
-## [0.1.4] - 2025-11-22
-### Added
-- Introduced validated segment filter DSL (`eq`, `in`, `not_in`, `gte`, `lte`) in `src/filters/` with guardrails for unknown fields and empty filters.
-- Enforced snapshot guardrails (default max 5000 contacts, `--max-contacts`, `--allow-empty`) and tightened snapshot workflow defaults.
-- Added `campaign:update` CLI/handler limited to `prompt_pack_id`, `schedule`, `throttle`; updated CLI wiring and docs.
-
-## [0.1.3] - 2025-11-22
-### Added
-- Added tracked `prompts/template.md` and adjusted ignore rules so prompt drafts stay local while the template remains versioned.
-
-## [0.1.2] - 2025-11-22
-### Added
-- Created `prompts/` folder for prompt drafts and ignored its contents (tracked placeholder only) to keep credentials and prompt iterations out of git.
-
-## [0.1.1] - 2025-11-22
-### Added
-- Initialized git repository on `main` and added a repo-appropriate `.gitignore`.
-
-## [0.1.0] - 2025-11-21
-### Added
-- Initial AI SDR GTM PRD (`docs/AI_SDR_GTM_PRD.md`) covering context, architecture spine, data-quality modes, interaction modes, analytics, release plan, and AI SDK integration.
-- Appendix A with the non-negotiable `generate_email_draft` contract (`docs/appendix_ai_contract.md`).
-- Pattern Breaker analytics requirements and monthly review strategy.
-- CLI/UI parity requirement, interaction mode toggles, strict/graceful data-quality policies, and SMTP-first sending strategy.
-- Supabase project linked (`supabase/config.toml`) with first migration `20251121211952_2025-11-21_create_spine_tables.sql` defining spine tables (`segments`, `segment_members`, `campaigns`, `drafts`, `email_outbound`, `email_events`, `fallback_templates`).
-- Node/TypeScript CLI scaffold (`src/cli.ts`) with handlers for segment creation, campaign creation, and draft generation plus Vitest coverage for env loading, services, and commands.
-- Segment snapshot pipeline added: filter parser, contact fetch, snapshot writer, `segment:snapshot` CLI command, and documentation/tests covering the new flow.
-- Campaign creation now enforces snapshots via `ensureSegmentSnapshot` workflow, supports `--snapshot-mode`/`--bump-segment-version`, persists snapshot metadata in campaigns, and schema includes `segments.version` column.
-
-### Changed
-- Prioritized SMTP adapter over Smartlead; removed Leadmagic integration references from the PRD.
-- Updated release plan milestones to include interaction-mode implementation and graceful-mode unlock post enrichment.
-
-### Notes
-- Changelog will be updated alongside future PRD or implementation changes.

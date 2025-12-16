@@ -96,11 +96,15 @@ function createParallelEnrichmentAdapter(_supabase: SupabaseClient, parallel: Pa
     async fetchCompanyInsights(input) {
       const research = await parallel.researchCompany({
         companyName: input.company_id,
+        website: null,
+        country: null,
       });
       return {
         provider: 'parallel',
         entity: 'company',
         company_id: input.company_id,
+        summary: (research as any)?.summary,
+        sources: (research as any)?.sources ?? [],
         payload: research,
       };
     },
@@ -112,6 +116,8 @@ function createParallelEnrichmentAdapter(_supabase: SupabaseClient, parallel: Pa
         provider: 'parallel',
         entity: 'employee',
         contact_id: input.contact_id,
+        summary: (research as any)?.summary,
+        sources: (research as any)?.sources ?? [],
         payload: research,
       };
     },

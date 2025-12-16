@@ -87,6 +87,16 @@ describe('web api client (live adapter)', () => {
     expect(url).toContain('since=2025-01-01');
   });
 
+  it('fetchInboxMessages builds inbox query params', async () => {
+    const { fetchInboxMessages } = await loadClient();
+    (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ messages: [], total: 0 }) });
+    await fetchInboxMessages({ status: 'unread', limit: 25 });
+    const url = (fetch as any).mock.calls[0][0] as string;
+    expect(url).toContain('/inbox/messages?');
+    expect(url).toContain('status=unread');
+    expect(url).toContain('limit=25');
+  });
+
   it('fetchCompanies builds query params', async () => {
     const { fetchCompanies } = await loadClient();
     (fetch as any).mockResolvedValue({ ok: true, json: async () => [] });
@@ -219,6 +229,47 @@ describe('web api client (live adapter)', () => {
     expect(hypBody.hypothesisLabel).toBe('H1');
   });
 
+  it('generateIcpProfileViaCoach forwards promptId and model metadata', async () => {
+    const { generateIcpProfileViaCoach } = await loadClient();
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ jobId: 'job-icp', profile: { id: 'p1', name: 'ICP' } }),
+    });
+    await generateIcpProfileViaCoach({
+      name: 'ICP',
+      promptId: 'icp_profile_v1',
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+    });
+    const call = (fetch as any).mock.calls.at(-1);
+    expect(call[0]).toBe('/api/coach/icp');
+    const body = JSON.parse(call[1].body);
+    expect(body.promptId).toBe('icp_profile_v1');
+    expect(body.provider).toBe('openai');
+    expect(body.model).toBe('gpt-4o-mini');
+  });
+
+  it('generateHypothesisViaCoach forwards promptId when provided', async () => {
+    const { generateHypothesisViaCoach } = await loadClient();
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ jobId: 'job-h', hypothesis: { id: 'h1', hypothesis_label: 'H1' } }),
+    });
+    await generateHypothesisViaCoach({
+      icpProfileId: 'p1',
+      hypothesisLabel: 'H1',
+      promptId: 'icp_hypothesis_v1',
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+    });
+    const call = (fetch as any).mock.calls.at(-1);
+    expect(call[0]).toBe('/api/coach/hypothesis');
+    const body = JSON.parse(call[1].body);
+    expect(body.promptId).toBe('icp_hypothesis_v1');
+    expect(body.provider).toBe('openai');
+    expect(body.model).toBe('gpt-4o-mini');
+  });
+
   it('analytics summary/optimize and prompt registry endpoints are called', async () => {
     const {
       fetchAnalyticsSummary,
@@ -253,7 +304,6 @@ describe('web api client (live adapter)', () => {
     (fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'draft_intro_v4' }) });
     await createPromptRegistryEntry({
       id: 'draft_intro_v4',
-      step: 'draft',
       version: 'v4',
       rollout_status: 'pilot',
       description: 'New intro prompt',
@@ -262,7 +312,7 @@ describe('web api client (live adapter)', () => {
     expect(createCall[0]).toBe('/api/prompt-registry');
     const createBody = JSON.parse(createCall[1].body);
     expect(createBody.id).toBe('draft_intro_v4');
-    expect(createBody.step).toBe('draft');
+    expect(createBody.step).toBeUndefined();
 
     (fetch as any).mockResolvedValueOnce({
       ok: true,
@@ -298,6 +348,17 @@ describe('web api client (live adapter)', () => {
     expect(coachHypoCall[0]).toBe('/api/coach/hypothesis');
     expect(coachHypo.id).toBe('h1');
     expect(coachHypo.jobId).toBe('job-2');
+  });
+
+  it('services endpoint is called for workspace settings', async () => {
+    const { fetchServices } = await loadClient();
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ services: [{ name: 'Supabase', category: 'database', status: 'connected', hasApiKey: true }] }),
+    });
+    const result = await fetchServices();
+    expect((fetch as any).mock.calls.at(-1)[0]).toBe('/api/services');
+    expect(result.services[0].name).toBe('Supabase');
   });
 
   it('createSimJob posts payload to /api/sim', async () => {

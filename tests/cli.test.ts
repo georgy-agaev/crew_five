@@ -324,7 +324,7 @@ describe('createProgram', () => {
       aiClient: {} as any,
     });
 
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true as any);
     const originalExitCode = process.exitCode;
 
     process.env.EXA_API_KEY = 'test-key';
@@ -335,13 +335,13 @@ describe('createProgram', () => {
 
     await program.parseAsync(['node', 'gtm', 'icp:discover', '--icp-profile-id', 'icp-1']);
 
-    expect(logSpy).toHaveBeenCalled();
-    const payload = JSON.parse((logSpy.mock.calls[0] as any)[0] as string);
+    expect(stdoutSpy).toHaveBeenCalled();
+    const payload = JSON.parse((stdoutSpy.mock.calls[0] as any)[0] as string);
     expect(payload.jobId).toBe('job-1');
     expect(payload.runId).toBe('run-1');
     expect(payload.provider).toBe('exa');
 
-    logSpy.mockRestore();
+    stdoutSpy.mockRestore();
     fetchSpy.mockRestore();
     process.exitCode = originalExitCode;
   });
@@ -360,7 +360,7 @@ describe('createProgram', () => {
       aiClient: {} as any,
     });
 
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true as any);
     const originalExitCode = process.exitCode;
 
     process.env.EXA_API_KEY = 'test-key';
@@ -388,13 +388,13 @@ describe('createProgram', () => {
       candidateIds: ['cand-1'],
       segmentId: 'seg-1',
     });
-    expect(logSpy).toHaveBeenCalled();
-    const payload = JSON.parse((logSpy.mock.calls[0] as any)[0] as string);
+    expect(stdoutSpy).toHaveBeenCalled();
+    const payload = JSON.parse((stdoutSpy.mock.calls[0] as any)[0] as string);
     expect(payload.jobId).toBe('job-1');
     expect(payload.runId).toBe('run-1');
     expect(payload.promotedCount).toBe(1);
 
-    logSpy.mockRestore();
+    stdoutSpy.mockRestore();
     discoverSpy.mockRestore();
     promoteSpy.mockRestore();
     process.exitCode = originalExitCode;
@@ -1291,15 +1291,15 @@ describe('createProgram', () => {
       chatClient: chatClient as any,
     });
 
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true as any);
     await program.parseAsync(['node', 'gtm', 'icp:coach:profile', '--name', 'ICP']);
 
-    expect(logSpy).toHaveBeenCalledTimes(1);
-    const printed = (logSpy.mock.calls[0] as any[])[0] as string;
+    expect(stdoutSpy).toHaveBeenCalledTimes(1);
+    const printed = (stdoutSpy.mock.calls[0] as any[])[0] as string;
     const parsed = JSON.parse(printed);
     expect(parsed).toHaveProperty('jobId');
     expect(parsed).toHaveProperty('profileId', 'icp-1');
-    logSpy.mockRestore();
+    stdoutSpy.mockRestore();
   });
 
   it('cli_icp_coach_hypothesis_calls_orchestrator_and_prints_json', async () => {
@@ -1356,7 +1356,7 @@ describe('createProgram', () => {
       chatClient: chatClient as any,
     });
 
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true as any);
     await program.parseAsync([
       'node',
       'gtm',
@@ -1365,12 +1365,12 @@ describe('createProgram', () => {
       'icp-1',
     ]);
 
-    expect(logSpy).toHaveBeenCalledTimes(1);
-    const printed = (logSpy.mock.calls[0] as any[])[0] as string;
+    expect(stdoutSpy).toHaveBeenCalledTimes(1);
+    const printed = (stdoutSpy.mock.calls[0] as any[])[0] as string;
     const parsed = JSON.parse(printed);
     expect(parsed).toHaveProperty('jobId', 'job-2');
     expect(parsed).toHaveProperty('hypothesisId', 'hypo-1');
-    logSpy.mockRestore();
+    stdoutSpy.mockRestore();
   });
 
   it('analytics_optimize_command_prints_suggestions_without_crashing', async () => {

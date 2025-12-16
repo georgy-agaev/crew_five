@@ -78,11 +78,11 @@ export async function generateDrafts(
     ensureGracefulToggle(false);
   }
 
-  let resolvedCoachPromptId: string | undefined;
-  if (options.coachPromptStep) {
+  let resolvedCoachPromptId: string | undefined = options.explicitCoachPromptId;
+  if (!resolvedCoachPromptId && options.coachPromptStep) {
     resolvedCoachPromptId = await resolvePromptForStep(client, {
       step: options.coachPromptStep,
-      explicitId: options.explicitCoachPromptId,
+      explicitId: undefined,
     });
   }
 

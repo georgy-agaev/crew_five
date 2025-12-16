@@ -29,6 +29,7 @@ describe('icp service', () => {
         company_criteria: { industry: 'fintech' },
         persona_criteria: { roles: ['CTO'] },
         created_by: 'cli-user',
+        phase_outputs: null,
       }),
     ]);
     expect(profile.id).toBe('icp-1');
@@ -88,4 +89,3 @@ describe('icp service', () => {
     expect(eq).toHaveBeenCalledWith('id', 'segment-1');
   });
 });
-

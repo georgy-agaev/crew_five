@@ -48,4 +48,14 @@ export default [
       'no-floating-promises': 'off',
     },
   },
+  {
+    files: ['.orchestrator-kit/**/*.js'],
+    languageOptions: {
+      sourceType: 'module',
+      ecmaVersion: 'latest',
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
 ];

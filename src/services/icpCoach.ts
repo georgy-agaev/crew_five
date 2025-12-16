@@ -9,6 +9,51 @@ export interface IcpCoachProfileInput {
   description?: string;
   websiteUrl?: string;
   valueProp?: string;
+  /**
+   * Optional identifier of the coach prompt variant used for this run.
+   * This is carried through jobs/analytics; the LLM scaffold remains fixed.
+   */
+  promptId?: string;
+  /**
+   * Optional free-form text provided by the user when running the coach.
+   * When present, this is used as the primary user message.
+   */
+  userPrompt?: string;
+  /**
+   * Optional override for the base system prompt text, typically loaded from
+   * the prompt_registry when a promptId is selected in the UI.
+   */
+  promptTextOverride?: string;
+}
+
+export interface IcpCoachPhase1ValueProp {
+  valueProp: string;
+}
+
+export interface IcpCoachPhase2IndustryAndSize {
+  industries?: string[];
+  companySizes?: string[];
+  exampleCompanies?: Array<{ name: string; reason?: string }>;
+}
+
+export interface IcpCoachPhase2Icp {
+  industryAndSize?: IcpCoachPhase2IndustryAndSize;
+  pains?: string[];
+  decisionMakers?: Array<{ role: string; concerns?: string[] | string }>;
+  successFactors?: string[];
+  disqualifiers?: string[];
+  caseStudies?: Array<Record<string, unknown>>;
+}
+
+export interface IcpCoachPhase3Triggers {
+  triggers?: string[] | string;
+  dataSources?: Array<Record<string, unknown>> | Record<string, unknown>;
+}
+
+export interface IcpCoachProfilePhases {
+  phase1?: IcpCoachPhase1ValueProp;
+  phase2?: IcpCoachPhase2Icp;
+  phase3?: IcpCoachPhase3Triggers;
 }
 
 export interface IcpCoachProfilePayload {
@@ -18,16 +63,53 @@ export interface IcpCoachProfilePayload {
   personaCriteria: Record<string, unknown>;
   triggers?: unknown;
   dataSources?: unknown;
+  phases?: IcpCoachProfilePhases;
 }
 
 export interface IcpCoachHypothesisInput {
   icpProfileId: string;
   icpDescription?: string;
+  /**
+   * Optional identifier of the coach prompt variant used for this run.
+   */
+  promptId?: string;
+  /**
+   * Optional free-form user message for the hypothesis coach.
+   */
+  userPrompt?: string;
+  /**
+   * Optional override for the base system prompt text.
+   */
+  promptTextOverride?: string;
+}
+
+export interface IcpCoachPhase4Offers {
+  offers?: Array<{
+    personaRole: string;
+    context?: string;
+    offer: string;
+  }>;
+}
+
+export interface IcpCoachPhase5Critiques {
+  critiques?: Array<{
+    offerIndex: number;
+    roast: string;
+    suggestion: string;
+  }>;
+}
+
+export interface IcpCoachHypothesisPhases {
+  phase4?: IcpCoachPhase4Offers;
+  phase5?: IcpCoachPhase5Critiques;
 }
 
 export interface IcpCoachHypothesisPayload {
   hypothesisLabel: string;
-  searchConfig: Record<string, unknown>;
+  searchConfig: {
+    [key: string]: unknown;
+    phases?: IcpCoachHypothesisPhases;
+  };
 }
 
 let cachedPrompt: string | null = null;
@@ -125,6 +207,10 @@ function validateProfilePayload(obj: any, fallbackName: string): IcpCoachProfile
     payload.dataSources = obj.dataSources;
   }
 
+  if (obj.phases && typeof obj.phases === 'object') {
+    payload.phases = obj.phases as IcpCoachProfilePhases;
+  }
+
   return payload;
 }
 
@@ -140,7 +226,10 @@ function validateHypothesisPayload(obj: any): IcpCoachHypothesisPayload {
   }
   return {
     hypothesisLabel: obj.hypothesisLabel,
-    searchConfig: obj.searchConfig as Record<string, unknown>,
+    searchConfig: obj.searchConfig as {
+      [key: string]: unknown;
+      phases?: IcpCoachHypothesisPhases;
+    },
   };
 }
 
@@ -148,9 +237,15 @@ export async function runIcpCoachProfileLlm(
   chatClient: ChatClient,
   input: IcpCoachProfileInput
 ): Promise<IcpCoachProfilePayload> {
-  const basePrompt = await loadIcpCoachPrompt();
+  const basePrompt = input.promptTextOverride ?? (await loadIcpCoachPrompt());
   const systemPrompt = buildIcpCoachSystemPrompt(basePrompt);
-  const messages = buildProfileMessages(systemPrompt, input);
+  const messages: ChatMessage[] =
+    input.userPrompt && input.userPrompt.trim().length > 0
+      ? [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: input.userPrompt },
+        ]
+      : buildProfileMessages(systemPrompt, input);
   const raw = await chatClient.complete(messages);
   const obj = parseJson(raw);
   return validateProfilePayload(obj, input.name);
@@ -160,11 +255,16 @@ export async function runIcpCoachHypothesisLlm(
   chatClient: ChatClient,
   input: IcpCoachHypothesisInput
 ): Promise<IcpCoachHypothesisPayload> {
-  const basePrompt = await loadIcpCoachPrompt();
+  const basePrompt = input.promptTextOverride ?? (await loadIcpCoachPrompt());
   const systemPrompt = buildIcpCoachSystemPrompt(basePrompt);
-  const messages = buildHypothesisMessages(systemPrompt, input);
+  const messages: ChatMessage[] =
+    input.userPrompt && input.userPrompt.trim().length > 0
+      ? [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: input.userPrompt },
+        ]
+      : buildHypothesisMessages(systemPrompt, input);
   const raw = await chatClient.complete(messages);
   const obj = parseJson(raw);
   return validateHypothesisPayload(obj);
 }
-

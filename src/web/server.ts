@@ -20,6 +20,9 @@ import {
   getActivePromptForStep as getActivePromptForStepService,
   setActivePromptForStep as setActivePromptForStepService,
 } from '../services/promptRegistry';
+import { resolveModelConfig } from '../config/modelCatalog';
+import { buildChatClientForModel } from '../services/providers/buildChatClient';
+import { listLlmModels as listLlmModelsService, type LlmModelInfo } from '../services/providers/llmModels';
 import {
   getAnalyticsByIcpAndHypothesis,
   getAnalyticsByPatternAndUserEdit,
@@ -35,6 +38,40 @@ import {
   runIcpDiscoveryWithExa,
 } from '../services/icpDiscovery';
 
+const promptRegistryColumnSupport = {
+  checked: false,
+  hasStep: false,
+  hasPromptText: false,
+};
+
+async function ensurePromptRegistryColumns(client: any) {
+  if (promptRegistryColumnSupport.checked) {
+    return;
+  }
+  try {
+    const { data, error } = await client
+      .from('information_schema.columns')
+      .select('column_name')
+      .eq('table_schema', 'public')
+      .eq('table_name', 'prompt_registry')
+      .in('column_name', ['step', 'prompt_text']);
+    if (error) {
+      promptRegistryColumnSupport.hasStep = true;
+      promptRegistryColumnSupport.hasPromptText = true;
+      promptRegistryColumnSupport.checked = true;
+      return;
+    }
+    const cols = (data ?? []).map((row: any) => row.column_name);
+    promptRegistryColumnSupport.hasStep = cols.includes('step');
+    promptRegistryColumnSupport.hasPromptText = cols.includes('prompt_text');
+    promptRegistryColumnSupport.checked = true;
+  } catch (err: unknown) {
+    console.warn('Failed to check prompt_registry schema, assuming columns exist:', err);
+    promptRegistryColumnSupport.hasStep = true;
+    promptRegistryColumnSupport.hasPromptText = true;
+    promptRegistryColumnSupport.checked = true;
+  }
+}
 type Campaign = { id: string; name: string; status?: string; segment_id?: string | null; segment_version?: number | null };
 type DraftRow = { id: string; status?: string; contact?: string };
 type DraftSummary = { generated: number; dryRun: boolean; gracefulUsed?: number };
@@ -68,7 +105,10 @@ type AdapterDeps = {
     icpHypothesisId?: string;
     coachPromptStep?: string;
     explicitCoachPromptId?: string;
+    provider?: string;
+    model?: string;
   }) => Promise<DraftSummary>;
+  listLlmModels?: (provider: string) => Promise<LlmModelInfo[]>;
   sendSmartlead: (payload: { dryRun?: boolean; batchSize?: number; leadIds?: string[] }) => Promise<SendSummary>;
   listEvents: (params: { since?: string; limit?: number }) => Promise<EventRow[]>;
   listReplyPatterns: (params: { since?: string; topN?: number }) => Promise<PatternRow[]>;
@@ -195,8 +235,9 @@ export async function dispatch(
     const payload = { ...body, dryRun: body.dryRun ?? true, leadIds };
     try {
       return { status: 200, body: await deps.sendSmartlead(payload) };
-    } catch (err: any) {
-      return { status: 500, body: { error: err?.message ?? 'Smartlead send failed' } };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Smartlead send failed';
+      return { status: 500, body: { error: message } };
     }
   }
 
@@ -212,8 +253,9 @@ export async function dispatch(
     try {
       const created = await deps.smartleadCreateCampaign({ name });
       return { status: 200, body: created };
-    } catch (err: any) {
-      return { status: 500, body: { error: err?.message ?? 'Failed to create Smartlead campaign' } };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to create Smartlead campaign';
+      return { status: 500, body: { error: message } };
     }
   }
 
@@ -336,6 +378,13 @@ export async function dispatch(
     };
   }
 
+  if (method === 'GET' && pathname === '/api/inbox/messages') {
+    return {
+      status: 200,
+      body: { messages: [], total: 0 },
+    };
+  }
+
   if (method === 'GET' && pathname === '/api/analytics/summary') {
     if (!deps.analyticsSummary) return { status: 501, body: { error: 'Analytics not configured' } };
     const groupBy = searchParams.get('groupBy') ?? undefined;
@@ -353,10 +402,16 @@ export async function dispatch(
     if (!deps.listPromptRegistry) return { status: 501, body: { error: 'Prompt registry not configured' } };
     const rows = await deps.listPromptRegistry();
     const stepFilter = searchParams.get('step') ?? undefined;
-    const enriched = (rows ?? []).map((row: any) => ({
-      ...row,
-      is_active: row.rollout_status === 'active',
-    }));
+    const enriched = (rows ?? []).map((row: any) => {
+      const coachPromptId = row.coach_prompt_id ?? row.id;
+      return {
+        ...row,
+        // Expose the human coach_prompt_id as the primary identifier for UI.
+        id: coachPromptId,
+        coach_prompt_id: coachPromptId,
+        is_active: row.rollout_status === 'active',
+      };
+    });
     const filtered = stepFilter ? enriched.filter((row) => row.step === stepFilter) : enriched;
     return { status: 200, body: filtered };
   }
@@ -393,6 +448,121 @@ export async function dispatch(
     }
     await deps.setActivePromptForStep(step, coachPromptId);
     return { status: 200, body: { ok: true } };
+  }
+
+  if (method === 'GET' && pathname === '/api/llm/models') {
+    const provider = (searchParams.get('provider') ?? '').toLowerCase();
+    if (!provider || (provider !== 'openai' && provider !== 'anthropic')) {
+      return { status: 400, body: { error: 'Unsupported provider for LLM models' } };
+    }
+    if (!deps.listLlmModels) {
+      return { status: 501, body: { error: 'LLM models endpoint not configured' } };
+    }
+    try {
+      const models = await deps.listLlmModels(provider);
+      return { status: 200, body: models };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to list LLM models';
+      return {
+        status: 500,
+        body: { error: message },
+      };
+    }
+  }
+
+  if (method === 'GET' && pathname === '/api/services') {
+    const currentMeta = meta ?? buildMeta({ mode: 'live' });
+    const services = [
+      {
+        name: 'Supabase',
+        category: 'database',
+        status: currentMeta.supabaseReady ? 'connected' : 'disconnected',
+        hasApiKey: currentMeta.supabaseReady,
+      },
+      // LLM providers
+      {
+        name: 'OpenAI',
+        category: 'llm',
+        status: process.env.OPENAI_API_KEY ? 'connected' : 'disconnected',
+        hasApiKey: Boolean(process.env.OPENAI_API_KEY),
+      },
+      {
+        name: 'Anthropic',
+        category: 'llm',
+        status: process.env.ANTHROPIC_API_KEY ? 'connected' : 'disconnected',
+        hasApiKey: Boolean(process.env.ANTHROPIC_API_KEY),
+      },
+      {
+        name: 'Gemini',
+        category: 'llm',
+        status: process.env.GEMINI_API_KEY ? 'connected' : 'disconnected',
+        hasApiKey: Boolean(process.env.GEMINI_API_KEY),
+      },
+      // Delivery
+      {
+        name: 'Smartlead',
+        category: 'delivery',
+        status: currentMeta.smartleadReady ? 'connected' : 'disconnected',
+        hasApiKey: currentMeta.smartleadReady,
+      },
+      // Search & enrichment providers (treated as enrichment category)
+      {
+        name: 'Serper',
+        category: 'enrichment',
+        status: process.env.SERPER_API_KEY ? 'connected' : 'disconnected',
+        hasApiKey: Boolean(process.env.SERPER_API_KEY),
+      },
+      {
+        name: 'Perplexity',
+        category: 'enrichment',
+        status: process.env.PERPLEXITY_API_KEY ? 'connected' : 'disconnected',
+        hasApiKey: Boolean(process.env.PERPLEXITY_API_KEY),
+      },
+      {
+        name: 'Exa',
+        category: 'enrichment',
+        status: process.env.EXA_API_KEY ? 'connected' : 'disconnected',
+        hasApiKey: Boolean(process.env.EXA_API_KEY),
+      },
+      {
+        name: 'Parallel',
+        category: 'enrichment',
+        status: process.env.PARALLEL_API_KEY ? 'connected' : 'disconnected',
+        hasApiKey: Boolean(process.env.PARALLEL_API_KEY),
+      },
+      {
+        name: 'Firecrawl',
+        category: 'enrichment',
+        status: process.env.FIRECRAWL_API_KEY ? 'connected' : 'disconnected',
+        hasApiKey: Boolean(process.env.FIRECRAWL_API_KEY),
+      },
+      {
+        name: 'Anysite',
+        category: 'enrichment',
+        status: process.env.ANYSITE_API_KEY ? 'connected' : 'disconnected',
+        hasApiKey: Boolean(process.env.ANYSITE_API_KEY),
+      },
+      // Email enrichment providers
+      {
+        name: 'Prospeo',
+        category: 'enrichment',
+        status: process.env.PROSPEO_API_KEY ? 'connected' : 'disconnected',
+        hasApiKey: Boolean(process.env.PROSPEO_API_KEY),
+      },
+      {
+        name: 'Leadmagic',
+        category: 'enrichment',
+        status: process.env.LEADMAGIC_API_KEY ? 'connected' : 'disconnected',
+        hasApiKey: Boolean(process.env.LEADMAGIC_API_KEY),
+      },
+      {
+        name: 'TryKitt',
+        category: 'enrichment',
+        status: process.env.TRYKITT_API_KEY ? 'connected' : 'disconnected',
+        hasApiKey: Boolean(process.env.TRYKITT_API_KEY),
+      },
+    ];
+    return { status: 200, body: { services } };
   }
 
   if (method === 'GET' && pathname === '/api/meta') {
@@ -470,8 +640,9 @@ export function createWebAdapter(deps: AdapterDeps, meta: MetaStatus) {
         meta
       );
       json(res, response.body, response.status);
-    } catch (err: any) {
-      json(res, { error: err?.message ?? 'Server error' }, 500);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Server error';
+      json(res, { error: message }, 500);
     }
   });
 }
@@ -572,66 +743,81 @@ export function createLiveDeps(
     supabase?: any;
     aiClient?: AiClient;
     smartlead?: SmartleadMcpClient;
+    chatClient?: ChatClient;
   } = {}
 ): AdapterDeps {
   const env = loadEnv();
   const supabase = opts.supabase ?? initSupabaseClient(env);
-  const chatClient: ChatClient = {
-    complete: async (messages) => {
-      const last = messages[messages.length - 1];
-      let request: EmailDraftRequest | null = null;
-      try {
-        request = JSON.parse(last.content) as EmailDraftRequest;
-      } catch {
-        request = null;
-      }
+  let chatClient: ChatClient;
+  if (opts.chatClient) {
+    chatClient = opts.chatClient;
+  } else {
+    // Default to the curated draft task model; callers that need a different
+    // provider/model can inject their own ChatClient via opts.chatClient.
+    const modelConfig = resolveModelConfig({ task: 'draft' });
+    try {
+      chatClient = buildChatClientForModel(modelConfig);
+    } catch {
+      // When provider env is missing (tests, local mock), fall back to the
+      // existing in-memory stub client so the adapter remains usable.
+      chatClient = {
+        complete: async (messages) => {
+          const last = messages[messages.length - 1];
+          let request: EmailDraftRequest | null = null;
+          try {
+            request = JSON.parse(last.content) as EmailDraftRequest;
+          } catch {
+            request = null;
+          }
 
-      if (request) {
-        return JSON.stringify({
-          subject: `${request.brief.offer.product_name} for ${request.brief.prospect.company_name}`,
-          body: `Hi ${request.brief.prospect.full_name},\n\n${request.brief.offer.one_liner}\n`,
-          metadata: {
-            model: 'pipeline-express-stub',
-            language: request.language,
-            pattern_mode: request.pattern_mode,
-            email_type: request.email_type,
-            coach_prompt_id: 'express_stub',
-          },
-        });
-      }
+          if (request) {
+            return JSON.stringify({
+              subject: `${request.brief.offer.product_name} for ${request.brief.prospect.company_name}`,
+              body: `Hi ${request.brief.prospect.full_name},\n\n${request.brief.offer.one_liner}\n`,
+              metadata: {
+                model: 'pipeline-express-stub',
+                language: request.language,
+                pattern_mode: request.pattern_mode,
+                email_type: request.email_type,
+                coach_prompt_id: 'express_stub',
+              },
+            });
+          }
 
-      // Simple stubs for ICP coach usage in live adapter mode.
-      const lastUser = [...messages].reverse().find((m) => m.role === 'user');
-      const content = lastUser?.content ?? '';
-      if (content.includes('ICP profile id:')) {
-        return JSON.stringify({
-          hypothesisLabel: 'Stub Hypothesis',
-          searchConfig: {},
-        });
-      }
-      if (content.includes('ICP profile name:')) {
-        return JSON.stringify({
-          name: 'Stub ICP Profile',
-          description: 'Stub ICP profile generated by live adapter',
-          companyCriteria: {},
-          personaCriteria: {},
-        });
-      }
+          // Simple stubs for ICP coach usage in live adapter mode.
+          const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+          const content = lastUser?.content ?? '';
+          if (content.includes('ICP profile id:')) {
+            return JSON.stringify({
+              hypothesisLabel: 'Stub Hypothesis',
+              searchConfig: {},
+            });
+          }
+          if (content.includes('ICP profile name:')) {
+            return JSON.stringify({
+              name: 'Stub ICP Profile',
+              description: 'Stub ICP profile generated by live adapter',
+              companyCriteria: {},
+              personaCriteria: {},
+            });
+          }
 
-      return JSON.stringify({
-        subject: 'Draft subject',
-        body: 'Draft body',
-        metadata: {
-          model: 'mock-model',
-          language: 'en',
-          pattern_mode: null,
-          email_type: 'intro',
-          coach_prompt_id: 'mock',
+          return JSON.stringify({
+            subject: 'Draft subject',
+            body: 'Draft body',
+            metadata: {
+              model: 'mock-model',
+              language: 'en',
+              pattern_mode: null,
+              email_type: 'intro',
+              coach_prompt_id: 'mock',
+            },
+          });
         },
-      });
-    },
-  };
-  const aiClient = opts.aiClient ?? new AiClient(chatClient);
+      };
+    }
+  }
+  const aiClient: AiClient = opts.aiClient ?? new AiClient(chatClient);
 
   let exaClient: ReturnType<typeof buildExaClientFromEnv> | null = null;
   if (process.env.EXA_API_KEY) {
@@ -722,8 +908,28 @@ export function createLiveDeps(
       icpHypothesisId,
       coachPromptStep,
       explicitCoachPromptId,
+      provider,
+      model,
     }) => {
-      return generateDrafts(supabase, aiClient, {
+      let clientToUse: ChatClient = chatClient;
+      let modelConfig: { provider: string; model: string } | null = null;
+      if (provider || model) {
+        try {
+          modelConfig = resolveModelConfig({
+            provider,
+            model,
+            task: 'draft',
+          });
+          clientToUse = buildChatClientForModel(modelConfig as any);
+        } catch {
+          clientToUse = chatClient;
+          modelConfig = null;
+        }
+      }
+
+      const localAiClient = clientToUse === chatClient ? aiClient : new AiClient(clientToUse);
+
+      return generateDrafts(supabase, localAiClient, {
         campaignId,
         dryRun,
         limit,
@@ -734,6 +940,8 @@ export function createLiveDeps(
         icpHypothesisId,
         coachPromptStep,
         explicitCoachPromptId,
+        provider: modelConfig?.provider ?? provider,
+        model: modelConfig?.model ?? model,
       } as any);
     },
     sendSmartlead: async ({ dryRun, batchSize, leadIds }) => {
@@ -772,6 +980,12 @@ export function createLiveDeps(
       suggestions: await suggestPromptPatternAdjustments(supabase, { since }),
       simSummary: await getSimJobSummaryForAnalytics(supabase),
     }),
+    listLlmModels: async (provider: string) => {
+      if (provider !== 'openai' && provider !== 'anthropic') {
+        throw new Error(`Unsupported LLM provider: ${provider}`);
+      }
+      return listLlmModelsService(provider as 'openai' | 'anthropic');
+    },
     listPromptRegistry: async () => {
       const { data, error } = await supabase
         .from('prompt_registry')
@@ -785,18 +999,63 @@ export function createLiveDeps(
     setActivePromptForStep: async (step: string, coachPromptId: string) =>
       setActivePromptForStepService(supabase, step, coachPromptId),
     createPromptRegistryEntry: async (payload: Record<string, unknown>) => {
-      const insertPayload = {
-        id: payload.id ?? undefined,
-        coach_prompt_id: payload.coach_prompt_id ?? payload.id ?? undefined,
-        description: payload.description ?? null,
-        version: payload.version ?? null,
-        rollout_status: payload.rollout_status ?? null,
-        step: payload.step ?? null,
-        variant: payload.variant ?? null,
+      await ensurePromptRegistryColumns(supabase);
+      const attemptInsert = async (overrideRolloutStatus?: string) => {
+        const entryPayload: Record<string, unknown> = {
+          coach_prompt_id: payload.coach_prompt_id ?? payload.id ?? undefined,
+          description: payload.description ?? null,
+          version: payload.version ?? null,
+          rollout_status:
+            overrideRolloutStatus ??
+            ((payload.rollout_status as string | undefined) ?? null),
+          ...(promptRegistryColumnSupport.hasStep ? { step: payload.step ?? null } : {}),
+          ...(promptRegistryColumnSupport.hasPromptText ? { prompt_text: payload.prompt_text ?? null } : {}),
+        };
+        const { data, error } = await supabase.from('prompt_registry').insert([entryPayload]).select().single();
+        if (error) {
+          throw error;
+        }
+        if (!data) {
+          throw new Error('Failed to insert prompt registry entry');
+        }
+        return data;
       };
-      const { data, error } = await supabase.from('prompt_registry').insert([insertPayload]).select().single();
-      if (error || !data) throw error ?? new Error('Failed to insert prompt registry entry');
-      return data;
+
+      try {
+        return await attemptInsert();
+      } catch (err: unknown) {
+        const msg = String(err instanceof Error ? err.message : '').toLowerCase();
+        let retried = false;
+        let overrideRolloutStatus: string | undefined;
+        if (promptRegistryColumnSupport.hasStep && msg.includes("'step' column")) {
+          promptRegistryColumnSupport.hasStep = false;
+          retried = true;
+        }
+        if (promptRegistryColumnSupport.hasPromptText && msg.includes("'prompt_text' column")) {
+          promptRegistryColumnSupport.hasPromptText = false;
+          retried = true;
+        }
+        if (msg.includes('prompt_registry_rollout_status_check')) {
+          const requested = (payload.rollout_status as string | undefined) ?? undefined;
+          // Map newer status values to a legacy-safe set when the database
+          // still enforces the older CHECK (active/deprecated).
+          if (requested === 'retired') {
+            overrideRolloutStatus = 'deprecated';
+          } else if (requested === 'pilot') {
+            overrideRolloutStatus = 'active';
+          } else if (!requested) {
+            overrideRolloutStatus = 'active';
+          } else {
+            // For any other unexpected value, fall back to active.
+            overrideRolloutStatus = 'active';
+          }
+          retried = true;
+        }
+        if (retried) {
+          return attemptInsert(overrideRolloutStatus);
+        }
+        throw err;
+      }
     },
     createSimJobStub: async (payload) => {
       if (!payload.segmentId && !(Array.isArray(payload.draftIds) && payload.draftIds.length > 0)) {
@@ -819,23 +1078,43 @@ export function createLiveDeps(
       const description = (payload.description as string) ?? undefined;
       const websiteUrl = (payload.websiteUrl as string) ?? undefined;
       const valueProp = (payload.valueProp as string) ?? undefined;
-      const { jobId, profile } = await createIcpProfileViaCoach(supabase, chatClient, {
+      const promptId = (payload.promptId as string) ?? undefined;
+      const provider = (payload.provider as string) ?? undefined;
+      const model = (payload.model as string) ?? undefined;
+      let coachClient: ChatClient = chatClient;
+      if (provider || model) {
+        const cfg = resolveModelConfig({ provider, model, task: 'icp' });
+        coachClient = buildChatClientForModel(cfg as any);
+      }
+      const { jobId, profile } = await createIcpProfileViaCoach(supabase, coachClient, {
         name,
         description,
         websiteUrl,
         valueProp,
+        // Thread promptId through so jobs/analytics can attribute the coach prompt.
+        // The ICP coach itself still uses the fixed scaffold; promptId is metadata.
+        ...(promptId ? { promptId } : {}),
       });
-      return { jobId, ...profile };
+      return { jobId, profile };
     },
     generateIcpHypothesis: async (payload: Record<string, unknown>) => {
       const icpProfileId = payload.icpProfileId as string | undefined;
       if (!icpProfileId) throw new Error('icpProfileId is required');
       const icpDescription = (payload.icpDescription as string) ?? undefined;
-      const { jobId, hypothesis } = await createIcpHypothesisViaCoach(supabase, chatClient, {
+      const promptId = (payload.promptId as string) ?? undefined;
+      const provider = (payload.provider as string) ?? undefined;
+      const model = (payload.model as string) ?? undefined;
+      let coachClient: ChatClient = chatClient;
+      if (provider || model) {
+        const cfg = resolveModelConfig({ provider, model, task: 'hypothesis' });
+        coachClient = buildChatClientForModel(cfg as any);
+      }
+      const { jobId, hypothesis } = await createIcpHypothesisViaCoach(supabase, coachClient, {
         icpProfileId,
         icpDescription,
+        ...(promptId ? { promptId } : {}),
       });
-      return { jobId, ...hypothesis };
+      return { jobId, hypothesis };
     },
     listSmartleadCampaigns: async () => {
       const campaigns = (await smartlead.listCampaigns({ dryRun: false })).campaigns;

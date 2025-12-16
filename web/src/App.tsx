@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react';
 
 import './index.css';
-import { CampaignsPage } from './pages/CampaignsPage';
-import { DraftsPage } from './pages/DraftsPage';
-import { EventsPage } from './pages/EventsPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { WorkflowZeroPage } from './pages/WorkflowZeroPage';
-import { IcpDiscoveryPage } from './pages/IcpDiscoveryPage';
-import { SimPage } from './pages/SimPage';
-import { PromptRegistryPage } from './pages/PromptRegistryPage';
+import PipelineWorkspaceWithSidebar from './pages/PipelineWorkspaceWithSidebar';
 import { fetchMeta, type MetaStatus } from './apiClient';
+import { IcpDiscoveryPage } from './pages/IcpDiscoveryPage';
+
+export function resolveViewFromLocation(loc?: Location | URL): 'pipeline' | 'icp-discovery' {
+  if (!loc) return 'pipeline';
+  const search = loc.search ?? '';
+  if (!search) return 'pipeline';
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  const view = params.get('view');
+  if (view === 'icp-discovery') return 'icp-discovery';
+  return 'pipeline';
+}
 
 function App() {
-  const [view, setView] = useState<'icp' | 'segments' | 'sim' | 'analytics' | 'prompts' | 'settings'>('icp');
   const apiBase = import.meta.env.VITE_API_BASE ?? '/api';
   const adapterMode = import.meta.env.VITE_WEB_ADAPTER_MODE ?? 'live';
   const [meta, setMeta] = useState<MetaStatus | null>(null);
@@ -27,76 +30,26 @@ function App() {
   const smartleadReady = meta?.smartleadReady ?? true;
   const modeLabel = meta?.mode ?? adapterMode;
   const supabaseReady = meta?.supabaseReady ?? true;
+  const view = resolveViewFromLocation(
+    typeof window !== 'undefined' && window.location ? window.location : undefined
+  );
 
   return (
     <main className="shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">AI SDR GTM</p>
-          <h1>Workflow Hub</h1>
-          <p className="muted">Guided flows for first email, ICP discovery, SIM, and operational controls.</p>
-          <p className="muted">
-            API base: {apiBase} · Mode: {modeLabel} · Supabase: {supabaseReady ? 'ready' : 'missing'} · Smartlead:{' '}
-            {smartleadReady ? 'ready' : 'not ready'}
-          </p>
-          {metaError && (
-            <p className="error-text" style={{ marginTop: 4 }}>
-              Failed to load adapter meta: {metaError}
-            </p>
-          )}
-        </div>
-        <div className="status-block">
-          <span className={`status-dot ${supabaseReady ? 'ok' : 'warn'}`} />
-          <span>Supabase</span>
-          <span className={`status-dot ${smartleadReady ? 'ok' : 'warn'}`} />
-          <span>Smartlead</span>
-        </div>
-      </header>
-
-      <nav className="tabbar">
-        <button className={view === 'icp' ? 'tab active' : 'tab'} onClick={() => setView('icp')}>
-          ICP & Coach
-        </button>
-        <button className={view === 'segments' ? 'tab active' : 'tab'} onClick={() => setView('segments')}>
-          Segments & Enrichment
-        </button>
-        <button className={view === 'sim' ? 'tab active' : 'tab'} onClick={() => setView('sim')}>
-          SIM
-        </button>
-        <button className={view === 'analytics' ? 'tab active' : 'tab'} onClick={() => setView('analytics')}>
-          Analytics
-        </button>
-        <button className={view === 'prompts' ? 'tab active' : 'tab'} onClick={() => setView('prompts')}>
-          Prompt Registry
-        </button>
-        <button className={view === 'settings' ? 'tab active' : 'tab'} onClick={() => setView('settings')}>
-          Settings
-        </button>
-      </nav>
-
-      {view === 'icp' && <IcpDiscoveryPage />}
-      {view === 'segments' && <WorkflowZeroPage smartleadReady={smartleadReady} />}
-      {view === 'sim' && <SimPage />}
-      {view === 'analytics' && (
-        <div className="grid">
-          <div className="card">
-            <EventsPage />
-          </div>
-        </div>
+      {metaError && (
+        <p className="error-text" style={{ marginTop: 4 }}>
+          Failed to load adapter meta: {metaError}
+        </p>
       )}
-      {view === 'prompts' && (
-        <div className="grid">
-          <div className="card">
-            <PromptRegistryPage />
-          </div>
-        </div>
-      )}
-      {view === 'settings' && (
-        <div className="grid">
-          <div className="card">
-            <SettingsPage />
-          </div>
-        </div>
+      {view === 'icp-discovery' ? (
+        <IcpDiscoveryPage />
+      ) : (
+        <PipelineWorkspaceWithSidebar
+          apiBase={apiBase}
+          modeLabel={modeLabel}
+          supabaseReady={supabaseReady}
+          smartleadReady={smartleadReady}
+        />
       )}
     </main>
   );

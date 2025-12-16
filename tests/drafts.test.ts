@@ -267,4 +267,97 @@ describe('generateDrafts', () => {
     expect(draftRow.metadata?.coach_prompt_id).toBe('resolved_intro_v2');
     expect(draftRow.metadata?.draft_pattern).toBe('resolved_intro_v2:standard:B');
   });
+
+  it('draft_generation_uses_explicit_prompt_id_when_provided', async () => {
+    const resolveSpy = vi.spyOn(promptRegistry, 'resolvePromptForStep').mockResolvedValue('should_not_be_used');
+
+    const single = vi.fn().mockResolvedValue({
+      data: {
+        id: 'camp',
+        segment_id: 'seg',
+        segment_version: 1,
+        language: 'en',
+        pattern_mode: 'standard',
+      },
+      error: null,
+    });
+    const eq = vi.fn().mockReturnValue({ single });
+
+    const membersMatch = vi.fn().mockReturnValue({
+      limit: vi.fn().mockResolvedValue({
+        data: [
+          {
+            contact_id: 'contact-1',
+            company_id: 'company-1',
+            snapshot: {
+              request: {
+                email_type: 'intro',
+                language: 'en',
+                pattern_mode: 'standard',
+                brief: {
+                  prospect: { full_name: 'Jane Doe', role: 'CTO', company_name: 'Acme' },
+                  company: {},
+                  context: {},
+                  offer: { product_name: 'Tool', one_liner: 'Desc', key_benefits: ['a'] },
+                  constraints: {},
+                },
+              },
+            },
+          },
+        ],
+        error: null,
+      }),
+    });
+
+    const insertSelect = vi.fn().mockResolvedValue({ data: [{ id: 'draft-1' }], error: null });
+    const insert = vi.fn().mockReturnValue({ select: insertSelect });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'campaigns') {
+        return { select: () => ({ eq }) } as any;
+      }
+      if (table === 'segment_members') {
+        return {
+          select: () => ({ match: membersMatch }),
+        } as any;
+      }
+      if (table === 'drafts') {
+        return { insert } as any;
+      }
+      throw new Error(`Unexpected table ${table}`);
+    });
+
+    const supabase = { from } as any;
+
+    const aiResponse: EmailDraftResponse = {
+      subject: 'Hello',
+      body: 'Body',
+      metadata: {
+        model: 'mock',
+        language: 'en',
+        pattern_mode: 'standard',
+        email_type: 'intro',
+        coach_prompt_id: 'intro_v1',
+      },
+    };
+    const chatClient: ChatClient = {
+      complete: vi.fn().mockResolvedValue(JSON.stringify(aiResponse)),
+    };
+    const aiClient = new AiClient(chatClient);
+
+    const summary = await generateDrafts(supabase, aiClient, {
+      campaignId: 'camp',
+      variant: 'C',
+      coachPromptStep: 'draft',
+      explicitCoachPromptId: 'explicit_intro_v3',
+    } as any);
+
+    expect(summary.generated).toBe(1);
+    expect(resolveSpy).not.toHaveBeenCalled();
+
+    const insertedPayload = insert.mock.calls[0]?.[0] as any[];
+    const draftRow = insertedPayload[0];
+    expect(draftRow.metadata?.coach_prompt_id).toBe('explicit_intro_v3');
+    expect(draftRow.metadata?.draft_pattern).toBe('explicit_intro_v3:standard:C');
+  });
 });

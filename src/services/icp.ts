@@ -7,6 +7,7 @@ export interface IcpProfileInput {
   companyCriteria?: Record<string, unknown>;
   personaCriteria?: Record<string, unknown>;
   createdBy?: string;
+  phaseOutputs?: Record<string, unknown>;
 }
 
 export interface IcpHypothesisInput {
@@ -29,6 +30,7 @@ export async function createIcpProfile(
         description: input.description ?? null,
         company_criteria: input.companyCriteria ?? {},
         persona_criteria: input.personaCriteria ?? {},
+        phase_outputs: input.phaseOutputs ?? null,
         created_by: input.createdBy ?? null,
       },
     ])

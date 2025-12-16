@@ -56,6 +56,15 @@ export interface ContactRow {
   persona?: string;
 }
 
+export interface InboxMessage {
+  id: string;
+  subject: string;
+  body?: string;
+  read: boolean;
+  category?: string;
+  receivedAt: string;
+}
+
 export interface MetaStatus {
   mode: 'live' | 'mock' | 'unknown';
   apiBase: string;
@@ -63,16 +72,37 @@ export interface MetaStatus {
   supabaseReady: boolean;
 }
 
+export interface ServiceConfig {
+  name: string;
+  category: 'database' | 'llm' | 'delivery' | 'enrichment';
+  status: 'connected' | 'disconnected' | 'warning';
+  hasApiKey: boolean;
+  config?: {
+    apiKey?: string;
+    baseUrl?: string;
+  };
+  lastChecked?: string;
+  errorMessage?: string;
+}
+
 export type PromptStep = 'icp_profile' | 'icp_hypothesis' | 'draft';
 
 export interface PromptEntry {
   id: string;
-  step: PromptStep;
   version: string;
   description?: string;
   rollout_status?: 'pilot' | 'active' | 'retired' | 'deprecated';
   prompt_text?: string;
   is_active?: boolean;
+  // Step is optional for web: some environments do not have a step column.
+  step?: PromptStep;
+}
+
+export interface LlmModelInfo {
+  id: string;
+  provider: string;
+  ownedBy?: string | null;
+  contextWindow?: number | null;
 }
 
 const baseUrl = import.meta.env.VITE_API_BASE ?? '/api';
@@ -170,8 +200,27 @@ export async function fetchReplyPatterns(opts: { since?: string; topN?: number }
   return fetchJson<PatternRow[]>(`/reply-patterns${qs ? `?${qs}` : ''}`);
 }
 
+export async function fetchInboxMessages(opts: { status?: string; limit?: number } = {}) {
+  const params = new URLSearchParams();
+  if (opts.status) params.set('status', opts.status);
+  if (opts.limit) params.set('limit', String(opts.limit));
+  const qs = params.toString();
+  return fetchJson<{ messages: InboxMessage[]; total: number }>(
+    `/inbox/messages${qs ? `?${qs}` : ''}`
+  );
+}
+
 export async function fetchMeta(): Promise<MetaStatus> {
   return fetchJson<MetaStatus>('/meta');
+}
+
+export async function fetchServices(): Promise<{ services: ServiceConfig[] }> {
+  return fetchJson<{ services: ServiceConfig[] }>('/services');
+}
+
+export async function fetchLlmModels(provider: 'openai' | 'anthropic'): Promise<LlmModelInfo[]> {
+  const params = new URLSearchParams({ provider });
+  return fetchJson<LlmModelInfo[]>(`/llm/models?${params.toString()}`);
 }
 
 export async function fetchSmartleadCampaigns(): Promise<{ id: string; name: string; status?: string }[]> {
@@ -312,11 +361,11 @@ export async function fetchPromptRegistry(step?: PromptStep) {
 
 export async function createPromptRegistryEntry(entry: {
   id?: string;
-  step: PromptStep;
   version?: string;
   description?: string;
   rollout_status?: 'pilot' | 'active' | 'retired';
   prompt_text?: string;
+  step?: PromptStep;
 }) {
   return fetchJson<PromptEntry>('/prompt-registry', {
     method: 'POST',
@@ -390,7 +439,14 @@ export async function promoteIcpDiscoveryCandidates(payload: {
   });
 }
 
-export async function generateIcpProfileViaCoach(payload: { name: string; description?: string; promptId?: string }) {
+export async function generateIcpProfileViaCoach(payload: {
+  name: string;
+  description?: string;
+  userPrompt?: string;
+  promptId?: string;
+  provider?: string;
+  model?: string;
+}) {
   const res = await fetchJson<{ jobId?: string; profile: { id: string; name?: string; description?: string } }>(
     '/coach/icp',
     {
@@ -410,7 +466,10 @@ export async function generateHypothesisViaCoach(payload: {
   icpProfileId: string;
   hypothesisLabel?: string;
   searchConfig?: Record<string, unknown>;
+  userPrompt?: string;
   promptId?: string;
+  provider?: string;
+  model?: string;
 }) {
   const res = await fetchJson<{
     jobId?: string;

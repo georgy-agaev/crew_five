@@ -1,0 +1,29 @@
+{
+  "workflow": "bug-management",
+  "phase": "fixing",
+  "phaseNumber": 3,
+  "config": {
+    "priority": "high",
+    "maxBugsPerRun": 50,
+    "sourceReport": "bug-hunting-report.md"
+  },
+  "validation": {
+    "required": ["report-exists", "type-check", "build"],
+    "optional": ["tests"]
+  },
+  "nextAgent": "bug-fixer",
+  "timestamp": "2025-12-11T21:51:00Z",
+  "metadata": {
+    "createdBy": "bug-orchestrator",
+    "iteration": 1,
+    "maxIterations": 3,
+    "stage": "high",
+    "attempt": 1,
+    "maxAttempts": 3,
+    "previousStage": "critical",
+    "previousStageResult": "success",
+    "previousFixCount": 1,
+    "preExistingTypeErrors": 2,
+    "preExistingTypeErrorsNote": "TypeScript errors in icpCoach.ts existed before critical fixes and are tracked separately in high priority queue"
+  }
+}

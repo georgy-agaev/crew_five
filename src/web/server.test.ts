@@ -160,7 +160,7 @@ describe('web adapter server', () => {
   it('routes analytics summary/optimize and prompt registry', async () => {
     const analyticsSummary = vi.fn(async ({ groupBy, since }) => [{ groupBy, since }]);
     const analyticsOptimize = vi.fn(async ({ since }) => ({ suggestions: [{ draft_pattern: 'p', recommendation: 'keep' }], simSummary: [] }));
-    const listPromptRegistry = vi.fn(async () => [{ coach_prompt_id: 'cp1', version: 'v1' }]);
+    const listPromptRegistry = vi.fn(async () => [{ id: 'uuid-1', coach_prompt_id: 'cp1', version: 'v1', rollout_status: 'active' }]);
     const resSummary = await dispatch(
       {
         ...deps,
@@ -198,7 +198,11 @@ describe('web adapter server', () => {
       buildMeta({ mode: 'live' })
     );
     expect(listPromptRegistry).toHaveBeenCalledTimes(1);
-    expect((resPromptRegistry.body as any[])[0].coach_prompt_id).toBe('cp1');
+    const rows = resPromptRegistry.body as any[];
+    expect(rows[0].coach_prompt_id).toBe('cp1');
+    // UI should see id as the human coach_prompt_id, not the internal UUID.
+    expect(rows[0].id).toBe('cp1');
+    expect(rows[0].is_active).toBe(true);
   });
 
   it('routes prompt registry active endpoints', async () => {
@@ -257,6 +261,232 @@ describe('web adapter server', () => {
     );
     expect(setActivePromptForStep).toHaveBeenCalledWith('icp_profile', 'icp_intro_v1');
     expect(resSet.body).toEqual({ ok: true });
+  });
+
+  it('live deps prompt registry create uses coach_prompt_id and lets UUID default', async () => {
+    const insert = vi.fn((rows: any[]) => {
+      const payload = rows[0];
+      return {
+        select: () => ({
+          single: () =>
+            Promise.resolve({
+              data: { ...payload, id: 'uuid-1' },
+              error: null,
+            }),
+        }),
+      };
+    });
+    const from = vi.fn((table: string) => {
+      if (table === 'prompt_registry') {
+        return { insert };
+      }
+      return {
+        select: vi.fn(),
+        update: vi.fn(),
+        insert: vi.fn(),
+      };
+    });
+    const supabase = { from } as any;
+
+    const fakeAiClient: any = {};
+    const fakeSmartlead: any = { listCampaigns: vi.fn(async () => ({ campaigns: [] })) };
+    const chatClient: any = { complete: vi.fn().mockResolvedValue('{}') };
+
+    const liveDeps = createLiveDeps({
+      supabase,
+      aiClient: fakeAiClient,
+      smartlead: fakeSmartlead,
+      chatClient,
+    }) as any;
+
+    const created = await liveDeps.createPromptRegistryEntry({
+      id: 'draft_intro_v1',
+      step: 'draft',
+      version: 'v1',
+      rollout_status: 'pilot',
+    });
+
+    expect(from).toHaveBeenCalledWith('prompt_registry');
+    expect(insert).toHaveBeenCalledTimes(1);
+    const insertedRow = insert.mock.calls[0]?.[0][0];
+    expect(insertedRow.id).toBeUndefined();
+    expect(insertedRow.coach_prompt_id).toBe('draft_intro_v1');
+    expect(insertedRow.step).toBe('draft');
+    expect(created.id).toBe('uuid-1');
+    expect(created.coach_prompt_id).toBe('draft_intro_v1');
+  });
+
+  it('live deps prompt registry create falls back rollout_status when check constraint fails', async () => {
+    const insert = vi
+      .fn()
+      // First insert fails with rollout_status CHECK constraint error.
+      .mockImplementationOnce((rows: any[]) => {
+        const payload = rows[0];
+        return {
+          select: () => ({
+            single: () =>
+              Promise.resolve({
+                data: null,
+                error: new Error(
+                  'new row for relation "prompt_registry" violates check constraint "prompt_registry_rollout_status_check"'
+                ),
+              }),
+          }),
+        };
+      })
+      // Second insert succeeds with normalized rollout_status.
+      .mockImplementationOnce((rows: any[]) => {
+        const payload = rows[0];
+        return {
+          select: () => ({
+            single: () =>
+              Promise.resolve({
+                data: { ...payload, id: 'uuid-2' },
+                error: null,
+              }),
+          }),
+        };
+      });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'prompt_registry') {
+        return { insert };
+      }
+      // Fallback for ensurePromptRegistryColumns calls etc.
+      return {
+        select: vi.fn(),
+        update: vi.fn(),
+        insert: vi.fn(),
+      };
+    });
+    const supabase = { from } as any;
+
+    const fakeAiClient: any = {};
+    const fakeSmartlead: any = { listCampaigns: vi.fn(async () => ({ campaigns: [] })) };
+    const chatClient: any = { complete: vi.fn().mockResolvedValue('{}') };
+
+    const liveDeps = createLiveDeps({
+      supabase,
+      aiClient: fakeAiClient,
+      smartlead: fakeSmartlead,
+      chatClient,
+    }) as any;
+
+    const created = await liveDeps.createPromptRegistryEntry({
+      id: 'draft_intro_v1',
+      step: 'draft',
+      version: 'v1',
+      rollout_status: 'pilot',
+    });
+
+    expect(insert).toHaveBeenCalledTimes(2);
+    const firstPayload = insert.mock.calls[0]?.[0][0];
+    const secondPayload = insert.mock.calls[1]?.[0][0];
+    expect(firstPayload.rollout_status).toBe('pilot');
+    expect(secondPayload.rollout_status).toBe('active');
+    expect(created.id).toBe('uuid-2');
+    expect(created.coach_prompt_id).toBe('draft_intro_v1');
+    expect(created.rollout_status).toBe('active');
+  });
+
+  it('live deps generateIcpProfile/generateIcpHypothesis forward promptId into coach jobs', async () => {
+    const insertJob = vi.fn((row: any) => ({
+      select: () => ({
+        single: () =>
+          Promise.resolve({
+            data: { id: 'job-icp', ...row },
+            error: null,
+          }),
+      }),
+    }));
+    const updateJob = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({
+            data: { id: 'job-icp', status: 'completed', result: {} },
+            error: null,
+          }),
+        }),
+      }),
+    });
+    const insertProfile = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: { id: 'icp-10', name: 'ICP' },
+          error: null,
+        }),
+      }),
+    });
+    const insertHypo = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: { id: 'hyp-10', icp_id: 'icp-10' },
+          error: null,
+        }),
+      }),
+    });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'jobs') return { insert: insertJob, update: updateJob };
+      if (table === 'icp_profiles') return { insert: insertProfile };
+      if (table === 'icp_hypotheses') return { insert: insertHypo };
+      if (table === 'prompt_registry') {
+        return {
+          select: () => ({
+            eq: () => ({
+              limit: () =>
+                Promise.resolve({
+                  data: [{ prompt_text: 'Coach prompt text' }],
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      }
+      return { insert: vi.fn(), update: vi.fn(), select: vi.fn() };
+    });
+    const supabase = { from } as any;
+
+    let coachCall = 0;
+    const chatClient: any = {
+      complete: vi.fn().mockImplementation(async () => {
+        coachCall += 1;
+        if (coachCall === 1) {
+          return JSON.stringify({
+            name: 'ICP',
+            description: 'Desc',
+            companyCriteria: {},
+            personaCriteria: {},
+          });
+        }
+        return JSON.stringify({
+          hypothesisLabel: 'Stub Hypothesis',
+          searchConfig: {},
+        });
+      }),
+    };
+    const fakeAiClient: any = {}; // not used by ICP coach paths
+    const fakeSmartlead: any = { listCampaigns: vi.fn(async () => ({ campaigns: [] })) };
+
+    const liveDeps = createLiveDeps({
+      supabase,
+      aiClient: fakeAiClient,
+      smartlead: fakeSmartlead,
+      chatClient,
+    }) as any;
+
+    await liveDeps.generateIcpProfile({ name: 'ICP', promptId: 'icp_profile_v1' });
+    const insertedProfileJob = insertJob.mock.calls[0]?.[0];
+    expect(insertedProfileJob.payload?.input?.promptId).toBe('icp_profile_v1');
+
+    insertJob.mockClear();
+    await liveDeps.generateIcpHypothesis({
+      icpProfileId: 'icp-10',
+      icpDescription: 'Desc',
+      promptId: 'icp_hypothesis_v1',
+    });
+    const insertedHypoJob = insertJob.mock.calls[0]?.[0];
+    expect(insertedHypoJob.payload?.input?.promptId).toBe('icp_hypothesis_v1');
   });
 
   it('routes sim stub', async () => {
@@ -510,5 +740,59 @@ describe('web adapter server', () => {
     );
     expect(createPromptRegistryEntry).toHaveBeenCalledWith({ id: 'pr1', step: 'icp' });
     expect((prRes.body as any).id).toBe('pr1');
+  });
+
+  it('forwards promptId through coach endpoints', async () => {
+    const generateIcpProfile = vi.fn(async (payload) => ({ jobId: 'job-3', profile: { id: 'p2', ...payload } }));
+    const generateIcpHypothesis = vi.fn(async (payload) => ({
+      jobId: 'job-4',
+      hypothesis: { id: 'h2', ...payload },
+    }));
+
+    await dispatch(
+      { ...deps, generateIcpProfile, generateIcpHypothesis } as any,
+      { method: 'POST', pathname: '/api/coach/icp', body: { name: 'ICP', promptId: 'icp_profile_v1' } },
+      buildMeta({ mode: 'live' })
+    );
+    expect(generateIcpProfile).toHaveBeenCalledWith({ name: 'ICP', promptId: 'icp_profile_v1' });
+
+    await dispatch(
+      { ...deps, generateIcpProfile, generateIcpHypothesis } as any,
+      {
+        method: 'POST',
+        pathname: '/api/coach/hypothesis',
+        body: { icpProfileId: 'p1', label: 'H1', promptId: 'icp_hypothesis_v1' },
+      },
+      buildMeta({ mode: 'live' })
+    );
+    expect(generateIcpHypothesis).toHaveBeenCalledWith({
+      icpProfileId: 'p1',
+      label: 'H1',
+      promptId: 'icp_hypothesis_v1',
+    });
+  });
+
+  it('exposes a consolidated services view', async () => {
+    const meta = buildMeta({ mode: 'live' });
+    const res = await dispatch(
+      {
+        listCampaigns: vi.fn(),
+        listDrafts: vi.fn(),
+        generateDrafts: vi.fn(),
+        sendSmartlead: vi.fn(),
+        listEvents: vi.fn(),
+        listReplyPatterns: vi.fn(),
+      } as any,
+      { method: 'GET', pathname: '/api/services' },
+      meta
+    );
+    const body = res.body as any;
+    expect(Array.isArray(body.services)).toBe(true);
+    const supabase = body.services.find((s: any) => s.name === 'Supabase');
+    const smartlead = body.services.find((s: any) => s.name === 'Smartlead');
+    expect(supabase).toBeDefined();
+    expect(smartlead).toBeDefined();
+    expect(supabase.category).toBe('database');
+    expect(smartlead.category).toBe('delivery');
   });
 });

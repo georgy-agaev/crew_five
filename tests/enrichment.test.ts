@@ -91,6 +91,47 @@ describe('enrichment', () => {
     expect(queued.mode).toBe('async');
   });
 
+  it('enrich_run_with_parallel_provider_uses_parallel_adapter', async () => {
+    process.env.PARALLEL_API_KEY = 'test-parallel-key';
+    const ensureSpy = vi
+      .spyOn(snapshotWorkflow, 'ensureFinalSegmentSnapshot')
+      .mockResolvedValue({ version: 1, count: 3 });
+    const enqueueSpy = vi.spyOn(enrichSegmentSvc, 'enqueueSegmentEnrichment').mockResolvedValue({
+      id: 'job-3',
+      type: 'enrich',
+      status: 'created',
+      segment_id: 'seg-3',
+      segment_version: 1,
+      payload: { adapter: 'parallel', member_contact_ids: [], member_company_ids: ['co1'] },
+      result: null,
+      created_at: '',
+      updated_at: '',
+    } as any);
+    const runSpy = vi.spyOn(enrichSegmentSvc, 'runSegmentEnrichmentOnce').mockResolvedValue({
+      jobId: 'job-3',
+      processed: 1,
+      skipped: 0,
+      failed: 0,
+      dryRun: false,
+    });
+    const client = { from: vi.fn() } as any;
+
+    const queued = await enrichCommand(client, {
+      segmentId: 'seg-3',
+      provider: 'parallel',
+      dryRun: false,
+    });
+
+    expect(ensureSpy).toHaveBeenCalledWith(client, 'seg-3');
+    expect(enqueueSpy).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({ segmentId: 'seg-3', adapter: 'parallel' })
+    );
+    expect(runSpy).not.toHaveBeenCalled();
+    expect(queued.status).toBe('queued');
+    expect(queued.mode).toBe('async');
+  });
+
   it('enqueue_segment_enrichment_creates_enrich_job_with_targets', async () => {
     const selectMembers = vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
@@ -468,6 +509,12 @@ describe('enrichment', () => {
   it('resolve_enrichment_adapter_throws_for_unknown_provider', () => {
     const supabase = { from: vi.fn() } as any;
     const registry = createEnrichmentProviderRegistry(supabase);
-    expect(() => registry.getAdapter('unknown-provider')).toThrow(/Unknown enrichment provider/);
+    try {
+      registry.getAdapter('unknown-provider');
+      throw new Error('Expected getAdapter to throw');
+    } catch (err: any) {
+      expect(err.message).toMatch(/Unknown enrichment provider/);
+      expect(err.code).toBe('ENRICHMENT_PROVIDER_UNKNOWN');
+    }
   });
 });
