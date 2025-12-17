@@ -95,10 +95,12 @@
   → Artifacts: [SegmentBuilder.tsx](web/src/components/SegmentBuilder.tsx), [tests](web/src/components/SegmentBuilder.test.tsx), [example](web/src/components/SegmentBuilder.example.tsx)
 - [X] T014 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-5] [US1] Add filterPreviewAPI and createSegmentAPI functions to web/src/apiClient.ts
   → Artifacts: [apiClient.ts](web/src/apiClient.ts)
-- [ ] T015 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] [US1] Add "Search Database" button to Segment tab in web/src/pages/PipelineWorkspaceWithSidebar.tsx (opens SegmentBuilder modal)
-- [ ] T016 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] [US1] Integrate SegmentBuilder modal with state management in web/src/pages/PipelineWorkspaceWithSidebar.tsx (show/hide modal, pass callbacks)
+- [X] T015 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] [US1] Add "Search Database" button to Segment tab in web/src/pages/PipelineWorkspaceWithSidebar.tsx (opens SegmentBuilder modal)
+  → Artifacts: [PipelineWorkspaceWithSidebar.tsx](web/src/pages/PipelineWorkspaceWithSidebar.tsx)
+- [X] T016 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] [US1] Integrate SegmentBuilder modal with state management in web/src/pages/PipelineWorkspaceWithSidebar.tsx (show/hide modal, pass callbacks)
+  → Artifacts: [PipelineWorkspaceWithSidebar.tsx](web/src/pages/PipelineWorkspaceWithSidebar.tsx)
 
-**Checkpoint**: User Story 1 should be fully functional - users can manually create segments with filters
+**Checkpoint**: User Story 1 should be fully functional - users can manually create segments with filters ✅
 
 ---
 

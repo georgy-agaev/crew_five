@@ -26,7 +26,9 @@ import {
   type PromptEntry,
   type PromptStep,
   fetchLlmModels,
+  createSegmentAPI,
 } from '../apiClient';
+import { SegmentBuilder } from '../components/SegmentBuilder';
 import { loadSettings, saveSettings, type Settings } from '../hooks/useSettingsStore';
 import { getRecommendedModels, type ModelEntry } from '../../../src/config/modelCatalog';
 
@@ -541,6 +543,7 @@ type PipelineWorkspaceProps = {
   const [showAIChat, setShowAIChat] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showServices, setShowServices] = useState(false);
+  const [showSegmentBuilder, setShowSegmentBuilder] = useState(false);
   const [language, setLanguage] = useState('en');
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false); // true = wide (240px), false = narrow (72px)
@@ -1882,10 +1885,31 @@ type PipelineWorkspaceProps = {
   };
 
   const handleSearchDatabaseClick = () => {
-    setShowAIChat(true);
-    setAiMessage(
-      'Help me find and filter existing segments in the database for this ICP and hypothesis.'
-    );
+    setShowSegmentBuilder(true);
+  };
+
+  const handleCreateSegment = async (segment: {name: string; filterDefinition: any[]}) => {
+    try {
+      // Call API to create segment
+      await createSegmentAPI({
+        name: segment.name,
+        locale: 'en',
+        filterDefinition: segment.filterDefinition,
+      });
+
+      // Close modal
+      setShowSegmentBuilder(false);
+
+      // Refresh segments list
+      const updatedSegments = await fetchSegments();
+      setSegments(updatedSegments);
+
+      // Optional: Show success message
+      console.log('Segment created successfully:', segment.name);
+    } catch (error) {
+      console.error('Failed to create segment:', error);
+      // You could add error state/toast here if needed
+    }
   };
 
   const handleEnrichSegment = async () => {
@@ -5073,6 +5097,12 @@ type PipelineWorkspaceProps = {
           </div>
         </div>
       )}
+
+      <SegmentBuilder
+        isOpen={showSegmentBuilder}
+        onClose={() => setShowSegmentBuilder(false)}
+        onCreate={handleCreateSegment}
+      />
     </div>
   );
 }
