@@ -139,7 +139,8 @@
   → Artifacts: [apiClient.ts](web/src/apiClient.ts)
 - [X] T023 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-8] [US4] Create ExaWebsetSearch component in web/src/components/ExaWebsetSearch.tsx (modal with description input, results list, save button)
   → Artifacts: [ExaWebsetSearch.tsx](web/src/components/ExaWebsetSearch.tsx), [tests](web/src/components/ExaWebsetSearch.test.tsx)
-- [ ] T024 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-8] [US4] Add "EXA Web Search" button to Segment tab in web/src/pages/PipelineWorkspaceWithSidebar.tsx (opens ExaWebsetSearch modal)
+- [X] T024 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-8] [US4] Add "EXA Web Search" button to Segment tab in web/src/pages/PipelineWorkspaceWithSidebar.tsx (opens ExaWebsetSearch modal)
+  → Artifacts: [PipelineWorkspaceWithSidebar.tsx](web/src/pages/PipelineWorkspaceWithSidebar.tsx) - Updated button handler, added modal state and integration
 - [ ] T025 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] [US4] Integrate ExaWebsetSearch modal with state management in web/src/pages/PipelineWorkspaceWithSidebar.tsx (show/hide modal, refresh segment list after save)
 - [ ] T026 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] [US4] Add EXA result persistence logic to src/web/server.ts (save companies/employees from EXA results to database tables)
   - Implement duplicate company detection/merge strategy (check by domain or name)

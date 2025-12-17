@@ -27,8 +27,10 @@ import {
   type PromptStep,
   fetchLlmModels,
   createSegmentAPI,
+  saveExaSegmentAPI,
 } from '../apiClient';
 import { SegmentBuilder } from '../components/SegmentBuilder';
+import { ExaWebsetSearch } from '../components/ExaWebsetSearch';
 import { loadSettings, saveSettings, type Settings } from '../hooks/useSettingsStore';
 import { getRecommendedModels, type ModelEntry } from '../../../src/config/modelCatalog';
 
@@ -544,6 +546,7 @@ type PipelineWorkspaceProps = {
   const [showSettings, setShowSettings] = useState(false);
   const [showServices, setShowServices] = useState(false);
   const [showSegmentBuilder, setShowSegmentBuilder] = useState(false);
+  const [showExaWebsetSearch, setShowExaWebsetSearch] = useState(false);
   const [language, setLanguage] = useState('en');
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false); // true = wide (240px), false = narrow (72px)
@@ -1912,6 +1915,38 @@ type PipelineWorkspaceProps = {
     }
   };
 
+  const handleSaveExaSegment = async (segment: {
+    name: string;
+    companies: any[];
+    employees: any[];
+    query: string;
+  }) => {
+    try {
+      // Call API to save EXA segment
+      await saveExaSegmentAPI({
+        name: segment.name,
+        locale: language,
+        companies: segment.companies,
+        employees: segment.employees,
+        query: segment.query,
+        description: `EXA Web Search: ${segment.query}`,
+      });
+
+      // Close modal
+      setShowExaWebsetSearch(false);
+
+      // Refresh segments list
+      const updatedSegments = await fetchSegments();
+      setSegments(updatedSegments);
+
+      // Optional: Show success message
+      console.log('EXA segment saved successfully:', segment.name);
+    } catch (error) {
+      console.error('Failed to save EXA segment:', error);
+      // You could add error state/toast here if needed
+    }
+  };
+
   const handleEnrichSegment = async () => {
     if (!completed.segment?.id) {
       setAiError('Select a segment before enrichment.');
@@ -2421,7 +2456,7 @@ type PipelineWorkspaceProps = {
                   </button>
 
                   <button
-                    onClick={() => handleRunDiscovery().catch(() => null)}
+                    onClick={() => setShowExaWebsetSearch(true)}
                     style={{
                       background: colors.card,
                       border: `1px solid ${colors.border}`,
@@ -5102,6 +5137,12 @@ type PipelineWorkspaceProps = {
         isOpen={showSegmentBuilder}
         onClose={() => setShowSegmentBuilder(false)}
         onCreate={handleCreateSegment}
+      />
+
+      <ExaWebsetSearch
+        isOpen={showExaWebsetSearch}
+        onClose={() => setShowExaWebsetSearch(false)}
+        onSave={handleSaveExaSegment}
       />
     </div>
   );
