@@ -3,6 +3,9 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * Playwright E2E Test Configuration
  * Tests for segment creation workflows (T029, T030)
+ *
+ * Note: Chromium browser installed to local node_modules cache
+ * Set PLAYWRIGHT_BROWSERS_PATH=./node_modules/.cache/ms-playwright if needed
  */
 export default defineConfig({
   testDir: './e2e',
@@ -22,7 +25,15 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        // Use local Chromium installation
+        launchOptions: {
+          executablePath: process.env.PLAYWRIGHT_BROWSERS_PATH
+            ? undefined
+            : './node_modules/.cache/ms-playwright/chromium-1200/chrome-mac/Chromium.app/Contents/MacOS/Chromium'
+        }
+      },
     },
   ],
 
