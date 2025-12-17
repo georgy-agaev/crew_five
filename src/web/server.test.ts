@@ -795,4 +795,102 @@ describe('web adapter server', () => {
     expect(supabase.category).toBe('database');
     expect(smartlead.category).toBe('delivery');
   });
+
+  it('routes POST /api/filters/ai-suggest to aiSuggestFilters', async () => {
+    const mockSuggestions = [
+      {
+        filters: [
+          { field: 'employees.role', operator: 'eq', value: 'CTO' },
+          { field: 'companies.employees', operator: 'gte', value: 50 },
+        ],
+        rationale: 'Targeting technology decision makers at mid-sized companies',
+        targetAudience: 'CTOs at growing tech companies',
+      },
+    ];
+    const aiSuggestFilters = vi.fn(async () => mockSuggestions);
+    const testDeps = {
+      ...deps,
+      aiSuggestFilters,
+    };
+
+    const res = await dispatch(
+      testDeps as any,
+      {
+        method: 'POST',
+        pathname: '/api/filters/ai-suggest',
+        body: {
+          userDescription: 'Target CTOs at AI companies with 50+ employees',
+          icpProfileId: 'profile-123',
+          icpContext: 'Enterprise AI/ML',
+          maxSuggestions: 3,
+        },
+      }
+    );
+
+    expect(aiSuggestFilters).toHaveBeenCalledWith({
+      userDescription: 'Target CTOs at AI companies with 50+ employees',
+      icpProfileId: 'profile-123',
+      icpContext: 'Enterprise AI/ML',
+      maxSuggestions: 3,
+    });
+    expect(res.status).toBe(200);
+    expect((res.body as any).suggestions).toEqual(mockSuggestions);
+  });
+
+  it('returns 400 when userDescription is missing in ai-suggest', async () => {
+    const aiSuggestFilters = vi.fn();
+    const testDeps = {
+      ...deps,
+      aiSuggestFilters,
+    };
+
+    const res = await dispatch(
+      testDeps as any,
+      {
+        method: 'POST',
+        pathname: '/api/filters/ai-suggest',
+        body: {},
+      }
+    );
+
+    expect(res.status).toBe(400);
+    expect((res.body as any).error).toBe('userDescription is required');
+    expect(aiSuggestFilters).not.toHaveBeenCalled();
+  });
+
+  it('returns 501 when aiSuggestFilters is not configured', async () => {
+    const res = await dispatch(
+      deps as any,
+      {
+        method: 'POST',
+        pathname: '/api/filters/ai-suggest',
+        body: { userDescription: 'test' },
+      }
+    );
+
+    expect(res.status).toBe(501);
+    expect((res.body as any).error).toBe('AI filter suggestions not configured');
+  });
+
+  it('returns 500 when aiSuggestFilters throws an error', async () => {
+    const aiSuggestFilters = vi.fn(async () => {
+      throw new Error('AI service unavailable');
+    });
+    const testDeps = {
+      ...deps,
+      aiSuggestFilters,
+    };
+
+    const res = await dispatch(
+      testDeps as any,
+      {
+        method: 'POST',
+        pathname: '/api/filters/ai-suggest',
+        body: { userDescription: 'test' },
+      }
+    );
+
+    expect(res.status).toBe(500);
+    expect((res.body as any).error).toBe('AI service unavailable');
+  });
 });

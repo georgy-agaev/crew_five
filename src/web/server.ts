@@ -9,6 +9,7 @@ import { generateDrafts } from '../services/drafts';
 import { getReplyPatterns } from '../services/emailEvents';
 import { initSupabaseClient } from '../services/supabaseClient';
 import { smartleadSendCommand } from '../commands/smartleadSend';
+import { getFilterPreviewCounts } from '../services/filterPreview';
 import type { SmartleadMcpClient } from '../integrations/smartleadMcp';
 import { buildSmartleadMcpClient } from '../integrations/smartleadMcp';
 import { ensureSegmentSnapshot } from '../services/segmentSnapshotWorkflow';
@@ -37,6 +38,8 @@ import {
   promoteIcpDiscoveryCandidatesToSegment,
   runIcpDiscoveryWithExa,
 } from '../services/icpDiscovery';
+import { generateSegmentFiltersViaCoach } from '../services/icpCoach';
+import { searchExaWebset } from '../services/exaWebset';
 
 const promptRegistryColumnSupport = {
   checked: false,
@@ -132,6 +135,19 @@ type AdapterDeps = {
     candidateIds: string[];
     segmentId: string;
   }) => Promise<{ promotedCount: number }>;
+  getFilterPreview?: (filterDefinition: unknown) => Promise<{ companyCount: number; employeeCount: number; totalCount: number }>;
+  aiSuggestFilters?: (request: {
+    userDescription: string;
+    icpProfileId?: string;
+    icpContext?: string;
+    maxSuggestions?: number;
+  }) => Promise<Array<{ filters: any[]; rationale?: string; targetAudience?: string }>>;
+  searchExaWebset?: (request: { description: string; maxResults?: number }) => Promise<{
+    companies: any[];
+    employees: any[];
+    totalResults: number;
+    query: string;
+  }>;
 };
 
 async function readJson<T>(req: http.IncomingMessage): Promise<T> {
@@ -181,6 +197,19 @@ export async function dispatch(
   if (method === 'GET' && pathname === '/api/segments') {
     if (!deps.listSegments) return { status: 501, body: { error: 'Segments not configured' } };
     return { status: 200, body: await deps.listSegments() };
+  }
+
+  if (method === 'POST' && pathname === '/api/filters/preview') {
+    if (!deps.getFilterPreview) return { status: 501, body: { error: 'Filter preview not configured' } };
+    const body = req.body ?? {};
+    if (!body.filterDefinition) return { status: 400, body: { error: 'filterDefinition is required' } };
+    try {
+      const result = await deps.getFilterPreview(body.filterDefinition);
+      return { status: 200, body: result };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Filter preview failed';
+      return { status: 400, body: { error: message } };
+    }
   }
 
   if (method === 'POST' && pathname === '/api/segments/snapshot') {
@@ -356,6 +385,22 @@ export async function dispatch(
       candidateIds,
     });
     return { status: 200, body: result };
+  }
+
+  if (method === 'POST' && pathname === '/api/exa/webset/search') {
+    if (!deps.searchExaWebset) return { status: 501, body: { error: 'EXA Webset search not configured' } };
+    const body = req.body ?? {};
+    if (!body.description) return { status: 400, body: { error: 'description is required' } };
+    try {
+      const results = await deps.searchExaWebset({
+        description: body.description,
+        maxResults: body.maxResults ? Number(body.maxResults) : undefined,
+      });
+      return { status: 200, body: results };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'EXA Webset search failed';
+      return { status: 500, body: { error: message } };
+    }
   }
 
   if (method === 'GET' && pathname === '/api/events') {
@@ -598,6 +643,24 @@ export async function dispatch(
     return { status: 200, body: await deps.listSmartleadCampaigns() };
   }
 
+  if (method === 'POST' && pathname === '/api/filters/ai-suggest') {
+    if (!deps.aiSuggestFilters) return { status: 501, body: { error: 'AI filter suggestions not configured' } };
+    const body = req.body ?? {};
+    if (!body.userDescription) return { status: 400, body: { error: 'userDescription is required' } };
+    try {
+      const suggestions = await deps.aiSuggestFilters({
+        userDescription: body.userDescription,
+        icpProfileId: body.icpProfileId,
+        icpContext: body.icpContext,
+        maxSuggestions: body.maxSuggestions,
+      });
+      return { status: 200, body: { suggestions } };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'AI filter suggestion failed';
+      return { status: 500, body: { error: message } };
+    }
+  }
+
   return { status: 404, body: { error: 'Not found' } };
 }
 
@@ -735,6 +798,20 @@ export function createMockDeps(): AdapterDeps {
     runIcpDiscovery: async () => ({ jobId: 'job-mock', runId: 'run-mock', provider: 'exa', status: 'running' }),
     listIcpDiscoveryCandidates: async () => [],
 	    promoteIcpDiscoveryCandidates: async ({ candidateIds }) => ({ promotedCount: candidateIds.length }),
+    getFilterPreview: async () => ({ companyCount: 5, employeeCount: 12, totalCount: 17 }),
+    aiSuggestFilters: async () => ([
+      {
+        filters: [{ field: 'employees.role', operator: 'eq', value: 'CTO' }],
+        rationale: 'Mock suggestion for testing',
+        targetAudience: 'Technology decision makers',
+      },
+    ]),
+    searchExaWebset: async () => ({
+      companies: [{ name: 'Mock Company', domain: 'mock.com', confidenceScore: 0.9 }],
+      employees: [{ name: 'John Doe', role: 'CTO', companyName: 'Mock Company', confidenceScore: 0.85 }],
+      totalResults: 2,
+      query: 'Mock query',
+    }),
   };
 }
 
@@ -1176,6 +1253,15 @@ export function createLiveDeps(
       ? async ({ runId, candidateIds, segmentId }) =>
           promoteIcpDiscoveryCandidatesToSegment(supabase, { runId, candidateIds, segmentId })
       : undefined,
+    getFilterPreview: async (filterDefinition) => {
+      return await getFilterPreviewCounts(supabase, filterDefinition);
+    },
+    aiSuggestFilters: async (request) => {
+      return await generateSegmentFiltersViaCoach(chatClient, request);
+    },
+    searchExaWebset: async (request) => {
+      return await searchExaWebset(request);
+    },
   };
 }
 

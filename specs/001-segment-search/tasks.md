@@ -66,9 +66,12 @@
   → Artifacts: [exaWebset.ts](src/services/exaWebset.ts), [types](src/types/exaWebset.ts), [tests](tests/exaWebset.test.ts), [docs](docs/exa-webset-usage.md)
 - [X] T006 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-2] Extend AI coach to generate segment filters in src/services/icpCoach.ts (add generateSegmentFiltersViaCoach function with JSON mode)
   → Artifacts: [icpCoach.ts](src/services/icpCoach.ts), [tests](tests/segmentFilterCoach.test.ts), [docs](docs/SEGMENT_FILTER_COACH.md), [example](examples/segment-filter-coach-example.ts)
-- [ ] T007 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-3] Add POST /api/filters/preview endpoint to src/web/server.ts (calls filterPreview service)
-- [ ] T008 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-3] Add POST /api/filters/ai-suggest endpoint to src/web/server.ts (calls extended AI coach)
-- [ ] T009 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-3] Add POST /api/exa/webset/search endpoint to src/web/server.ts (calls exaWebset service)
+- [X] T007 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-3] Add POST /api/filters/preview endpoint to src/web/server.ts (calls filterPreview service)
+  → Artifacts: [server.ts](src/web/server.ts), [tests](tests/web_filter_preview_endpoint.test.ts)
+- [X] T008 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-3] Add POST /api/filters/ai-suggest endpoint to src/web/server.ts (calls extended AI coach)
+  → Artifacts: [server.ts](src/web/server.ts), [tests](src/web/server.test.ts)
+- [X] T009 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-3] Add POST /api/exa/webset/search endpoint to src/web/server.ts (calls exaWebset service)
+  → Artifacts: [server.ts](src/web/server.ts), [tests](src/web/server.test.ts)
 - [ ] T010 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] Add segment creation endpoint validation to src/web/server.ts (verify POST /api/segments exists or create it)
 
 **Checkpoint**: Foundation ready - user story UI implementation can now begin in parallel
