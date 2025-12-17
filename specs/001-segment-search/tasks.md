@@ -187,15 +187,34 @@
 - [ ] T032 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-9] Add error handling and user-friendly error messages for all API calls in web/src/apiClient.ts (handles edge cases: AI chat failures, EXA rate limits, non-existent columns, partial save failures, data changes after AI suggestions)
 - [ ] T033 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-9] Add localization support for all new UI text using existing translation system in web/src/pages/PipelineWorkspaceWithSidebar.tsx
 - [ ] T034 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-9] Add validation messages for invalid filters in SegmentBuilder component (handles edge cases: zero match filters, duplicate filter definitions, segment name conflicts, invalid column references)
-- [ ] T035 [EXECUTOR: MAIN] [SEQUENTIAL] Verify button styling consistency for "Search Database" and "EXA Web Search" buttons with existing theme
+- [X] T035 [EXECUTOR: MAIN] [SEQUENTIAL] Verify button styling consistency for "Search Database" and "EXA Web Search" buttons with existing theme
+  → ✅ Both buttons use identical styling
+  → ✅ Consistent with ICP tab "Create New" button pattern
+  → Card: colors.card background, 1px border, 8px radius, 20px padding
+  → Hover: Orange border (colors.orange) + cardHover background
+  → Typography: Title 15px/600, description 13px/textMuted
+  → Layout: 2-column grid, 12px gap
+  → Verified: web/src/pages/PipelineWorkspaceWithSidebar.tsx:2440-2474
 - [ ] T036 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-10] Add keyboard navigation support for segment builder (tab through fields, enter to submit)
 - [ ] T037 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-10] Add ARIA labels for accessibility in FilterRow, SegmentBuilder, and ExaWebsetSearch components
-- [ ] T038 [EXECUTOR: MAIN] [SEQUENTIAL] Test all modals in Light and Dark themes (use existing isDark flag)
+- [X] T038 [EXECUTOR: MAIN] [SEQUENTIAL] Test all modals in Light and Dark themes (use existing isDark flag)
+  → ✅ Tested modal components: SegmentBuilder, ExaWebsetSearch
+  → ⚠️  **Finding**: Both modals use hardcoded light theme colors
+  → Details:
+    - SegmentBuilder: Uses hardcoded #fff, #0f172a, #e2e8f0 colors (web/src/components/SegmentBuilder.tsx)
+    - ExaWebsetSearch: Uses hardcoded #fff, #0f172a, #e2e8f0 colors (web/src/components/ExaWebsetSearch.tsx)
+    - Neither component receives colors prop or isDark flag
+  → **Recommendation**: Consider future task to pass colors/isDark prop to modals for theme consistency
+  → **Current Status**: Modals work correctly in light theme; usable but not optimal in dark theme
 - [X] T039 [EXECUTOR: MAIN] [SEQUENTIAL] Run type-check and build for both backend and frontend: `pnpm build && cd web && pnpm build`
   → ✅ Backend: Type-check passed, build passed
   → ✅ Frontend: Type-check passed, build passed (919ms, 338KB bundle)
   → Fixed: Excluded test/example files from build, removed unused imports, fixed duplicate variables
-- [ ] T040 [EXECUTOR: MAIN] [SEQUENTIAL] Update CHANGELOG.md with feature additions and version bump
+- [X] T040 [EXECUTOR: MAIN] [SEQUENTIAL] Update CHANGELOG.md with feature additions and version bump
+  → ✅ CHANGELOG.md updated with v0.1.75 entry
+  → Documented: AI-Assisted Segment Builder & EXA Webset Integration
+  → Sections: Added (feature details), Changed (UI updates), Fixed (build issues), Documentation (new files)
+  → Committed: docs(T040): Update CHANGELOG for v0.1.75 release
 
 ---
 
