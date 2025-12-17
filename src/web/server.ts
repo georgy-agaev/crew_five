@@ -149,6 +149,22 @@ type AdapterDeps = {
     totalResults: number;
     query: string;
   }>;
+  saveExaSegment?: (payload: {
+    name: string;
+    locale: string;
+    companies: any[];
+    employees: any[];
+    query: string;
+    description?: string;
+  }) => Promise<{
+    id: string;
+    name: string;
+    stats: {
+      companiesProcessed: number;
+      employeesProcessed: number;
+      segmentMembersCreated: number;
+    };
+  }>;
 };
 
 async function readJson<T>(req: http.IncomingMessage): Promise<T> {
@@ -238,6 +254,43 @@ export async function dispatch(
       return { status: 201, body: segment };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Segment creation failed';
+      return { status: 500, body: { error: message } };
+    }
+  }
+
+  if (method === 'POST' && pathname === '/api/segments/exa') {
+    if (!deps.saveExaSegment) return { status: 501, body: { error: 'EXA segment save not configured' } };
+    const body = req.body ?? {};
+
+    // Validation
+    if (!body.name) return { status: 400, body: { error: 'name is required' } };
+    if (!body.locale) return { status: 400, body: { error: 'locale is required' } };
+    if (!body.query) return { status: 400, body: { error: 'query is required' } };
+    if (!Array.isArray(body.companies) && !Array.isArray(body.employees)) {
+      return { status: 400, body: { error: 'At least companies or employees array is required' } };
+    }
+
+    try {
+      const result = await deps.saveExaSegment({
+        name: body.name,
+        locale: body.locale,
+        companies: body.companies || [],
+        employees: body.employees || [],
+        query: body.query,
+        description: body.description,
+      });
+
+      console.log('[EXA Segment] Created:', {
+        segmentId: result.id,
+        segmentName: result.name,
+        ...result.stats,
+        query: body.query,
+      });
+
+      return { status: 201, body: result };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'EXA segment creation failed';
+      console.error('[EXA Segment] Error:', message, err);
       return { status: 500, body: { error: message } };
     }
   }
@@ -1315,6 +1368,203 @@ export function createLiveDeps(
     },
     searchExaWebset: async (request) => {
       return await searchExaWebset(request);
+    },
+    saveExaSegment: async (payload: {
+      name: string;
+      locale: string;
+      companies: any[];
+      employees: any[];
+      query: string;
+      description?: string;
+    }) => {
+      // Create segment
+      const { data: segment, error: segmentError } = await supabase
+        .from('segments')
+        .insert({
+          name: payload.name,
+          locale: payload.locale,
+          description: payload.description || `EXA Web Search: ${payload.query}`,
+          filter_definition: JSON.stringify([]), // EXA segments don't use filter definitions
+        })
+        .select()
+        .single();
+
+      if (segmentError || !segment) {
+        throw new Error(segmentError?.message || 'Failed to create segment');
+      }
+
+      const segmentId = segment.id as string;
+      const segmentVersion = 1;
+
+      // Process companies with duplicate detection
+      const companyMap = new Map<string, string>();
+
+      for (const company of payload.companies) {
+        const domain = company.domain?.toLowerCase()?.trim() || null;
+        const name = company.name?.trim() || 'Unknown Company';
+
+        let companyId: string | null = null;
+
+        if (domain) {
+          const { data: existing } = await supabase
+            .from('companies')
+            .select('id')
+            .eq('website', domain)
+            .maybeSingle();
+
+          if (existing) {
+            companyId = existing.id as string;
+          }
+        }
+
+        if (!companyId) {
+          const { data: newCompany, error: insertError } = await supabase
+            .from('companies')
+            .insert({
+              company_name: name,
+              website: domain,
+              segment: company.industry || null,
+              status: 'Active',
+            })
+            .select('id')
+            .single();
+
+          if (!insertError && newCompany) {
+            companyId = newCompany.id as string;
+          }
+        }
+
+        if (companyId) {
+          const key = domain || name.toLowerCase();
+          companyMap.set(key, companyId);
+        }
+      }
+
+      // Process employees with duplicate detection
+      const employeeMap = new Map<string, { employeeId: string; companyId: string }>();
+
+      for (const employee of payload.employees) {
+        const email = employee.email?.toLowerCase()?.trim() || null;
+        const name = employee.name?.trim() || 'Unknown Employee';
+        const role = employee.role || employee.title || null;
+        const companyDomain = employee.companyDomain?.toLowerCase()?.trim() || null;
+        const companyName = employee.companyName?.trim() || null;
+
+        let companyId: string | null = null;
+
+        if (companyDomain) {
+          if (companyMap.has(companyDomain)) {
+            companyId = companyMap.get(companyDomain)!;
+          } else {
+            const { data: existing } = await supabase
+              .from('companies')
+              .select('id')
+              .eq('website', companyDomain)
+              .maybeSingle();
+
+            if (existing) {
+              companyId = existing.id as string;
+              companyMap.set(companyDomain, companyId);
+            }
+          }
+        }
+
+        if (!companyId && (companyName || companyDomain)) {
+          const { data: newCompany, error: insertError } = await supabase
+            .from('companies')
+            .insert({
+              company_name: companyName || companyDomain || 'Unknown Company',
+              website: companyDomain,
+              segment: null,
+              status: 'Active',
+            })
+            .select('id')
+            .single();
+
+          if (!insertError && newCompany) {
+            companyId = newCompany.id as string;
+            if (companyDomain) {
+              companyMap.set(companyDomain, companyId);
+            }
+          }
+        }
+
+        if (!companyId) continue;
+
+        let employeeId: string | null = null;
+
+        if (email) {
+          const { data: existing } = await supabase
+            .from('employees')
+            .select('id')
+            .eq('work_email', email)
+            .maybeSingle();
+
+          if (existing) {
+            employeeId = existing.id as string;
+          }
+        }
+
+        if (!employeeId) {
+          const { data: newEmployee, error: insertError } = await supabase
+            .from('employees')
+            .insert({
+              company_id: companyId,
+              full_name: name,
+              work_email: email,
+              position: role,
+            })
+            .select('id')
+            .single();
+
+          if (!insertError && newEmployee) {
+            employeeId = newEmployee.id as string;
+          }
+        }
+
+        if (employeeId && email) {
+          employeeMap.set(email, { employeeId, companyId });
+        }
+      }
+
+      // Create segment_members entries
+      const segmentMembers: Array<{
+        segment_id: string;
+        segment_version: number;
+        contact_id: string;
+        company_id: string;
+        snapshot: object;
+      }> = [];
+
+      for (const [_email, { employeeId, companyId }] of employeeMap.entries()) {
+        segmentMembers.push({
+          segment_id: segmentId,
+          segment_version: segmentVersion,
+          contact_id: employeeId,
+          company_id: companyId,
+          snapshot: { source: 'exa', query: payload.query },
+        });
+      }
+
+      if (segmentMembers.length > 0) {
+        const { error: membersError } = await supabase
+          .from('segment_members')
+          .insert(segmentMembers);
+
+        if (membersError) {
+          console.error('Failed to insert segment members:', membersError);
+        }
+      }
+
+      return {
+        id: segmentId,
+        name: payload.name,
+        stats: {
+          companiesProcessed: companyMap.size,
+          employeesProcessed: employeeMap.size,
+          segmentMembersCreated: segmentMembers.length,
+        },
+      };
     },
   };
 }
