@@ -24,6 +24,10 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
+  // Validation state
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [createError, setCreateError] = useState<string | null>(null);
+
   // Get live preview of filter results
   const { companyCount, employeeCount, totalCount, loading: previewLoading, error: previewError } =
     useFilterPreview(filters);
@@ -32,10 +36,49 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
     return null;
   }
 
+  // Validation helper functions
+  const validateFilters = (filtersToValidate: FilterDefinition[]): string[] => {
+    const errors: string[] = [];
+    const validFilters = filtersToValidate.filter(f => f.field.trim() !== '');
+
+    if (validFilters.length === 0) {
+      return errors; // No errors if no filters yet
+    }
+
+    // Check for duplicate filters (same field + operator combination)
+    const filterKeys = new Set<string>();
+    validFilters.forEach((filter, index) => {
+      const key = `${filter.field}:${filter.operator}`;
+      if (filterKeys.has(key)) {
+        errors.push(`Duplicate filter detected: ${filter.field} with ${filter.operator} operator`);
+      }
+      filterKeys.add(key);
+    });
+
+    // Check for invalid column references (basic validation)
+    const allowedPrefixes = ['employees.', 'companies.'];
+    validFilters.forEach((filter) => {
+      const hasValidPrefix = allowedPrefixes.some(prefix => filter.field.startsWith(prefix));
+      if (!hasValidPrefix) {
+        errors.push(`Invalid field: ${filter.field}. Must start with "employees." or "companies."`);
+      }
+    });
+
+    return errors;
+  };
+
   const handleFilterChange = (index: number, updatedFilter: FilterDefinition) => {
     const newFilters = [...filters];
     newFilters[index] = updatedFilter;
     setFilters(newFilters);
+
+    // Clear validation errors when user makes changes
+    setValidationErrors([]);
+    setCreateError(null);
+
+    // Validate on change
+    const errors = validateFilters(newFilters);
+    setValidationErrors(errors);
   };
 
   const handleRemoveFilter = (index: number) => {
@@ -52,7 +95,11 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
   };
 
   const handleCreate = async () => {
+    setCreateError(null);
+    setValidationErrors([]);
+
     if (!segmentName.trim()) {
+      setCreateError('Segment name is required');
       return;
     }
 
@@ -60,7 +107,22 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
     const validFilters = filters.filter(f => f.field.trim() !== '');
 
     if (validFilters.length === 0) {
+      setCreateError('At least one filter is required');
       return;
+    }
+
+    // Validate filters before creating
+    const errors = validateFilters(validFilters);
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      setCreateError('Please fix the validation errors before creating the segment');
+      return;
+    }
+
+    // Check for zero matches (warning, not blocker)
+    if (totalCount === 0 && !previewLoading && !previewError) {
+      setCreateError('Warning: No contacts match these filters. The segment will be empty.');
+      // Allow creation to proceed, but show warning
     }
 
     setCreating(true);
@@ -69,9 +131,13 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
       // Reset form after successful creation
       setSegmentName('');
       setFilters([{ field: '', operator: 'eq', value: '' }]);
+      setValidationErrors([]);
+      setCreateError(null);
       onClose();
     } catch (error) {
-      // Error handling is managed by parent
+      // Display user-friendly error message
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create segment';
+      setCreateError(errorMessage);
       console.error('Failed to create segment:', error);
     } finally {
       setCreating(false);
@@ -85,6 +151,8 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
     setAiDescription('');
     setAiSuggestions([]);
     setAiError(null);
+    setValidationErrors([]);
+    setCreateError(null);
     onClose();
   };
 
@@ -122,21 +190,31 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
   };
 
   const validFilters = filters.filter(f => f.field.trim() !== '');
-  const canCreate = segmentName.trim() !== '' && validFilters.length > 0 && !creating;
+  const hasValidationErrors = validationErrors.length > 0;
+  const canCreate = segmentName.trim() !== '' && validFilters.length > 0 && !creating && !hasValidationErrors;
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0, 0, 0, 0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-      }}
-      onClick={handleCancel}
-    >
+    <>
+      <style>
+        {`
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        `}
+      </style>
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}
+        onClick={handleCancel}
+      >
       <div
         style={{
           background: '#fff',
@@ -231,10 +309,35 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
                 borderRadius: '8px',
                 cursor: aiLoading ? 'not-allowed' : 'pointer',
                 fontSize: '14px',
-                fontWeight: 600
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
               }}
             >
-              {aiLoading ? 'Generating...' : 'Generate Suggestions'}
+              {aiLoading && (
+                <svg
+                  style={{ animation: 'spin 1s linear infinite', width: '16px', height: '16px' }}
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    style={{ opacity: 0.25 }}
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    style={{ opacity: 0.75 }}
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+              )}
+              <span>{aiLoading ? 'Generating...' : 'Generate Suggestions'}</span>
             </button>
             {aiError && (
               <div style={{marginTop: '8px', color: '#ef4444', fontSize: '13px'}}>
@@ -303,12 +406,71 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
                 Add filters to see preview
               </div>
             ) : (
-              <div style={{ fontSize: '14px', color: '#0f172a' }}>
-                Matches: <strong>{companyCount}</strong> companies, <strong>{employeeCount}</strong> employees (
-                <strong>{totalCount}</strong> total)
-              </div>
+              <>
+                <div style={{ fontSize: '14px', color: '#0f172a' }}>
+                  Matches: <strong>{companyCount}</strong> companies, <strong>{employeeCount}</strong> employees (
+                  <strong>{totalCount}</strong> total)
+                </div>
+                {totalCount === 0 && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '8px 12px',
+                      background: '#fef3c7',
+                      color: '#92400e',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      border: '1px solid #fcd34d',
+                    }}
+                  >
+                    Warning: No contacts match these filters
+                  </div>
+                )}
+              </>
             )}
           </div>
+
+          {/* Validation Errors Display */}
+          {validationErrors.length > 0 && (
+            <div
+              style={{
+                marginTop: '16px',
+                padding: '12px 16px',
+                background: '#fee2e2',
+                color: '#991b1b',
+                borderRadius: '12px',
+                border: '1px solid #fca5a5',
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: '8px', fontSize: '14px' }}>
+                Validation Errors:
+              </div>
+              <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px' }}>
+                {validationErrors.map((error, idx) => (
+                  <li key={idx} style={{ marginBottom: '4px' }}>
+                    {error}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Creation Error Display */}
+          {createError && (
+            <div
+              style={{
+                marginTop: '16px',
+                padding: '12px 16px',
+                background: createError.startsWith('Warning:') ? '#fef3c7' : '#fee2e2',
+                color: createError.startsWith('Warning:') ? '#92400e' : '#991b1b',
+                borderRadius: '12px',
+                border: createError.startsWith('Warning:') ? '1px solid #fcd34d' : '1px solid #fca5a5',
+                fontSize: '14px',
+              }}
+            >
+              {createError}
+            </div>
+          )}
         </div>
 
         {/* Footer / Action Buttons */}
@@ -333,11 +495,40 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
             type="button"
             onClick={handleCreate}
             disabled={!canCreate}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              justifyContent: 'center',
+            }}
           >
-            {creating ? 'Creating...' : 'Create Segment'}
+            {creating && (
+              <svg
+                style={{ animation: 'spin 1s linear infinite', width: '16px', height: '16px' }}
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  style={{ opacity: 0.25 }}
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  style={{ opacity: 0.75 }}
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+            )}
+            <span>{creating ? 'Creating...' : 'Create Segment'}</span>
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

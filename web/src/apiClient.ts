@@ -110,22 +110,135 @@ import type { ExaCompanyResult, ExaEmployeeResult } from './types/exaWebset';
 
 const baseUrl = import.meta.env.VITE_API_BASE ?? '/api';
 
-async function fetchJson<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${baseUrl}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  if (!res.ok) {
-    let message = `API error ${res.status}`;
-    try {
-      const errBody = await res.json();
-      if (errBody?.error) message = `${message}: ${errBody.error}`;
-    } catch {
-      // ignore parse errors
-    }
-    throw new Error(message);
+/**
+ * Error codes for specific error conditions
+ */
+export const ErrorCodes = {
+  NETWORK_ERROR: 'NETWORK_ERROR',
+  RATE_LIMIT: 'RATE_LIMIT',
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  NOT_FOUND: 'NOT_FOUND',
+  SERVER_ERROR: 'SERVER_ERROR',
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  UNKNOWN: 'UNKNOWN',
+} as const;
+
+/**
+ * Structured error object with user-friendly messages
+ */
+export interface ApiError {
+  code: string;
+  message: string;
+  userMessage: string;
+  details?: any;
+  statusCode?: number;
+}
+
+/**
+ * Get user-friendly error message based on error type
+ */
+function getUserFriendlyMessage(statusCode: number, errorMessage: string): string {
+  // Rate limit errors
+  if (statusCode === 429 || errorMessage.toLowerCase().includes('rate limit')) {
+    return 'Too many requests. Please wait a moment and try again.';
   }
-  return res.json() as Promise<T>;
+
+  // Authentication errors
+  if (statusCode === 401 || statusCode === 403) {
+    return 'Authentication failed. Please check your credentials.';
+  }
+
+  // Not found errors
+  if (statusCode === 404) {
+    return 'The requested resource was not found.';
+  }
+
+  // Validation errors
+  if (statusCode === 400 || errorMessage.toLowerCase().includes('invalid')) {
+    return 'Invalid request. Please check your input and try again.';
+  }
+
+  // Server errors
+  if (statusCode >= 500) {
+    return 'Server error. Please try again later.';
+  }
+
+  // Network errors
+  if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('fetch')) {
+    return 'Network error. Please check your connection and try again.';
+  }
+
+  // Default message
+  return 'An error occurred. Please try again.';
+}
+
+/**
+ * Create structured API error from response
+ */
+function createApiError(statusCode: number, errorMessage: string, details?: any): ApiError {
+  let code = ErrorCodes.UNKNOWN;
+
+  if (statusCode === 429 || errorMessage.toLowerCase().includes('rate limit')) {
+    code = ErrorCodes.RATE_LIMIT;
+  } else if (statusCode === 401 || statusCode === 403) {
+    code = ErrorCodes.UNAUTHORIZED;
+  } else if (statusCode === 404) {
+    code = ErrorCodes.NOT_FOUND;
+  } else if (statusCode === 400) {
+    code = ErrorCodes.VALIDATION_ERROR;
+  } else if (statusCode >= 500) {
+    code = ErrorCodes.SERVER_ERROR;
+  } else if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('fetch')) {
+    code = ErrorCodes.NETWORK_ERROR;
+  }
+
+  return {
+    code,
+    message: errorMessage,
+    userMessage: getUserFriendlyMessage(statusCode, errorMessage),
+    details,
+    statusCode,
+  };
+}
+
+async function fetchJson<T>(path: string, options: RequestInit = {}): Promise<T> {
+  try {
+    const res = await fetch(`${baseUrl}${path}`, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    });
+
+    if (!res.ok) {
+      let message = `API error ${res.status}`;
+      let details = undefined;
+
+      try {
+        const errBody = await res.json();
+        if (errBody?.error) {
+          message = `${message}: ${errBody.error}`;
+          details = errBody;
+        }
+      } catch {
+        // ignore parse errors
+      }
+
+      const apiError = createApiError(res.status, message, details);
+      const error = new Error(apiError.userMessage);
+      (error as any).apiError = apiError;
+      throw error;
+    }
+
+    return res.json() as Promise<T>;
+  } catch (error) {
+    // Handle network errors
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      const apiError = createApiError(0, 'Network request failed', { originalError: error.message });
+      const networkError = new Error(apiError.userMessage);
+      (networkError as any).apiError = apiError;
+      throw networkError;
+    }
+    throw error;
+  }
 }
 
 export async function fetchCampaigns(): Promise<Campaign[]> {
@@ -278,6 +391,45 @@ export async function filterPreviewAPI(filterDefinition: FilterDefinition[]): Pr
   });
 }
 
+/**
+ * Retry configuration for transient failures
+ */
+const RETRY_CONFIG = {
+  maxRetries: 2,
+  retryDelay: 1000, // 1 second
+  retryableStatusCodes: [408, 429, 500, 502, 503, 504],
+};
+
+/**
+ * Sleep utility for retry delays
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Fetch with retry logic for transient failures
+ */
+async function fetchWithRetry<T>(
+  path: string,
+  options: RequestInit = {},
+  retries = RETRY_CONFIG.maxRetries
+): Promise<T> {
+  try {
+    return await fetchJson<T>(path, options);
+  } catch (error: any) {
+    const statusCode = error?.apiError?.statusCode;
+    const isRetryable = statusCode && RETRY_CONFIG.retryableStatusCodes.includes(statusCode);
+
+    if (retries > 0 && isRetryable) {
+      await sleep(RETRY_CONFIG.retryDelay);
+      return fetchWithRetry<T>(path, options, retries - 1);
+    }
+
+    throw error;
+  }
+}
+
 export async function aiSuggestFiltersAPI(params: {
   userDescription: string;
   icpProfileId?: string;
@@ -290,10 +442,25 @@ export async function aiSuggestFiltersAPI(params: {
     targetAudience?: string;
   }>;
 }> {
-  return fetchJson('/filters/ai-suggest', {
-    method: 'POST',
-    body: JSON.stringify(params),
-  });
+  try {
+    return await fetchWithRetry('/filters/ai-suggest', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  } catch (error: any) {
+    // Enhance error message for AI-specific failures
+    if (error?.apiError?.statusCode === 429) {
+      const enhancedError = new Error('AI service rate limit reached. Please wait a moment and try again.');
+      (enhancedError as any).apiError = error.apiError;
+      throw enhancedError;
+    }
+    if (error?.apiError?.statusCode >= 500) {
+      const enhancedError = new Error('AI service is temporarily unavailable. Please try again in a few moments.');
+      (enhancedError as any).apiError = error.apiError;
+      throw enhancedError;
+    }
+    throw error;
+  }
 }
 
 export async function fetchSegments(): Promise<any[]> {
@@ -306,10 +473,32 @@ export async function createSegmentAPI(payload: {
   filterDefinition: FilterDefinition[];
   description?: string;
 }): Promise<Record<string, any>> {
-  return fetchJson<Record<string, any>>('/segments', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
+  try {
+    return await fetchJson<Record<string, any>>('/segments', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  } catch (error: any) {
+    // Enhance error messages for segment creation failures
+    const errorMessage = error?.message || '';
+
+    if (errorMessage.toLowerCase().includes('column') || errorMessage.toLowerCase().includes('field')) {
+      const enhancedError = new Error('Invalid filter: one or more database columns do not exist. Please check your filter fields.');
+      (enhancedError as any).apiError = error.apiError;
+      throw enhancedError;
+    }
+    if (errorMessage.toLowerCase().includes('duplicate') || errorMessage.toLowerCase().includes('already exists')) {
+      const enhancedError = new Error(`A segment with the name "${payload.name}" already exists. Please choose a different name.`);
+      (enhancedError as any).apiError = error.apiError;
+      throw enhancedError;
+    }
+    if (error?.apiError?.statusCode === 400) {
+      const enhancedError = new Error('Invalid segment configuration. Please check your filters and try again.');
+      (enhancedError as any).apiError = error.apiError;
+      throw enhancedError;
+    }
+    throw error;
+  }
 }
 
 export async function exaWebsetSearchAPI(params: {
@@ -321,10 +510,30 @@ export async function exaWebsetSearchAPI(params: {
   totalResults: number;
   query: string;
 }> {
-  return fetchJson('/exa/webset/search', {
-    method: 'POST',
-    body: JSON.stringify(params),
-  });
+  try {
+    return await fetchWithRetry('/exa/webset/search', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  } catch (error: any) {
+    // Enhance error message for EXA-specific failures
+    if (error?.apiError?.statusCode === 429) {
+      const enhancedError = new Error('EXA API rate limit reached. Please wait a moment and try again.');
+      (enhancedError as any).apiError = error.apiError;
+      throw enhancedError;
+    }
+    if (error?.apiError?.statusCode === 400) {
+      const enhancedError = new Error('Invalid search query. Please refine your search description and try again.');
+      (enhancedError as any).apiError = error.apiError;
+      throw enhancedError;
+    }
+    if (error?.apiError?.statusCode >= 500) {
+      const enhancedError = new Error('EXA search service is temporarily unavailable. Please try again in a few moments.');
+      (enhancedError as any).apiError = error.apiError;
+      throw enhancedError;
+    }
+    throw error;
+  }
 }
 
 export async function saveExaSegmentAPI(params: {
@@ -335,10 +544,37 @@ export async function saveExaSegmentAPI(params: {
   query: string;
   description?: string;
 }): Promise<Record<string, any>> {
-  return fetchJson('/segments/exa', {
-    method: 'POST',
-    body: JSON.stringify(params),
-  });
+  try {
+    return await fetchJson('/segments/exa', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  } catch (error: any) {
+    // Enhance error messages for EXA segment save failures
+    const errorMessage = error?.message || '';
+
+    if (errorMessage.toLowerCase().includes('duplicate') || errorMessage.toLowerCase().includes('already exists')) {
+      const enhancedError = new Error(`A segment with the name "${params.name}" already exists. Please choose a different name.`);
+      (enhancedError as any).apiError = error.apiError;
+      throw enhancedError;
+    }
+    if (errorMessage.toLowerCase().includes('partial')) {
+      const enhancedError = new Error('Some data could not be saved. The segment was created but some companies or employees may be missing.');
+      (enhancedError as any).apiError = error.apiError;
+      throw enhancedError;
+    }
+    if (params.companies.length === 0 && params.employees.length === 0) {
+      const enhancedError = new Error('Cannot save empty segment. Please perform a search first.');
+      (enhancedError as any).apiError = error.apiError;
+      throw enhancedError;
+    }
+    if (error?.apiError?.statusCode === 400) {
+      const enhancedError = new Error('Invalid segment data. Please try searching again.');
+      (enhancedError as any).apiError = error.apiError;
+      throw enhancedError;
+    }
+    throw error;
+  }
 }
 
 export async function snapshotSegment(payload: { segmentId: string; finalize?: boolean; allowEmpty?: boolean; maxContacts?: number }) {

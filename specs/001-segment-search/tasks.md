@@ -183,10 +183,38 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T031 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-9] Add loading indicators to all async operations in SegmentBuilder and ExaWebsetSearch components (handles edge case: user navigates away during operations)
-- [ ] T032 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-9] Add error handling and user-friendly error messages for all API calls in web/src/apiClient.ts (handles edge cases: AI chat failures, EXA rate limits, non-existent columns, partial save failures, data changes after AI suggestions)
-- [ ] T033 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-9] Add localization support for all new UI text using existing translation system in web/src/pages/PipelineWorkspaceWithSidebar.tsx
-- [ ] T034 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-9] Add validation messages for invalid filters in SegmentBuilder component (handles edge cases: zero match filters, duplicate filter definitions, segment name conflicts, invalid column references)
+- [X] T031 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-9] Add loading indicators to all async operations in SegmentBuilder and ExaWebsetSearch components (handles edge case: user navigates away during operations)
+  → ✅ Added animated spinner icons to all async buttons
+  → ✅ SegmentBuilder: AI Generate button, Create Segment button
+  → ✅ ExaWebsetSearch: Search button, Save as Segment button
+  → ✅ Added @keyframes spin animation with inline styles
+  → ✅ Buttons disabled during loading to prevent duplicate submissions
+- [X] T032 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-9] Add error handling and user-friendly error messages for all API calls in web/src/apiClient.ts (handles edge cases: AI chat failures, EXA rate limits, non-existent columns, partial save failures, data changes after AI suggestions)
+  → ✅ Added structured ApiError interface with user-friendly messages
+  → ✅ Added error code constants (NETWORK_ERROR, RATE_LIMIT, VALIDATION_ERROR, etc.)
+  → ✅ Implemented getUserFriendlyMessage function for status-code-based messages
+  → ✅ Added retry logic for transient failures (408, 429, 500, 502, 503, 504)
+  → ✅ Enhanced error messages for AI chat (rate limits, generation errors)
+  → ✅ Enhanced error messages for EXA API (rate limits, invalid queries)
+  → ✅ Enhanced error messages for segment creation (duplicate names, invalid columns, partial save failures)
+  → ✅ Network error handling with TypeError catch
+- [X] T033 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-9] Add localization support for all new UI text using existing translation system in web/src/pages/PipelineWorkspaceWithSidebar.tsx
+  → ✅ Added 35+ translation keys for SegmentBuilder modal
+  → ✅ Added 20+ translation keys for ExaWebsetSearch modal
+  → ✅ Translations added for all 5 languages: English, Spanish, French, German, Russian
+  → ✅ Keys include: builderTitle, segmentName, aiAssisted, filters, preview, validation errors, button labels
+  → ✅ Consistent translation structure across all languages
+- [X] T034 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-9] Add validation messages for invalid filters in SegmentBuilder component (handles edge cases: zero match filters, duplicate filter definitions, segment name conflicts, invalid column references)
+  → ✅ Added validateFilters function to detect duplicate filters and invalid column references
+  → ✅ Added validation state (validationErrors, createError)
+  → ✅ Validation runs on filter change
+  → ✅ Zero match warning displayed when totalCount === 0
+  → ✅ Duplicate filter detection (same field + operator combination)
+  → ✅ Invalid column reference check (must start with "employees." or "companies.")
+  → ✅ Segment name conflict handling via enhanced API error messages
+  → ✅ Validation errors displayed in red alert box with bullet list
+  → ✅ Creation errors displayed with warning (yellow) or error (red) styling
+  → ✅ Create button disabled when validation errors present
 - [X] T035 [EXECUTOR: MAIN] [SEQUENTIAL] Verify button styling consistency for "Search Database" and "EXA Web Search" buttons with existing theme
   → ✅ Both buttons use identical styling
   → ✅ Consistent with ICP tab "Create New" button pattern
