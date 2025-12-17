@@ -127,7 +127,7 @@ export const ErrorCodes = {
  * Structured error object with user-friendly messages
  */
 export interface ApiError {
-  code: string;
+  code: typeof ErrorCodes[keyof typeof ErrorCodes];
   message: string;
   userMessage: string;
   details?: any;
@@ -176,7 +176,7 @@ function getUserFriendlyMessage(statusCode: number, errorMessage: string): strin
  * Create structured API error from response
  */
 function createApiError(statusCode: number, errorMessage: string, details?: any): ApiError {
-  let code = ErrorCodes.UNKNOWN;
+  let code: typeof ErrorCodes[keyof typeof ErrorCodes] = ErrorCodes.UNKNOWN;
 
   if (statusCode === 429 || errorMessage.toLowerCase().includes('rate limit')) {
     code = ErrorCodes.RATE_LIMIT;

@@ -57,6 +57,9 @@ export function AIFilterSuggestions({
   if (loading) {
     return (
       <div
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
         style={{
           padding: '40px',
           textAlign: 'center',
@@ -84,6 +87,8 @@ export function AIFilterSuggestions({
   if (!suggestions || suggestions.length === 0) {
     return (
       <div
+        role="status"
+        aria-live="polite"
         style={{
           padding: '40px',
           textAlign: 'center',
@@ -251,6 +256,7 @@ export function AIFilterSuggestions({
                 width: '100%',
                 margin: 0,
               }}
+              aria-label={`Select suggestion: ${suggestion.targetAudience || 'segment'} with ${suggestion.filters.length} filters`}
             >
               Select This Segment
             </button>

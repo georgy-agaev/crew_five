@@ -38,6 +38,7 @@ const NUMERIC_OPERATORS: FilterOperator[] = ['gte', 'lte'];
 export function FilterRow({ filter, onChange, onRemove }: FilterRowProps) {
   const isListOperator = LIST_OPERATORS.includes(filter.operator);
   const isNumericOperator = NUMERIC_OPERATORS.includes(filter.operator);
+  const hasError = filter.field && !filter.field.startsWith('employees.') && !filter.field.startsWith('companies.');
 
   const handleFieldChange = (field: string) => {
     onChange({ ...filter, field });
@@ -67,6 +68,14 @@ export function FilterRow({ filter, onChange, onRemove }: FilterRowProps) {
     handleValueChange(items);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Handle keyboard shortcuts
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      (e.target as HTMLElement).blur();
+    }
+  };
+
   const renderValueInput = () => {
     if (isListOperator) {
       // Render textarea for list values
@@ -78,12 +87,15 @@ export function FilterRow({ filter, onChange, onRemove }: FilterRowProps) {
           placeholder="value1, value2, value3"
           value={textValue}
           onChange={(e) => handleListValueChange(e.target.value)}
+          onKeyDown={handleKeyDown}
           style={{
             minHeight: '38px',
             resize: 'vertical',
             fontFamily: 'inherit',
           }}
           rows={1}
+          aria-label={`Filter value for ${filter.field || 'field'} (comma-separated list)`}
+          aria-describedby={filter.field ? `filter-field-${filter.field}` : undefined}
         />
       );
     }
@@ -98,6 +110,9 @@ export function FilterRow({ filter, onChange, onRemove }: FilterRowProps) {
           placeholder="0"
           value={numValue}
           onChange={(e) => handleValueChange(Number(e.target.value))}
+          onKeyDown={handleKeyDown}
+          aria-label={`Filter value for ${filter.field || 'field'} (numeric)`}
+          aria-describedby={filter.field ? `filter-field-${filter.field}` : undefined}
         />
       );
     }
@@ -111,12 +126,17 @@ export function FilterRow({ filter, onChange, onRemove }: FilterRowProps) {
         placeholder="value"
         value={stringValue}
         onChange={(e) => handleValueChange(e.target.value)}
+        onKeyDown={handleKeyDown}
+        aria-label={`Filter value for ${filter.field || 'field'}`}
+        aria-describedby={filter.field ? `filter-field-${filter.field}` : undefined}
       />
     );
   };
 
   return (
     <div
+      role="group"
+      aria-label="Filter definition"
       style={{
         display: 'grid',
         gridTemplateColumns: '1fr 1fr 1.5fr auto',
@@ -137,13 +157,22 @@ export function FilterRow({ filter, onChange, onRemove }: FilterRowProps) {
           placeholder="Field (e.g., employees.role)"
           value={filter.field}
           onChange={(e) => handleFieldChange(e.target.value)}
+          onKeyDown={handleKeyDown}
           style={{ margin: 0 }}
+          aria-label="Filter field"
+          aria-describedby="field-help"
+          aria-invalid={hasError ? 'true' : 'false'}
+          aria-required="true"
+          id={filter.field ? `filter-field-${filter.field}` : undefined}
         />
         <datalist id="field-suggestions">
           {SUGGESTED_FIELDS.map((field) => (
             <option key={field} value={field} />
           ))}
         </datalist>
+        <span id="field-help" style={{ display: 'none' }}>
+          Enter a field starting with employees. or companies.
+        </span>
       </div>
 
       {/* Operator dropdown */}
@@ -151,7 +180,10 @@ export function FilterRow({ filter, onChange, onRemove }: FilterRowProps) {
         <select
           value={filter.operator}
           onChange={(e) => handleOperatorChange(e.target.value as FilterOperator)}
+          onKeyDown={handleKeyDown}
           style={{ margin: 0 }}
+          aria-label="Filter operator"
+          aria-required="true"
         >
           {Object.entries(OPERATOR_LABELS).map(([op, label]) => (
             <option key={op} value={op}>
@@ -169,6 +201,7 @@ export function FilterRow({ filter, onChange, onRemove }: FilterRowProps) {
         <button
           type="button"
           onClick={onRemove}
+          onKeyDown={handleKeyDown}
           className="ghost"
           style={{
             padding: '10px 12px',

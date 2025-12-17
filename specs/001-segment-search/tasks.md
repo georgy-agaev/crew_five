@@ -223,8 +223,29 @@
   → Typography: Title 15px/600, description 13px/textMuted
   → Layout: 2-column grid, 12px gap
   → Verified: web/src/pages/PipelineWorkspaceWithSidebar.tsx:2440-2474
-- [ ] T036 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-10] Add keyboard navigation support for segment builder (tab through fields, enter to submit)
-- [ ] T037 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-10] Add ARIA labels for accessibility in FilterRow, SegmentBuilder, and ExaWebsetSearch components
+- [X] T036 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-10] Add keyboard navigation support for segment builder (tab through fields, enter to submit)
+  → ✅ Added focus management with useRef and useEffect
+  → ✅ Implemented focus trap within modals (Tab cycles through focusable elements)
+  → ✅ Added Escape key handler to close modals
+  → ✅ Focus restoration when modal closes
+  → ✅ Ctrl+Enter / Cmd+Enter keyboard shortcuts for text submissions
+  → ✅ Auto-focus first input when modal opens
+  → ✅ Components: FilterRow, SegmentBuilder, ExaWebsetSearch
+- [X] T037 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-10] Add ARIA labels for accessibility in FilterRow, SegmentBuilder, and ExaWebsetSearch components
+  → ✅ Added role="dialog" and aria-modal="true" to modal overlays
+  → ✅ Added aria-labelledby linking to modal titles
+  → ✅ Added aria-busy for async operations (loading/saving states)
+  → ✅ Added aria-live="polite" for dynamic content updates
+  → ✅ Added aria-live="assertive" for error messages
+  → ✅ Added aria-required for required fields
+  → ✅ Added aria-invalid for validation errors
+  → ✅ Added aria-describedby linking fields to help/error text
+  → ✅ Added role="status" for loading/preview indicators
+  → ✅ Added role="alert" for error messages
+  → ✅ Added role="tab", "tablist", "tabpanel" for EXA results tabs
+  → ✅ Added aria-label for buttons without visible text
+  → ✅ Added descriptive labels for all interactive elements
+  → ✅ Components: FilterRow, SegmentBuilder, AIFilterSuggestions, ExaWebsetSearch
 - [X] T038 [EXECUTOR: MAIN] [SEQUENTIAL] Test all modals in Light and Dark themes (use existing isDark flag)
   → ✅ Tested modal components: SegmentBuilder, ExaWebsetSearch
   → ⚠️  **Finding**: Both modals use hardcoded light theme colors

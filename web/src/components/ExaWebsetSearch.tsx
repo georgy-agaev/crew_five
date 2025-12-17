@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { ExaCompanyResult, ExaEmployeeResult } from '../types/exaWebset';
 import { useExaSearch } from '../hooks/useExaSearch';
 
@@ -20,6 +20,60 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
   const [activeTab, setActiveTab] = useState<'companies' | 'employees'>('companies');
 
   const { companies, employees, totalResults, loading, error, search, clear } = useExaSearch();
+
+  // Focus management refs
+  const modalRef = useRef<HTMLDivElement>(null);
+  const firstFocusableRef = useRef<HTMLTextAreaElement>(null);
+  const previousActiveElement = useRef<HTMLElement | null>(null);
+
+  // Focus management on modal open/close
+  useEffect(() => {
+    if (isOpen) {
+      // Save currently focused element
+      previousActiveElement.current = document.activeElement as HTMLElement;
+
+      // Focus first input when modal opens
+      setTimeout(() => {
+        firstFocusableRef.current?.focus();
+      }, 100);
+    } else {
+      // Restore focus when modal closes
+      if (previousActiveElement.current) {
+        previousActiveElement.current.focus();
+      }
+    }
+  }, [isOpen]);
+
+  // Trap focus within modal
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleCancel();
+        return;
+      }
+
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusableElements = modalRef.current.querySelectorAll<HTMLElement>(
+          'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey && document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement?.focus();
+        } else if (!e.shiftKey && document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement?.focus();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
 
   if (!isOpen) {
     return null;
@@ -66,6 +120,14 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
     onClose();
   };
 
+  const handleKeyDownInTextarea = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Allow Ctrl+Enter or Cmd+Enter to submit search
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSearch();
+    }
+  };
+
   const canSave = segmentName.trim() !== '' && hasSearched && !saving;
 
   return (
@@ -89,8 +151,13 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
           zIndex: 1000,
         }}
         onClick={handleCancel}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="exa-search-title"
+        aria-busy={loading || saving}
       >
       <div
+        ref={modalRef}
         style={{
           background: '#fff',
           borderRadius: '16px',
@@ -113,7 +180,7 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
             alignItems: 'center',
           }}
         >
-          <h2 style={{ margin: 0 }}>EXA Web Search</h2>
+          <h2 id="exa-search-title" style={{ margin: 0 }}>EXA Web Search</h2>
           <button
             type="button"
             onClick={handleCancel}
@@ -123,7 +190,8 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
               margin: 0,
               minWidth: 'auto',
             }}
-            aria-label="Close"
+            aria-label="Close EXA web search dialog"
+            title="Close (Esc)"
           >
             ✕
           </button>
@@ -139,12 +207,15 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
         >
           {/* Search Input Section */}
           <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>
+            <label htmlFor="exa-search-input" style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>
               Search Description
             </label>
             <textarea
+              id="exa-search-input"
+              ref={firstFocusableRef}
               value={searchDescription}
               onChange={(e) => setSearchDescription(e.target.value)}
+              onKeyDown={handleKeyDownInTextarea}
               placeholder="Describe the companies or people you want to find (e.g., 'CTOs at enterprise SaaS companies in San Francisco')"
               style={{
                 width: '100%',
@@ -156,8 +227,13 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
                 fontFamily: 'inherit',
                 resize: 'vertical',
               }}
-              autoFocus
+              aria-label="Describe companies or people to search for"
+              aria-describedby={error ? "search-error" : "search-help"}
+              aria-required="true"
             />
+            <span id="search-help" style={{ display: 'none' }}>
+              Press Ctrl+Enter or Cmd+Enter to search
+            </span>
             <button
               type="button"
               onClick={handleSearch}
@@ -176,6 +252,9 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
                 alignItems: 'center',
                 gap: '8px',
               }}
+              aria-busy={loading}
+              aria-live="polite"
+              aria-label={loading ? 'Searching EXA database' : 'Search EXA database'}
             >
               {loading && (
                 <svg
@@ -206,6 +285,9 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
           {/* Error Display */}
           {error && (
             <div
+              id="search-error"
+              role="alert"
+              aria-live="assertive"
               style={{
                 padding: '12px 16px',
                 background: '#fee2e2',
@@ -224,6 +306,8 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
             <>
               {/* Results Count */}
               <div
+                role="status"
+                aria-live="polite"
                 style={{
                   padding: '16px',
                   background: '#f8fafc',
@@ -243,6 +327,8 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
 
               {/* Tabs */}
               <div
+                role="tablist"
+                aria-label="Search results by type"
                 style={{
                   display: 'flex',
                   gap: '8px',
@@ -252,6 +338,10 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
               >
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'companies'}
+                  aria-controls="companies-panel"
+                  id="companies-tab"
                   onClick={() => setActiveTab('companies')}
                   style={{
                     padding: '12px 16px',
@@ -269,6 +359,10 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
                 </button>
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'employees'}
+                  aria-controls="employees-panel"
+                  id="employees-tab"
                   onClick={() => setActiveTab('employees')}
                   style={{
                     padding: '12px 16px',
@@ -288,6 +382,9 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
 
               {/* Results Display */}
               <div
+                role="tabpanel"
+                id={`${activeTab}-panel`}
+                aria-labelledby={`${activeTab}-tab`}
                 style={{
                   maxHeight: '300px',
                   overflow: 'auto',
@@ -363,15 +460,22 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
 
               {/* Segment Name Input - Only show after search */}
               <div style={{ marginBottom: '16px' }}>
-                <label>
+                <label htmlFor="exa-segment-name">
                   Segment Name
                   <input
+                    id="exa-segment-name"
                     type="text"
                     placeholder="e.g., Enterprise CTOs from EXA Search"
                     value={segmentName}
                     onChange={(e) => setSegmentName(e.target.value)}
+                    aria-required="true"
+                    aria-invalid={hasSearched && !segmentName.trim() ? 'true' : 'false'}
+                    aria-describedby="segment-name-help"
                   />
                 </label>
+                <span id="segment-name-help" style={{ display: 'none' }}>
+                  Enter a name for this segment to save the search results
+                </span>
               </div>
             </>
           )}
@@ -392,6 +496,7 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
             onClick={handleCancel}
             className="ghost"
             disabled={saving}
+            aria-label="Cancel and close"
           >
             Cancel
           </button>
@@ -405,6 +510,8 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
               gap: '8px',
               justifyContent: 'center',
             }}
+            aria-busy={saving}
+            aria-label={saving ? 'Saving segment' : 'Save as segment'}
           >
             {saving && (
               <svg

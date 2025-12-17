@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { FilterDefinition } from '../types/filters';
 import { FilterRow } from './FilterRow';
 import { useFilterPreview } from '../hooks/useFilterPreview';
@@ -32,6 +32,60 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
   const { companyCount, employeeCount, totalCount, loading: previewLoading, error: previewError } =
     useFilterPreview(filters);
 
+  // Focus management refs
+  const modalRef = useRef<HTMLDivElement>(null);
+  const firstFocusableRef = useRef<HTMLInputElement>(null);
+  const previousActiveElement = useRef<HTMLElement | null>(null);
+
+  // Focus management on modal open/close
+  useEffect(() => {
+    if (isOpen) {
+      // Save currently focused element
+      previousActiveElement.current = document.activeElement as HTMLElement;
+
+      // Focus first input when modal opens
+      setTimeout(() => {
+        firstFocusableRef.current?.focus();
+      }, 100);
+    } else {
+      // Restore focus when modal closes
+      if (previousActiveElement.current) {
+        previousActiveElement.current.focus();
+      }
+    }
+  }, [isOpen]);
+
+  // Trap focus within modal
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleCancel();
+        return;
+      }
+
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusableElements = modalRef.current.querySelectorAll<HTMLElement>(
+          'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey && document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement?.focus();
+        } else if (!e.shiftKey && document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement?.focus();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
+
   if (!isOpen) {
     return null;
   }
@@ -47,7 +101,7 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
 
     // Check for duplicate filters (same field + operator combination)
     const filterKeys = new Set<string>();
-    validFilters.forEach((filter, index) => {
+    validFilters.forEach((filter) => {
       const key = `${filter.field}:${filter.operator}`;
       if (filterKeys.has(key)) {
         errors.push(`Duplicate filter detected: ${filter.field} with ${filter.operator} operator`);
@@ -182,6 +236,14 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
     }
   };
 
+  const handleKeyDownInTextarea = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Allow Enter key to submit AI generation (Ctrl+Enter or Cmd+Enter)
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleAIGenerate();
+    }
+  };
+
   const handleSelectAISuggestion = (suggestion: {id: string; filters: FilterDefinition[]}) => {
     // Replace current filters with selected suggestion
     setFilters(suggestion.filters);
@@ -214,8 +276,13 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
           zIndex: 1000,
         }}
         onClick={handleCancel}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="segment-builder-title"
+        aria-busy={creating || aiLoading}
       >
       <div
+        ref={modalRef}
         style={{
           background: '#fff',
           borderRadius: '16px',
@@ -238,7 +305,7 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
             alignItems: 'center',
           }}
         >
-          <h2 style={{ margin: 0 }}>Build Segment</h2>
+          <h2 id="segment-builder-title" style={{ margin: 0 }}>Build Segment</h2>
           <button
             type="button"
             onClick={handleCancel}
@@ -248,7 +315,8 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
               margin: 0,
               minWidth: 'auto',
             }}
-            aria-label="Close"
+            aria-label="Close segment builder dialog"
+            title="Close (Esc)"
           >
             ✕
           </button>
@@ -264,26 +332,32 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
         >
           {/* Segment Name Input */}
           <div style={{ marginBottom: '24px' }}>
-            <label>
+            <label htmlFor="segment-name-input">
               Segment Name
               <input
+                id="segment-name-input"
+                ref={firstFocusableRef}
                 type="text"
                 placeholder="e.g., Enterprise CTOs"
                 value={segmentName}
                 onChange={(e) => setSegmentName(e.target.value)}
-                autoFocus
+                aria-required="true"
+                aria-invalid={!segmentName.trim() && createError !== null ? 'true' : 'false'}
+                aria-describedby={createError ? "create-error" : undefined}
               />
             </label>
           </div>
 
           {/* AI-Assisted Section */}
           <div style={{marginBottom: '24px'}}>
-            <label style={{display: 'block', marginBottom: '8px', fontWeight: 600}}>
+            <label htmlFor="ai-description-input" style={{display: 'block', marginBottom: '8px', fontWeight: 600}}>
               AI-Assisted Filter Builder
             </label>
             <textarea
+              id="ai-description-input"
               value={aiDescription}
               onChange={(e) => setAiDescription(e.target.value)}
+              onKeyDown={handleKeyDownInTextarea}
               placeholder="Describe your target audience (e.g., 'Enterprise CTOs in SaaS companies with 100+ employees')"
               style={{
                 width: '100%',
@@ -295,7 +369,12 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
                 fontFamily: 'inherit',
                 resize: 'vertical'
               }}
+              aria-label="Describe your target audience for AI suggestions"
+              aria-describedby={aiError ? "ai-error" : "ai-help"}
             />
+            <span id="ai-help" style={{ display: 'none' }}>
+              Press Ctrl+Enter or Cmd+Enter to generate suggestions
+            </span>
             <button
               type="button"
               onClick={handleAIGenerate}
@@ -314,6 +393,9 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
                 alignItems: 'center',
                 gap: '8px',
               }}
+              aria-busy={aiLoading}
+              aria-live="polite"
+              aria-label={aiLoading ? 'Generating AI suggestions' : 'Generate AI suggestions'}
             >
               {aiLoading && (
                 <svg
@@ -340,7 +422,12 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
               <span>{aiLoading ? 'Generating...' : 'Generate Suggestions'}</span>
             </button>
             {aiError && (
-              <div style={{marginTop: '8px', color: '#ef4444', fontSize: '13px'}}>
+              <div
+                id="ai-error"
+                role="alert"
+                style={{marginTop: '8px', color: '#ef4444', fontSize: '13px'}}
+                aria-live="assertive"
+              >
                 {aiError}
               </div>
             )}
@@ -348,7 +435,12 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
 
           {/* AI Suggestions Display */}
           {aiSuggestions.length > 0 && (
-            <div style={{marginBottom: '24px'}}>
+            <div
+              style={{marginBottom: '24px'}}
+              role="region"
+              aria-label="AI-generated filter suggestions"
+              aria-live="polite"
+            >
               <AIFilterSuggestions
                 suggestions={aiSuggestions}
                 loading={false}
@@ -358,21 +450,25 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
           )}
 
           {/* Filter Rows Section */}
-          <div style={{ marginBottom: '16px' }}>
-            <h3 style={{ marginBottom: '12px', fontSize: '16px' }}>Filters</h3>
-            {filters.map((filter, index) => (
-              <FilterRow
-                key={index}
-                filter={filter}
-                onChange={(updatedFilter) => handleFilterChange(index, updatedFilter)}
-                onRemove={() => handleRemoveFilter(index)}
-              />
-            ))}
+          <div style={{ marginBottom: '16px' }} role="region" aria-label="Filter definitions">
+            <h3 id="filters-heading" style={{ marginBottom: '12px', fontSize: '16px' }}>Filters</h3>
+            <div role="list" aria-labelledby="filters-heading">
+              {filters.map((filter, idx) => (
+                <div key={idx} role="listitem">
+                  <FilterRow
+                    filter={filter}
+                    onChange={(updatedFilter) => handleFilterChange(idx, updatedFilter)}
+                    onRemove={() => handleRemoveFilter(idx)}
+                  />
+                </div>
+              ))}
+            </div>
             <button
               type="button"
               onClick={handleAddFilter}
               className="ghost"
               style={{ marginTop: '8px' }}
+              aria-label="Add another filter"
             >
               + Add Filter
             </button>
@@ -380,6 +476,10 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
 
           {/* Preview Count Display */}
           <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            aria-label="Filter preview results"
             style={{
               padding: '16px',
               background: '#f8fafc',
@@ -392,13 +492,13 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
               Preview
             </div>
             {previewLoading ? (
-              <div style={{ color: '#475569', fontSize: '14px' }}>
+              <div style={{ color: '#475569', fontSize: '14px' }} aria-busy="true">
                 <span style={{ display: 'inline-block', animation: 'pulse 1.5s ease-in-out infinite' }}>
                   Loading preview...
                 </span>
               </div>
             ) : previewError ? (
-              <div className="alert alert--error" style={{ margin: 0 }}>
+              <div className="alert alert--error" style={{ margin: 0 }} role="alert">
                 {previewError}
               </div>
             ) : validFilters.length === 0 ? (
@@ -433,6 +533,8 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
           {/* Validation Errors Display */}
           {validationErrors.length > 0 && (
             <div
+              role="alert"
+              aria-live="assertive"
               style={{
                 marginTop: '16px',
                 padding: '12px 16px',
@@ -458,6 +560,9 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
           {/* Creation Error Display */}
           {createError && (
             <div
+              id="create-error"
+              role="alert"
+              aria-live={createError.startsWith('Warning:') ? 'polite' : 'assertive'}
               style={{
                 marginTop: '16px',
                 padding: '12px 16px',
@@ -488,6 +593,7 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
             onClick={handleCancel}
             className="ghost"
             disabled={creating}
+            aria-label="Cancel segment creation"
           >
             Cancel
           </button>
@@ -501,6 +607,8 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
               gap: '8px',
               justifyContent: 'center',
             }}
+            aria-busy={creating}
+            aria-label={creating ? 'Creating segment' : 'Create segment'}
           >
             {creating && (
               <svg
