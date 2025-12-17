@@ -137,6 +137,100 @@ describe('web adapter server', () => {
     expect((resMissingFilter.body as any).error).toBe('filterDefinition is required');
   });
 
+  it('accepts and logs AI attribution metadata when creating segments', async () => {
+    const createSegment = vi.fn(async (input) => ({
+      id: 's-ai-123',
+      ...input,
+      created_at: '2025-12-17T00:00:00Z',
+      version: 0
+    }));
+    const baseDeps: any = { ...deps, createSegment };
+
+    // Spy on console.log to verify AI attribution logging
+    const consoleLogSpy = vi.spyOn(console, 'log');
+
+    const resWithAttribution = await dispatch(
+      baseDeps,
+      {
+        method: 'POST',
+        pathname: '/api/segments',
+        body: {
+          name: 'AI-Suggested Segment',
+          locale: 'en',
+          filterDefinition: [{ field: 'employees.role', operator: 'eq', value: 'CTO' }],
+          description: 'Segment from AI suggestion',
+          aiAttribution: {
+            suggestionId: 'sugg-456',
+            userDescription: 'Target CTOs at AI companies',
+          },
+        },
+      },
+      buildMeta({ mode: 'live' })
+    );
+
+    expect(resWithAttribution.status).toBe(201);
+    expect(createSegment).toHaveBeenCalledWith({
+      name: 'AI-Suggested Segment',
+      locale: 'en',
+      filterDefinition: [{ field: 'employees.role', operator: 'eq', value: 'CTO' }],
+      description: 'Segment from AI suggestion',
+      createdBy: undefined,
+    });
+    expect((resWithAttribution.body as any).id).toBe('s-ai-123');
+
+    // Verify AI attribution was logged
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      '[Segment Creation] AI-assisted segment created:',
+      expect.objectContaining({
+        segmentId: 's-ai-123',
+        segmentName: 'AI-Suggested Segment',
+        suggestionId: 'sugg-456',
+        userDescription: 'Target CTOs at AI companies',
+        timestamp: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
+      })
+    );
+
+    consoleLogSpy.mockRestore();
+  });
+
+  it('does not log attribution when aiAttribution is not provided', async () => {
+    const createSegment = vi.fn(async (input) => ({
+      id: 's-manual-456',
+      ...input,
+      created_at: '2025-12-17T00:00:00Z',
+      version: 0
+    }));
+    const baseDeps: any = { ...deps, createSegment };
+
+    const consoleLogSpy = vi.spyOn(console, 'log');
+
+    const resWithoutAttribution = await dispatch(
+      baseDeps,
+      {
+        method: 'POST',
+        pathname: '/api/segments',
+        body: {
+          name: 'Manual Segment',
+          locale: 'en',
+          filterDefinition: [{ field: 'companies.industry', operator: 'eq', value: 'Tech' }],
+          description: 'Manually created segment',
+        },
+      },
+      buildMeta({ mode: 'live' })
+    );
+
+    expect(resWithoutAttribution.status).toBe(201);
+    expect((resWithoutAttribution.body as any).id).toBe('s-manual-456');
+
+    // Verify AI attribution was NOT logged
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(
+      '[Segment Creation] AI-assisted segment created:',
+      expect.any(Object)
+    );
+
+    consoleLogSpy.mockRestore();
+  });
+
   it('routes ICP profile/hypothesis CRUD', async () => {
     const listIcpProfiles = vi.fn(async () => [{ id: 'p1', name: 'ICP' }]);
     const createIcpProfile = vi.fn(async ({ name }) => ({ id: 'p1', name }));

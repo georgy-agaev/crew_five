@@ -206,6 +206,15 @@ export async function dispatch(
     if (!body.name) return { status: 400, body: { error: 'name is required' } };
     if (!body.locale) return { status: 400, body: { error: 'locale is required' } };
     if (!body.filterDefinition) return { status: 400, body: { error: 'filterDefinition is required' } };
+
+    // Extract optional AI attribution metadata
+    const aiAttribution = body.aiAttribution ? {
+      usedAI: true,
+      suggestionId: body.aiAttribution.suggestionId,
+      userDescription: body.aiAttribution.userDescription,
+      timestamp: new Date().toISOString(),
+    } : { usedAI: false };
+
     try {
       const segment = await deps.createSegment({
         name: body.name,
@@ -214,6 +223,18 @@ export async function dispatch(
         description: body.description,
         createdBy: body.createdBy,
       });
+
+      // Log AI attribution for analytics (ready for future metadata column migration)
+      if (aiAttribution.usedAI) {
+        console.log('[Segment Creation] AI-assisted segment created:', {
+          segmentId: segment.id,
+          segmentName: body.name,
+          suggestionId: aiAttribution.suggestionId,
+          userDescription: aiAttribution.userDescription,
+          timestamp: aiAttribution.timestamp,
+        });
+      }
+
       return { status: 201, body: segment };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Segment creation failed';

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import type { FilterDefinition } from '../types/filters';
 import { FilterRow } from './FilterRow';
 import { useFilterPreview } from '../hooks/useFilterPreview';
+import { aiSuggestFiltersAPI } from '../apiClient';
+import { AIFilterSuggestions } from './AIFilterSuggestions';
 
 export interface SegmentBuilderProps {
   isOpen: boolean;
@@ -15,6 +17,12 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
     { field: '', operator: 'eq', value: '' },
   ]);
   const [creating, setCreating] = useState(false);
+
+  // AI-assisted filter generation state
+  const [aiDescription, setAiDescription] = useState('');
+  const [aiSuggestions, setAiSuggestions] = useState<Array<{id: string; filters: FilterDefinition[]; rationale?: string; targetAudience?: string}>>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   // Get live preview of filter results
   const { companyCount, employeeCount, totalCount, loading: previewLoading, error: previewError } =
@@ -74,7 +82,43 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
     // Reset form
     setSegmentName('');
     setFilters([{ field: '', operator: 'eq', value: '' }]);
+    setAiDescription('');
+    setAiSuggestions([]);
+    setAiError(null);
     onClose();
+  };
+
+  const handleAIGenerate = async () => {
+    if (!aiDescription.trim()) return;
+
+    setAiLoading(true);
+    setAiError(null);
+
+    try {
+      const result = await aiSuggestFiltersAPI({
+        userDescription: aiDescription,
+        maxSuggestions: 3,
+      });
+
+      // Add unique IDs to suggestions
+      const suggestionsWithIds = result.suggestions.map((s, i) => ({
+        ...s,
+        id: `ai-suggestion-${Date.now()}-${i}`,
+      }));
+
+      setAiSuggestions(suggestionsWithIds);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : 'Failed to generate suggestions');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleSelectAISuggestion = (suggestion: {id: string; filters: FilterDefinition[]}) => {
+    // Replace current filters with selected suggestion
+    setFilters(suggestion.filters);
+    // Clear AI suggestions after selection
+    setAiSuggestions([]);
   };
 
   const validFilters = filters.filter(f => f.field.trim() !== '');
@@ -153,6 +197,62 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
               />
             </label>
           </div>
+
+          {/* AI-Assisted Section */}
+          <div style={{marginBottom: '24px'}}>
+            <label style={{display: 'block', marginBottom: '8px', fontWeight: 600}}>
+              AI-Assisted Filter Builder
+            </label>
+            <textarea
+              value={aiDescription}
+              onChange={(e) => setAiDescription(e.target.value)}
+              placeholder="Describe your target audience (e.g., 'Enterprise CTOs in SaaS companies with 100+ employees')"
+              style={{
+                width: '100%',
+                minHeight: '80px',
+                padding: '12px',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0',
+                fontSize: '14px',
+                fontFamily: 'inherit',
+                resize: 'vertical'
+              }}
+            />
+            <button
+              type="button"
+              onClick={handleAIGenerate}
+              disabled={!aiDescription.trim() || aiLoading}
+              style={{
+                marginTop: '8px',
+                padding: '10px 16px',
+                background: aiLoading ? '#cbd5e1' : '#0f172a',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: aiLoading ? 'not-allowed' : 'pointer',
+                fontSize: '14px',
+                fontWeight: 600
+              }}
+            >
+              {aiLoading ? 'Generating...' : 'Generate Suggestions'}
+            </button>
+            {aiError && (
+              <div style={{marginTop: '8px', color: '#ef4444', fontSize: '13px'}}>
+                {aiError}
+              </div>
+            )}
+          </div>
+
+          {/* AI Suggestions Display */}
+          {aiSuggestions.length > 0 && (
+            <div style={{marginBottom: '24px'}}>
+              <AIFilterSuggestions
+                suggestions={aiSuggestions}
+                loading={false}
+                onSelect={handleSelectAISuggestion}
+              />
+            </div>
+          )}
 
           {/* Filter Rows Section */}
           <div style={{ marginBottom: '16px' }}>

@@ -116,10 +116,12 @@
   → Artifacts: [AIFilterSuggestions.tsx](web/src/components/AIFilterSuggestions.tsx), [tests](web/src/components/AIFilterSuggestions.test.tsx), [example](web/src/components/AIFilterSuggestions.example.tsx)
 - [X] T018 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-6] [US2] Add aiSuggestFiltersAPI function to web/src/apiClient.ts
   → Artifacts: [apiClient.ts](web/src/apiClient.ts)
-- [ ] T019 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] [US2] Extend SegmentBuilder component in web/src/components/SegmentBuilder.tsx (add AI chat input, suggestions display, selection logic)
-- [ ] T020 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] [US2] Add AI suggestion attribution metadata storage to segment creation in src/web/server.ts POST /api/segments endpoint
+- [X] T019 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] [US2] Extend SegmentBuilder component in web/src/components/SegmentBuilder.tsx (add AI chat input, suggestions display, selection logic)
+  → Artifacts: [SegmentBuilder.tsx](web/src/components/SegmentBuilder.tsx)
+- [X] T020 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] [US2] Add AI suggestion attribution metadata storage to segment creation in src/web/server.ts POST /api/segments endpoint
+  → Artifacts: [server.ts](src/web/server.ts), [tests](src/web/server.test.ts), [docs](docs/ai-attribution-tracking.md)
 
-**Checkpoint**: User Stories 1 AND 2 should both work independently - users can create segments manually OR with AI assistance
+**Checkpoint**: User Stories 1 AND 2 should both work independently - users can create segments manually OR with AI assistance ✅
 
 ---
 
