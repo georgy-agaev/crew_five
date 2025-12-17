@@ -72,9 +72,10 @@
   → Artifacts: [server.ts](src/web/server.ts), [tests](src/web/server.test.ts)
 - [X] T009 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-3] Add POST /api/exa/webset/search endpoint to src/web/server.ts (calls exaWebset service)
   → Artifacts: [server.ts](src/web/server.ts), [tests](src/web/server.test.ts)
-- [ ] T010 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] Add segment creation endpoint validation to src/web/server.ts (verify POST /api/segments exists or create it)
+- [X] T010 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] Add segment creation endpoint validation to src/web/server.ts (verify POST /api/segments exists or create it)
+  → Artifacts: [server.ts](src/web/server.ts), [tests](src/web/server.test.ts)
 
-**Checkpoint**: Foundation ready - user story UI implementation can now begin in parallel
+**Checkpoint**: Foundation ready - user story UI implementation can now begin in parallel ✅
 
 ---
 

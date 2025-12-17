@@ -14,7 +14,7 @@ import type { SmartleadMcpClient } from '../integrations/smartleadMcp';
 import { buildSmartleadMcpClient } from '../integrations/smartleadMcp';
 import { ensureSegmentSnapshot } from '../services/segmentSnapshotWorkflow';
 import { enqueueSegmentEnrichment, getSegmentEnrichmentStatus, runSegmentEnrichmentOnce } from '../services/enrichSegment';
-import { getSegmentById } from '../services/segments';
+import { createSegment, getSegmentById } from '../services/segments';
 import { createIcpHypothesis, createIcpProfile } from '../services/icp';
 import { createIcpHypothesisViaCoach, createIcpProfileViaCoach } from '../services/coach';
 import {
@@ -86,6 +86,7 @@ type AdapterDeps = {
   listCampaigns: () => Promise<Campaign[]>;
   listDrafts: (params: { campaignId?: string; status?: string }) => Promise<DraftRow[]>;
   listSegments?: () => Promise<any[]>;
+  createSegment?: (input: {name: string; locale: string; filterDefinition: Record<string, unknown>; description?: string; createdBy?: string}) => Promise<Record<string, any>>;
   snapshotSegment?: (params: { segmentId: string; finalize?: boolean; allowEmpty?: boolean; maxContacts?: number }) => Promise<any>;
   enqueueSegmentEnrichment?: (params: { segmentId: string; adapter?: string; limit?: number; dryRun?: boolean }) => Promise<any>;
   runSegmentEnrichmentOnce?: (job: any, options: { dryRun?: boolean }) => Promise<any>;
@@ -197,6 +198,27 @@ export async function dispatch(
   if (method === 'GET' && pathname === '/api/segments') {
     if (!deps.listSegments) return { status: 501, body: { error: 'Segments not configured' } };
     return { status: 200, body: await deps.listSegments() };
+  }
+
+  if (method === 'POST' && pathname === '/api/segments') {
+    if (!deps.createSegment) return { status: 501, body: { error: 'Segment creation not configured' } };
+    const body = req.body ?? {};
+    if (!body.name) return { status: 400, body: { error: 'name is required' } };
+    if (!body.locale) return { status: 400, body: { error: 'locale is required' } };
+    if (!body.filterDefinition) return { status: 400, body: { error: 'filterDefinition is required' } };
+    try {
+      const segment = await deps.createSegment({
+        name: body.name,
+        locale: body.locale,
+        filterDefinition: body.filterDefinition,
+        description: body.description,
+        createdBy: body.createdBy,
+      });
+      return { status: 201, body: segment };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Segment creation failed';
+      return { status: 500, body: { error: message } };
+    }
   }
 
   if (method === 'POST' && pathname === '/api/filters/preview') {
@@ -741,6 +763,14 @@ export function createMockDeps(): AdapterDeps {
     listContacts: async ({ companyIds }) =>
       companyIds ? mockContacts.filter((c) => companyIds.includes(c.company_id)) : mockContacts,
     listSegments: async () => mockSegments,
+    createSegment: async (input) => ({
+      id: `seg-${Math.random().toString(36).substring(7)}`,
+      ...input,
+      filter_definition: input.filterDefinition,
+      created_by: input.createdBy,
+      created_at: new Date().toISOString(),
+      version: 0,
+    }),
     snapshotSegment: async ({ segmentId }) => {
       const seg = mockSegments.find((s) => s.id === segmentId);
       return { version: seg?.version ?? 1, count: mockContacts.length };
@@ -932,6 +962,9 @@ export function createLiveDeps(
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data ?? []).filter((row: any) => (row.version ?? 0) >= 0);
+    },
+    createSegment: async (input) => {
+      return await createSegment(supabase, input);
     },
     snapshotSegment: async ({ segmentId, finalize = true, allowEmpty, maxContacts }) => {
       const segment = await getSegmentById(supabase, segmentId);

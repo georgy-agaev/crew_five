@@ -22,6 +22,7 @@ describe('web adapter server', () => {
 
   it('routes segments and snapshot/enrich/status', async () => {
     const listSegments = vi.fn(async () => [{ id: 's1', name: 'Seg', version: 1 }]);
+    const createSegment = vi.fn(async (input) => ({ id: 's2', ...input, created_at: '2025-01-01T00:00:00Z', version: 0 }));
     const snapshotSegment = vi.fn(async () => ({ version: 1, count: 10 }));
     const enqueueSegmentEnrichment = vi.fn(async () => ({ id: 'job1', payload: {} }));
     const runSegmentEnrichmentOnce = vi.fn(async () => ({ processed: 2, dryRun: false, jobId: 'job1' }));
@@ -30,6 +31,7 @@ describe('web adapter server', () => {
     const baseDeps: any = {
       ...deps,
       listSegments,
+      createSegment,
       snapshotSegment,
       enqueueSegmentEnrichment,
       runSegmentEnrichmentOnce,
@@ -39,6 +41,31 @@ describe('web adapter server', () => {
     const resList = await dispatch(baseDeps, { method: 'GET', pathname: '/api/segments' });
     expect(listSegments).toHaveBeenCalledTimes(1);
     expect((resList.body as any[])[0].id).toBe('s1');
+
+    const resCreate = await dispatch(
+      baseDeps,
+      {
+        method: 'POST',
+        pathname: '/api/segments',
+        body: {
+          name: 'Test Segment',
+          locale: 'en',
+          filterDefinition: [{ field: 'employees.role', operator: 'eq', value: 'CTO' }],
+          description: 'Test segment description',
+        },
+      },
+      buildMeta({ mode: 'live' })
+    );
+    expect(resCreate.status).toBe(201);
+    expect(createSegment).toHaveBeenCalledWith({
+      name: 'Test Segment',
+      locale: 'en',
+      filterDefinition: [{ field: 'employees.role', operator: 'eq', value: 'CTO' }],
+      description: 'Test segment description',
+      createdBy: undefined,
+    });
+    expect((resCreate.body as any).id).toBe('s2');
+    expect((resCreate.body as any).name).toBe('Test Segment');
 
     const resSnap = await dispatch(
       baseDeps,
@@ -64,6 +91,50 @@ describe('web adapter server', () => {
     );
     expect(getSegmentEnrichmentStatus).toHaveBeenCalledWith('s1');
     expect((resStatus.body as any).status).toBe('completed');
+  });
+
+  it('validates required fields for POST /api/segments', async () => {
+    const createSegment = vi.fn(async (input) => ({ id: 's2', ...input }));
+    const baseDeps: any = { ...deps, createSegment };
+
+    // Missing name
+    const resMissingName = await dispatch(
+      baseDeps,
+      {
+        method: 'POST',
+        pathname: '/api/segments',
+        body: { locale: 'en', filterDefinition: [] },
+      },
+      buildMeta({ mode: 'live' })
+    );
+    expect(resMissingName.status).toBe(400);
+    expect((resMissingName.body as any).error).toBe('name is required');
+
+    // Missing locale
+    const resMissingLocale = await dispatch(
+      baseDeps,
+      {
+        method: 'POST',
+        pathname: '/api/segments',
+        body: { name: 'Test', filterDefinition: [] },
+      },
+      buildMeta({ mode: 'live' })
+    );
+    expect(resMissingLocale.status).toBe(400);
+    expect((resMissingLocale.body as any).error).toBe('locale is required');
+
+    // Missing filterDefinition
+    const resMissingFilter = await dispatch(
+      baseDeps,
+      {
+        method: 'POST',
+        pathname: '/api/segments',
+        body: { name: 'Test', locale: 'en' },
+      },
+      buildMeta({ mode: 'live' })
+    );
+    expect(resMissingFilter.status).toBe(400);
+    expect((resMissingFilter.body as any).error).toBe('filterDefinition is required');
   });
 
   it('routes ICP profile/hypothesis CRUD', async () => {
