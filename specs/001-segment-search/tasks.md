@@ -87,8 +87,10 @@
 
 ### Implementation for User Story 1
 
-- [ ] T011 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-4] [US1] Create FilterRow component in web/src/components/FilterRow.tsx (field selector, operator dropdown, value input)
-- [ ] T012 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-4] [US1] Create useFilterPreview hook in web/src/hooks/useFilterPreview.ts (debounced filter preview with use-debounce)
+- [X] T011 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-4] [US1] Create FilterRow component in web/src/components/FilterRow.tsx (field selector, operator dropdown, value input)
+  → Artifacts: [FilterRow.tsx](web/src/components/FilterRow.tsx), [tests](web/src/components/FilterRow.test.tsx), [example](web/src/components/FilterRow.example.tsx)
+- [X] T012 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-4] [US1] Create useFilterPreview hook in web/src/hooks/useFilterPreview.ts (debounced filter preview with use-debounce)
+  → Artifacts: [useFilterPreview.ts](web/src/hooks/useFilterPreview.ts), [tests](web/src/hooks/useFilterPreview.test.ts), [example](web/src/hooks/useFilterPreview.example.tsx)
 - [ ] T013 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-5] [US1] Create SegmentBuilder component in web/src/components/SegmentBuilder.tsx (modal with filter rows, preview count, save button)
 - [ ] T014 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-5] [US1] Add filterPreviewAPI and createSegmentAPI functions to web/src/apiClient.ts
 - [ ] T015 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] [US1] Add "Search Database" button to Segment tab in web/src/pages/PipelineWorkspaceWithSidebar.tsx (opens SegmentBuilder modal)
