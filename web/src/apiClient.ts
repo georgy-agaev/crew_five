@@ -277,6 +277,24 @@ export async function filterPreviewAPI(filterDefinition: FilterDefinition[]): Pr
   });
 }
 
+export async function aiSuggestFiltersAPI(params: {
+  userDescription: string;
+  icpProfileId?: string;
+  icpContext?: string;
+  maxSuggestions?: number;
+}): Promise<{
+  suggestions: Array<{
+    filters: FilterDefinition[];
+    rationale?: string;
+    targetAudience?: string;
+  }>;
+}> {
+  return fetchJson('/filters/ai-suggest', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
 export async function fetchSegments(): Promise<any[]> {
   return fetchJson('/segments');
 }

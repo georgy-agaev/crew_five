@@ -112,8 +112,10 @@
 
 ### Implementation for User Story 2
 
-- [ ] T017 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-6] [US2] Create AIFilterSuggestions component in web/src/components/AIFilterSuggestions.tsx (displays up to 3 AI suggestions with preview counts)
-- [ ] T018 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-6] [US2] Add aiSuggestFiltersAPI function to web/src/apiClient.ts
+- [X] T017 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-6] [US2] Create AIFilterSuggestions component in web/src/components/AIFilterSuggestions.tsx (displays up to 3 AI suggestions with preview counts)
+  → Artifacts: [AIFilterSuggestions.tsx](web/src/components/AIFilterSuggestions.tsx), [tests](web/src/components/AIFilterSuggestions.test.tsx), [example](web/src/components/AIFilterSuggestions.example.tsx)
+- [X] T018 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-6] [US2] Add aiSuggestFiltersAPI function to web/src/apiClient.ts
+  → Artifacts: [apiClient.ts](web/src/apiClient.ts)
 - [ ] T019 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] [US2] Extend SegmentBuilder component in web/src/components/SegmentBuilder.tsx (add AI chat input, suggestions display, selection logic)
 - [ ] T020 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] [US2] Add AI suggestion attribution metadata storage to segment creation in src/web/server.ts POST /api/segments endpoint
 
