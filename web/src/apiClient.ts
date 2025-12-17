@@ -106,6 +106,7 @@ export interface LlmModelInfo {
 }
 
 import type { FilterDefinition, FilterPreviewResult } from './types/filters';
+import type { ExaCompanyResult, ExaEmployeeResult } from './types/exaWebset';
 
 const baseUrl = import.meta.env.VITE_API_BASE ?? '/api';
 
@@ -308,6 +309,35 @@ export async function createSegmentAPI(payload: {
   return fetchJson<Record<string, any>>('/segments', {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export async function exaWebsetSearchAPI(params: {
+  description: string;
+  maxResults?: number;
+}): Promise<{
+  companies: ExaCompanyResult[];
+  employees: ExaEmployeeResult[];
+  totalResults: number;
+  query: string;
+}> {
+  return fetchJson('/exa/webset/search', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+export async function saveExaSegmentAPI(params: {
+  name: string;
+  locale: string;
+  companies: ExaCompanyResult[];
+  employees: ExaEmployeeResult[];
+  query: string;
+  description?: string;
+}): Promise<Record<string, any>> {
+  return fetchJson('/segments/exa', {
+    method: 'POST',
+    body: JSON.stringify(params),
   });
 }
 

@@ -133,8 +133,10 @@
 
 ### Implementation for User Story 4
 
-- [ ] T021 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-7] [US4] Create useExaSearch hook in web/src/hooks/useExaSearch.ts (manages EXA search state, loading, results)
-- [ ] T022 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-7] [US4] Add exaWebsetSearchAPI and saveExaSegmentAPI functions to web/src/apiClient.ts
+- [X] T021 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-7] [US4] Create useExaSearch hook in web/src/hooks/useExaSearch.ts (manages EXA search state, loading, results)
+  → Artifacts: [useExaSearch.ts](web/src/hooks/useExaSearch.ts), [tests](web/src/hooks/useExaSearch.test.ts), [example](web/src/hooks/useExaSearch.example.tsx)
+- [X] T022 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-7] [US4] Add exaWebsetSearchAPI and saveExaSegmentAPI functions to web/src/apiClient.ts
+  → Artifacts: [apiClient.ts](web/src/apiClient.ts)
 - [ ] T023 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-8] [US4] Create ExaWebsetSearch component in web/src/components/ExaWebsetSearch.tsx (modal with description input, results list, save button)
 - [ ] T024 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-8] [US4] Add "EXA Web Search" button to Segment tab in web/src/pages/PipelineWorkspaceWithSidebar.tsx (opens ExaWebsetSearch modal)
 - [ ] T025 [EXECUTOR: fullstack-nextjs-specialist] [SEQUENTIAL] [US4] Integrate ExaWebsetSearch modal with state management in web/src/pages/PipelineWorkspaceWithSidebar.tsx (show/hide modal, refresh segment list after save)
