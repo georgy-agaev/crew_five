@@ -57,7 +57,7 @@ export function FilterPreviewExample() {
 
 // Example with null filters (no preview)
 export function NoFilterExample() {
-  const { companyCount, employeeCount, totalCount, loading, error } = useFilterPreview(null);
+  const { companyCount, loading, error } = useFilterPreview(null);
 
   return (
     <div>

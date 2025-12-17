@@ -129,7 +129,6 @@ export function SettingsPage() {
               {(() => {
                 const current = settings.providers[task.key];
                 const options = getTaskModels(task.key, current.provider, llmModels);
-                const current = settings.providers[task.key];
                 const currentKey = `${current.provider}:${current.model}`;
                 const hasCurrent = options.some(
                   (opt) => `${opt.provider}:${opt.model}` === currentKey

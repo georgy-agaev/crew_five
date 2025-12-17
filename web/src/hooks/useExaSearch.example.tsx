@@ -5,7 +5,7 @@
  * into React components for EXA-powered segment discovery.
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useExaSearch } from './useExaSearch';
 
 /**
@@ -263,7 +263,7 @@ export function ExaSearchSegmentFlow() {
   const [step, setStep] = useState<'search' | 'review' | 'create'>('search');
   const [searchDescription, setSearchDescription] = useState('');
   const [selectedCompanies, setSelectedCompanies] = useState<Set<string>>(new Set());
-  const { companies, employees, totalResults, loading, error, search, clear } = useExaSearch();
+  const { companies, totalResults, loading, error, search, clear } = useExaSearch();
 
   const handleSearch = async () => {
     await search(searchDescription, 100);

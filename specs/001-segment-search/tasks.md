@@ -191,7 +191,10 @@
 - [ ] T036 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-10] Add keyboard navigation support for segment builder (tab through fields, enter to submit)
 - [ ] T037 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-10] Add ARIA labels for accessibility in FilterRow, SegmentBuilder, and ExaWebsetSearch components
 - [ ] T038 [EXECUTOR: MAIN] [SEQUENTIAL] Test all modals in Light and Dark themes (use existing isDark flag)
-- [ ] T039 [EXECUTOR: MAIN] [SEQUENTIAL] Run type-check and build for both backend and frontend: `pnpm build && cd web && pnpm build`
+- [X] T039 [EXECUTOR: MAIN] [SEQUENTIAL] Run type-check and build for both backend and frontend: `pnpm build && cd web && pnpm build`
+  → ✅ Backend: Type-check passed, build passed
+  → ✅ Frontend: Type-check passed, build passed (919ms, 338KB bundle)
+  → Fixed: Excluded test/example files from build, removed unused imports, fixed duplicate variables
 - [ ] T040 [EXECUTOR: MAIN] [SEQUENTIAL] Update CHANGELOG.md with feature additions and version bump
 
 ---
