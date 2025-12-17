@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.75] - 2025-12-17
+### Added
+- **AI-Assisted Segment Builder & EXA Webset Integration**: Three new segment creation methods in the Pipeline Workspace Segment tab:
+  - **Manual Filter Building**: Users can build segments with up to 10 filter rows, supporting field/operator/value combinations with real-time preview counts (companies, employees, total). Filter operators include eq, in, not_in, gte, lte across employees.* and companies.* fields. Powered by new `useFilterPreview` hook with 500ms debouncing and `POST /api/filters/preview` endpoint.
+  - **AI-Assisted Filter Suggestions**: AI chat integration generates 1-3 filter suggestions from natural language descriptions via `POST /api/filters/ai-suggest`, with each suggestion showing rationale, target audience, and live preview counts. Users can select suggestions to populate the filter builder. Powered by extended `icpCoach.ts` service.
+  - **EXA Web Search**: Direct web search for companies and employees using natural language queries via `POST /api/exa/search`. Results display in tabbed interface (companies/employees) with immediate segment creation. Includes duplicate detection by domain (companies) and email (employees), batch insert with proper FK relationships, and best-effort error recovery. Creates segment_members immediately without requiring separate snapshot step.
+- Backend services: `filterPreview.ts` for live filter counts, `exaWebset.ts` for EXA API integration with profile detection and confidence scoring, extended `icpCoach.ts` with `generateSegmentFiltersViaCoach` for AI filter generation.
+- Backend endpoints: `POST /api/filters/preview` for filter preview counts, `POST /api/filters/ai-suggest` for AI-generated filter suggestions, `POST /api/exa/search` for EXA web search, `POST /api/segments/exa` for EXA segment persistence with duplicate detection.
+- Frontend components: `FilterRow` for individual filter UI with 10 common field suggestions, `SegmentBuilder` modal combining manual filters and AI chat, `AIFilterSuggestions` card display for AI suggestions, `ExaWebsetSearch` modal for EXA search with tabbed results.
+- Frontend hooks: `useFilterPreview` for debounced filter preview (500ms), `useExaSearch` for EXA search state management with loading/error handling.
+- Type definitions: `web/src/types/filters.ts` for filter UI types, `web/src/types/exaWebset.ts` for EXA result types.
+- Comprehensive test coverage: 70+ tests across all components and hooks (FilterRow, SegmentBuilder, AIFilterSuggestions, ExaWebsetSearch, useFilterPreview, useExaSearch).
+### Changed
+- Pipeline Workspace Segment tab: "Search Database" button now opens SegmentBuilder modal (replaces AI chat), "EXA Web Search" button now functional and opens ExaWebsetSearch modal.
+- Segment list automatically refreshes after creation via both Database Search and EXA Web Search flows.
+- Both segment creation methods integrate with existing enrichment workflow: filter-based segments require snapshot before enrichment, EXA segments are immediately enrichable.
+### Fixed
+- TypeScript compilation issues in web build: excluded test and example files from production build, removed unused imports, fixed duplicate variable declarations.
+- Build verification: both backend and frontend compile successfully (frontend bundle: 338KB).
+### Documentation
+- Added `specs/001-segment-search/enrichment-compatibility-verification.md`: Complete schema verification showing both segment types (filter-based, EXA) are fully compatible with existing enrichment workflow.
+- Added `specs/001-segment-search/e2e-test-plan.md`: Comprehensive end-to-end test plans for both Database Search and EXA Web Search workflows with step-by-step instructions, database verification queries, and troubleshooting guide.
+
 ## [0.1.74] - 2025-12-15
 ### Changed
 - Updated `docs/web_ui_endpoints.md` to include the `/api/services`, `/api/llm/models`, and
