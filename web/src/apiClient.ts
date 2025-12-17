@@ -105,6 +105,8 @@ export interface LlmModelInfo {
   contextWindow?: number | null;
 }
 
+import type { FilterDefinition, FilterPreviewResult } from './types/filters';
+
 const baseUrl = import.meta.env.VITE_API_BASE ?? '/api';
 
 async function fetchJson<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -268,8 +270,27 @@ export async function triggerSmartleadPreview(
   });
 }
 
+export async function filterPreviewAPI(filterDefinition: FilterDefinition[]): Promise<FilterPreviewResult> {
+  return fetchJson<FilterPreviewResult>('/filters/preview', {
+    method: 'POST',
+    body: JSON.stringify({ filterDefinition }),
+  });
+}
+
 export async function fetchSegments(): Promise<any[]> {
   return fetchJson('/segments');
+}
+
+export async function createSegmentAPI(payload: {
+  name: string;
+  locale: string;
+  filterDefinition: FilterDefinition[];
+  description?: string;
+}): Promise<Record<string, any>> {
+  return fetchJson<Record<string, any>>('/segments', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function snapshotSegment(payload: { segmentId: string; finalize?: boolean; allowEmpty?: boolean; maxContacts?: number }) {
