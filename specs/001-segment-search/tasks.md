@@ -60,9 +60,12 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-2] Implement filter preview count service in src/services/filterPreview.ts (queries companies/employees with filters, returns counts)
-- [ ] T005 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-2] Implement EXA Webset service wrapper in src/services/exaWebset.ts (uses existing src/integrations/exa.ts client)
-- [ ] T006 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-2] Extend AI coach to generate segment filters in src/services/icpCoach.ts (add generateSegmentFiltersViaCoach function with JSON mode)
+- [X] T004 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-2] Implement filter preview count service in src/services/filterPreview.ts (queries companies/employees with filters, returns counts)
+  → Artifacts: [filterPreview.ts](src/services/filterPreview.ts), [tests](tests/filterPreview.test.ts)
+- [X] T005 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-2] Implement EXA Webset service wrapper in src/services/exaWebset.ts (uses existing src/integrations/exa.ts client)
+  → Artifacts: [exaWebset.ts](src/services/exaWebset.ts), [types](src/types/exaWebset.ts), [tests](tests/exaWebset.test.ts), [docs](docs/exa-webset-usage.md)
+- [X] T006 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-2] Extend AI coach to generate segment filters in src/services/icpCoach.ts (add generateSegmentFiltersViaCoach function with JSON mode)
+  → Artifacts: [icpCoach.ts](src/services/icpCoach.ts), [tests](tests/segmentFilterCoach.test.ts), [docs](docs/SEGMENT_FILTER_COACH.md), [example](examples/segment-filter-coach-example.ts)
 - [ ] T007 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-3] Add POST /api/filters/preview endpoint to src/web/server.ts (calls filterPreview service)
 - [ ] T008 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-3] Add POST /api/filters/ai-suggest endpoint to src/web/server.ts (calls extended AI coach)
 - [ ] T009 [EXECUTOR: fullstack-nextjs-specialist] [PARALLEL-GROUP-3] Add POST /api/exa/webset/search endpoint to src/web/server.ts (calls exaWebset service)

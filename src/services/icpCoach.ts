@@ -268,3 +268,184 @@ export async function runIcpCoachHypothesisLlm(
   const obj = parseJson(raw);
   return validateHypothesisPayload(obj);
 }
+
+// Segment Filter Generation via Coach
+
+export interface FilterSuggestionRequest {
+  userDescription: string;
+  icpProfileId?: string;
+  icpContext?: string;
+  maxSuggestions?: number;
+}
+
+export interface FilterSuggestion {
+  filters: Array<{ field: string; operator: string; value: unknown }>;
+  rationale?: string;
+  targetAudience?: string;
+}
+
+function buildFilterGenerationSystemPrompt(): string {
+  const prompt = `You are an AI assistant that helps generate segment filter configurations for B2B sales targeting.
+
+# Your Task
+Generate 1-3 filter configuration suggestions based on the user's description. Each suggestion should target a specific audience segment using database filters.
+
+# Filter Rules
+1. **Allowed field prefixes:**
+   - employees.* (e.g., employees.role, employees.seniority, employees.department)
+   - companies.* (e.g., companies.industry, companies.size, companies.region, companies.revenue)
+
+2. **Allowed operators:**
+   - eq: Exact match (for strings, numbers)
+   - in: Value is in array (requires array value)
+   - not_in: Value is not in array (requires array value)
+   - gte: Greater than or equal (requires number value)
+   - lte: Less than or equal (requires number value)
+
+3. **Common field examples:**
+   - employees.role: "CTO", "VP Engineering", "Head of Product"
+   - employees.seniority: "C-Level", "VP", "Director", "Manager"
+   - employees.department: "Engineering", "Sales", "Marketing", "Product"
+   - companies.industry: "SaaS", "FinTech", "HealthTech", "E-commerce"
+   - companies.size: "Enterprise", "Mid-Market", "SMB"
+   - companies.employee_count: 100, 500, 1000 (numeric)
+   - companies.region: "North America", "EMEA", "APAC"
+
+# Output Format
+Return ONLY a valid JSON object with this structure:
+{
+  "suggestions": [
+    {
+      "filters": [
+        {"field": "employees.role", "operator": "in", "value": ["CTO", "VP Engineering"]},
+        {"field": "companies.employee_count", "operator": "gte", "value": 100}
+      ],
+      "rationale": "Brief explanation of why this targeting makes sense",
+      "targetAudience": "Brief description of who this targets"
+    }
+  ]
+}
+
+# Guidelines
+- Generate 1-3 diverse suggestions with different targeting strategies
+- Each suggestion should have 1-5 filters
+- Combine employee and company filters for precision
+- Provide clear rationale for each suggestion
+- Ensure all filters use valid fields and operators
+- Use realistic values based on B2B sales context
+
+Return ONLY the JSON object, no additional text.`;
+
+  return prompt;
+}
+
+function buildFilterGenerationMessages(request: FilterSuggestionRequest): ChatMessage[] {
+  const system: ChatMessage = {
+    role: 'system',
+    content: buildFilterGenerationSystemPrompt(),
+  };
+
+  const userParts = [`User description: ${request.userDescription}`];
+
+  if (request.icpContext) {
+    userParts.push(`\nICP context: ${request.icpContext}`);
+  }
+
+  if (request.maxSuggestions) {
+    userParts.push(`\nGenerate exactly ${request.maxSuggestions} suggestion(s).`);
+  }
+
+  const user: ChatMessage = {
+    role: 'user',
+    content: userParts.join('\n'),
+  };
+
+  return [system, user];
+}
+
+function validateFilterSuggestions(obj: any, maxSuggestions?: number): FilterSuggestion[] {
+  if (!obj || typeof obj !== 'object') {
+    throw new Error('Filter coach returned invalid response structure');
+  }
+
+  if (!Array.isArray(obj.suggestions) || obj.suggestions.length === 0) {
+    throw new Error('Filter coach returned no suggestions');
+  }
+
+  const suggestions: FilterSuggestion[] = [];
+
+  for (const [idx, suggestion] of obj.suggestions.entries()) {
+    if (!suggestion || typeof suggestion !== 'object') {
+      throw new Error(`Invalid suggestion at index ${idx}`);
+    }
+
+    if (!Array.isArray(suggestion.filters) || suggestion.filters.length === 0) {
+      throw new Error(`Suggestion at index ${idx} has no filters`);
+    }
+
+    // Validate each filter clause
+    for (const [filterIdx, filter] of suggestion.filters.entries()) {
+      if (
+        !filter ||
+        typeof filter !== 'object' ||
+        typeof filter.field !== 'string' ||
+        typeof filter.operator !== 'string'
+      ) {
+        throw new Error(`Invalid filter at suggestion ${idx}, filter ${filterIdx}`);
+      }
+
+      // Validate field prefix
+      const validPrefixes = ['employees.', 'companies.'];
+      const hasValidPrefix = validPrefixes.some((prefix) => filter.field.startsWith(prefix));
+      if (!hasValidPrefix) {
+        throw new Error(
+          `Invalid field "${filter.field}" at suggestion ${idx}, filter ${filterIdx}. Must start with employees. or companies.`
+        );
+      }
+
+      // Validate operator
+      const validOps = ['eq', 'in', 'not_in', 'gte', 'lte'];
+      if (!validOps.includes(filter.operator)) {
+        throw new Error(
+          `Invalid operator "${filter.operator}" at suggestion ${idx}, filter ${filterIdx}`
+        );
+      }
+
+      // Validate value types for specific operators
+      if ((filter.operator === 'in' || filter.operator === 'not_in') && !Array.isArray(filter.value)) {
+        throw new Error(
+          `Operator "${filter.operator}" requires array value at suggestion ${idx}, filter ${filterIdx}`
+        );
+      }
+
+      if ((filter.operator === 'gte' || filter.operator === 'lte') && typeof filter.value !== 'number') {
+        throw new Error(
+          `Operator "${filter.operator}" requires numeric value at suggestion ${idx}, filter ${filterIdx}`
+        );
+      }
+    }
+
+    suggestions.push({
+      filters: suggestion.filters,
+      rationale: typeof suggestion.rationale === 'string' ? suggestion.rationale : undefined,
+      targetAudience: typeof suggestion.targetAudience === 'string' ? suggestion.targetAudience : undefined,
+    });
+  }
+
+  // Respect maxSuggestions if provided
+  if (maxSuggestions && maxSuggestions > 0) {
+    return suggestions.slice(0, maxSuggestions);
+  }
+
+  return suggestions;
+}
+
+export async function generateSegmentFiltersViaCoach(
+  chatClient: ChatClient,
+  request: FilterSuggestionRequest
+): Promise<FilterSuggestion[]> {
+  const messages = buildFilterGenerationMessages(request);
+  const raw = await chatClient.complete(messages);
+  const obj = parseJson(raw);
+  return validateFilterSuggestions(obj, request.maxSuggestions);
+}
