@@ -383,11 +383,11 @@ describe('ExaWebsetSearch', () => {
           onSave={mockOnSave}
         />
       );
-      expect(html).toContain('aria-label="Close"');
+      expect(html).toContain('aria-label="Close EXA web search dialog"');
       expect(html).toContain('✕');
     });
 
-    it('has autofocus on search textarea', () => {
+    it('has search textarea with aria-label', () => {
       const html = renderToString(
         <ExaWebsetSearch
           isOpen={true}
@@ -395,7 +395,7 @@ describe('ExaWebsetSearch', () => {
           onSave={mockOnSave}
         />
       );
-      expect(html).toContain('autofocus=""');
+      expect(html).toContain('aria-label="Describe companies or people to search for"');
     });
   });
 
