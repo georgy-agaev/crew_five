@@ -23,26 +23,9 @@ interface DraftRow {
   metadata: Record<string, unknown> | null;
 }
 
-interface EmailSendPayload {
-  to: string;
-  subject: string;
-  body: string;
-  metadata: Record<string, unknown>;
-  provider: string;
-  senderIdentity?: string;
-}
-
-interface EmailSendResult {
-  providerId: string;
-}
-
-interface SmtpClient {
-  send: (payload: EmailSendPayload) => Promise<EmailSendResult>;
-}
-
 export async function sendQueuedDrafts(
   client: SupabaseClient,
-  smtpClient: SmtpClient,
+  smtpClient: { send: (payload: any) => Promise<{ providerId: string }> },
   options: SendOptions = {}
 ) {
   const throttle = options.throttlePerMinute ?? 50;
@@ -138,13 +121,12 @@ export async function sendQueuedDrafts(
         } catch (retryError) {
           summary.failed += 1;
           await client.from('drafts').update({ status: 'generated' }).eq('id', draft.id);
-          const errorMessage = retryError instanceof Error ? retryError.message : 'send failed';
           if (options.logJson) {
             console.log(
               JSON.stringify({
                 level: 'error',
                 draftId: draft.id,
-                error: errorMessage,
+                error: (retryError as any)?.message ?? 'send failed',
                 batchId,
               })
             );
@@ -154,7 +136,7 @@ export async function sendQueuedDrafts(
               level: 'error',
               batchId,
               draftId: draft.id,
-              error: errorMessage,
+              error: (retryError as any)?.message ?? 'send failed',
               retry: true,
             });
           }
@@ -164,13 +146,12 @@ export async function sendQueuedDrafts(
 
       summary.failed += 1;
       await client.from('drafts').update({ status: 'generated' }).eq('id', draft.id);
-      const errorMessage = sendError instanceof Error ? sendError.message : 'send failed';
       if (options.logJson) {
         console.log(
           JSON.stringify({
             level: 'error',
             draftId: draft.id,
-            error: errorMessage,
+            error: (sendError as any)?.message ?? 'send failed',
             batchId,
           })
         );
@@ -180,7 +161,7 @@ export async function sendQueuedDrafts(
           level: 'error',
           batchId,
           draftId: draft.id,
-          error: errorMessage,
+          error: (sendError as any)?.message ?? 'send failed',
         });
       }
     }
@@ -209,8 +190,8 @@ export async function sendQueuedDrafts(
   }
 
   if (options.failOnError && summary.failed > 0) {
-    const err = new Error('Send batch failed') as Error & { summary: typeof summary };
-    err.summary = summary;
+    const err = new Error('Send batch failed');
+    (err as any).summary = summary;
     throw err;
   }
 

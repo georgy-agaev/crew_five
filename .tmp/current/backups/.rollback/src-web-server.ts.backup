@@ -9,11 +9,12 @@ import { generateDrafts } from '../services/drafts';
 import { getReplyPatterns } from '../services/emailEvents';
 import { initSupabaseClient } from '../services/supabaseClient';
 import { smartleadSendCommand } from '../commands/smartleadSend';
+import { getFilterPreviewCounts } from '../services/filterPreview';
 import type { SmartleadMcpClient } from '../integrations/smartleadMcp';
 import { buildSmartleadMcpClient } from '../integrations/smartleadMcp';
 import { ensureSegmentSnapshot } from '../services/segmentSnapshotWorkflow';
 import { enqueueSegmentEnrichment, getSegmentEnrichmentStatus, runSegmentEnrichmentOnce } from '../services/enrichSegment';
-import { getSegmentById } from '../services/segments';
+import { createSegment, getSegmentById } from '../services/segments';
 import { createIcpHypothesis, createIcpProfile } from '../services/icp';
 import { createIcpHypothesisViaCoach, createIcpProfileViaCoach } from '../services/coach';
 import {
@@ -37,6 +38,8 @@ import {
   promoteIcpDiscoveryCandidatesToSegment,
   runIcpDiscoveryWithExa,
 } from '../services/icpDiscovery';
+import { generateSegmentFiltersViaCoach } from '../services/icpCoach';
+import { searchExaWebset } from '../services/exaWebset';
 
 const promptRegistryColumnSupport = {
   checked: false,
@@ -65,7 +68,8 @@ async function ensurePromptRegistryColumns(client: any) {
     promptRegistryColumnSupport.hasStep = cols.includes('step');
     promptRegistryColumnSupport.hasPromptText = cols.includes('prompt_text');
     promptRegistryColumnSupport.checked = true;
-  } catch {
+  } catch (err: unknown) {
+    console.warn('Failed to check prompt_registry schema, assuming columns exist:', err);
     promptRegistryColumnSupport.hasStep = true;
     promptRegistryColumnSupport.hasPromptText = true;
     promptRegistryColumnSupport.checked = true;
@@ -82,6 +86,7 @@ type AdapterDeps = {
   listCampaigns: () => Promise<Campaign[]>;
   listDrafts: (params: { campaignId?: string; status?: string }) => Promise<DraftRow[]>;
   listSegments?: () => Promise<any[]>;
+  createSegment?: (input: {name: string; locale: string; filterDefinition: Record<string, unknown>; description?: string; createdBy?: string}) => Promise<Record<string, any>>;
   snapshotSegment?: (params: { segmentId: string; finalize?: boolean; allowEmpty?: boolean; maxContacts?: number }) => Promise<any>;
   enqueueSegmentEnrichment?: (params: { segmentId: string; adapter?: string; limit?: number; dryRun?: boolean }) => Promise<any>;
   runSegmentEnrichmentOnce?: (job: any, options: { dryRun?: boolean }) => Promise<any>;
@@ -131,6 +136,35 @@ type AdapterDeps = {
     candidateIds: string[];
     segmentId: string;
   }) => Promise<{ promotedCount: number }>;
+  getFilterPreview?: (filterDefinition: unknown) => Promise<{ companyCount: number; employeeCount: number; totalCount: number }>;
+  aiSuggestFilters?: (request: {
+    userDescription: string;
+    icpProfileId?: string;
+    icpContext?: string;
+    maxSuggestions?: number;
+  }) => Promise<Array<{ filters: any[]; rationale?: string; targetAudience?: string }>>;
+  searchExaWebset?: (request: { description: string; maxResults?: number }) => Promise<{
+    companies: any[];
+    employees: any[];
+    totalResults: number;
+    query: string;
+  }>;
+  saveExaSegment?: (payload: {
+    name: string;
+    locale: string;
+    companies: any[];
+    employees: any[];
+    query: string;
+    description?: string;
+  }) => Promise<{
+    id: string;
+    name: string;
+    stats: {
+      companiesProcessed: number;
+      employeesProcessed: number;
+      segmentMembersCreated: number;
+    };
+  }>;
 };
 
 async function readJson<T>(req: http.IncomingMessage): Promise<T> {
@@ -180,6 +214,98 @@ export async function dispatch(
   if (method === 'GET' && pathname === '/api/segments') {
     if (!deps.listSegments) return { status: 501, body: { error: 'Segments not configured' } };
     return { status: 200, body: await deps.listSegments() };
+  }
+
+  if (method === 'POST' && pathname === '/api/segments') {
+    if (!deps.createSegment) return { status: 501, body: { error: 'Segment creation not configured' } };
+    const body = req.body ?? {};
+    if (!body.name) return { status: 400, body: { error: 'name is required' } };
+    if (!body.locale) return { status: 400, body: { error: 'locale is required' } };
+    if (!body.filterDefinition) return { status: 400, body: { error: 'filterDefinition is required' } };
+
+    // Extract optional AI attribution metadata
+    const aiAttribution = body.aiAttribution ? {
+      usedAI: true,
+      suggestionId: body.aiAttribution.suggestionId,
+      userDescription: body.aiAttribution.userDescription,
+      timestamp: new Date().toISOString(),
+    } : { usedAI: false };
+
+    try {
+      const segment = await deps.createSegment({
+        name: body.name,
+        locale: body.locale,
+        filterDefinition: body.filterDefinition,
+        description: body.description,
+        createdBy: body.createdBy,
+      });
+
+      // Log AI attribution for analytics (ready for future metadata column migration)
+      if (aiAttribution.usedAI) {
+        console.log('[Segment Creation] AI-assisted segment created:', {
+          segmentId: segment.id,
+          segmentName: body.name,
+          suggestionId: aiAttribution.suggestionId,
+          userDescription: aiAttribution.userDescription,
+          timestamp: aiAttribution.timestamp,
+        });
+      }
+
+      return { status: 201, body: segment };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Segment creation failed';
+      return { status: 500, body: { error: message } };
+    }
+  }
+
+  if (method === 'POST' && pathname === '/api/segments/exa') {
+    if (!deps.saveExaSegment) return { status: 501, body: { error: 'EXA segment save not configured' } };
+    const body = req.body ?? {};
+
+    // Validation
+    if (!body.name) return { status: 400, body: { error: 'name is required' } };
+    if (!body.locale) return { status: 400, body: { error: 'locale is required' } };
+    if (!body.query) return { status: 400, body: { error: 'query is required' } };
+    if (!Array.isArray(body.companies) && !Array.isArray(body.employees)) {
+      return { status: 400, body: { error: 'At least companies or employees array is required' } };
+    }
+
+    try {
+      const result = await deps.saveExaSegment({
+        name: body.name,
+        locale: body.locale,
+        companies: body.companies || [],
+        employees: body.employees || [],
+        query: body.query,
+        description: body.description,
+      });
+
+      console.log('[EXA Segment] Created:', {
+        segmentId: result.id,
+        segmentName: result.name,
+        ...result.stats,
+        query: body.query,
+      });
+
+      return { status: 201, body: result };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'EXA segment creation failed';
+      console.error('[EXA Segment] Error:', message, err);
+      return { status: 500, body: { error: message } };
+    }
+  }
+
+  if (method === 'POST' && pathname === '/api/filters/preview') {
+    if (!deps.getFilterPreview) return { status: 501, body: { error: 'Filter preview not configured' } };
+    const body = req.body ?? {};
+    if (!body.filterDefinition) return { status: 400, body: { error: 'filterDefinition is required' } };
+    try {
+      const result = await deps.getFilterPreview(body.filterDefinition);
+      return { status: 200, body: result };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Filter preview failed';
+      return { status: 400, body: { error: message } };
+    }
   }
 
   if (method === 'POST' && pathname === '/api/segments/snapshot') {
@@ -234,8 +360,9 @@ export async function dispatch(
     const payload = { ...body, dryRun: body.dryRun ?? true, leadIds };
     try {
       return { status: 200, body: await deps.sendSmartlead(payload) };
-    } catch (err: any) {
-      return { status: 500, body: { error: err?.message ?? 'Smartlead send failed' } };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Smartlead send failed';
+      return { status: 500, body: { error: message } };
     }
   }
 
@@ -251,8 +378,9 @@ export async function dispatch(
     try {
       const created = await deps.smartleadCreateCampaign({ name });
       return { status: 200, body: created };
-    } catch (err: any) {
-      return { status: 500, body: { error: err?.message ?? 'Failed to create Smartlead campaign' } };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to create Smartlead campaign';
+      return { status: 500, body: { error: message } };
     }
   }
 
@@ -353,6 +481,22 @@ export async function dispatch(
       candidateIds,
     });
     return { status: 200, body: result };
+  }
+
+  if (method === 'POST' && pathname === '/api/exa/webset/search') {
+    if (!deps.searchExaWebset) return { status: 501, body: { error: 'EXA Webset search not configured' } };
+    const body = req.body ?? {};
+    if (!body.description) return { status: 400, body: { error: 'description is required' } };
+    try {
+      const results = await deps.searchExaWebset({
+        description: body.description,
+        maxResults: body.maxResults ? Number(body.maxResults) : undefined,
+      });
+      return { status: 200, body: results };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'EXA Webset search failed';
+      return { status: 500, body: { error: message } };
+    }
   }
 
   if (method === 'GET' && pathname === '/api/events') {
@@ -458,10 +602,11 @@ export async function dispatch(
     try {
       const models = await deps.listLlmModels(provider);
       return { status: 200, body: models };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to list LLM models';
       return {
         status: 500,
-        body: { error: err?.message ?? 'Failed to list LLM models' },
+        body: { error: message },
       };
     }
   }
@@ -594,6 +739,24 @@ export async function dispatch(
     return { status: 200, body: await deps.listSmartleadCampaigns() };
   }
 
+  if (method === 'POST' && pathname === '/api/filters/ai-suggest') {
+    if (!deps.aiSuggestFilters) return { status: 501, body: { error: 'AI filter suggestions not configured' } };
+    const body = req.body ?? {};
+    if (!body.userDescription) return { status: 400, body: { error: 'userDescription is required' } };
+    try {
+      const suggestions = await deps.aiSuggestFilters({
+        userDescription: body.userDescription,
+        icpProfileId: body.icpProfileId,
+        icpContext: body.icpContext,
+        maxSuggestions: body.maxSuggestions,
+      });
+      return { status: 200, body: { suggestions } };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'AI filter suggestion failed';
+      return { status: 500, body: { error: message } };
+    }
+  }
+
   return { status: 404, body: { error: 'Not found' } };
 }
 
@@ -636,8 +799,9 @@ export function createWebAdapter(deps: AdapterDeps, meta: MetaStatus) {
         meta
       );
       json(res, response.body, response.status);
-    } catch (err: any) {
-      json(res, { error: err?.message ?? 'Server error' }, 500);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Server error';
+      json(res, { error: message }, 500);
     }
   });
 }
@@ -673,6 +837,14 @@ export function createMockDeps(): AdapterDeps {
     listContacts: async ({ companyIds }) =>
       companyIds ? mockContacts.filter((c) => companyIds.includes(c.company_id)) : mockContacts,
     listSegments: async () => mockSegments,
+    createSegment: async (input) => ({
+      id: `seg-${Math.random().toString(36).substring(7)}`,
+      ...input,
+      filter_definition: input.filterDefinition,
+      created_by: input.createdBy,
+      created_at: new Date().toISOString(),
+      version: 0,
+    }),
     snapshotSegment: async ({ segmentId }) => {
       const seg = mockSegments.find((s) => s.id === segmentId);
       return { version: seg?.version ?? 1, count: mockContacts.length };
@@ -730,6 +902,20 @@ export function createMockDeps(): AdapterDeps {
     runIcpDiscovery: async () => ({ jobId: 'job-mock', runId: 'run-mock', provider: 'exa', status: 'running' }),
     listIcpDiscoveryCandidates: async () => [],
 	    promoteIcpDiscoveryCandidates: async ({ candidateIds }) => ({ promotedCount: candidateIds.length }),
+    getFilterPreview: async () => ({ companyCount: 5, employeeCount: 12, totalCount: 17 }),
+    aiSuggestFilters: async () => ([
+      {
+        filters: [{ field: 'employees.role', operator: 'eq', value: 'CTO' }],
+        rationale: 'Mock suggestion for testing',
+        targetAudience: 'Technology decision makers',
+      },
+    ]),
+    searchExaWebset: async () => ({
+      companies: [{ name: 'Mock Company', domain: 'mock.com', confidenceScore: 0.9 }],
+      employees: [{ name: 'John Doe', role: 'CTO', companyName: 'Mock Company', confidenceScore: 0.85 }],
+      totalResults: 2,
+      query: 'Mock query',
+    }),
   };
 }
 
@@ -850,6 +1036,9 @@ export function createLiveDeps(
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data ?? []).filter((row: any) => (row.version ?? 0) >= 0);
+    },
+    createSegment: async (input) => {
+      return await createSegment(supabase, input);
     },
     snapshotSegment: async ({ segmentId, finalize = true, allowEmpty, maxContacts }) => {
       const segment = await getSegmentById(supabase, segmentId);
@@ -1018,8 +1207,8 @@ export function createLiveDeps(
 
       try {
         return await attemptInsert();
-      } catch (err: any) {
-        const msg = String(err?.message ?? '').toLowerCase();
+      } catch (err: unknown) {
+        const msg = String(err instanceof Error ? err.message : '').toLowerCase();
         let retried = false;
         let overrideRolloutStatus: string | undefined;
         if (promptRegistryColumnSupport.hasStep && msg.includes("'step' column")) {
@@ -1078,12 +1267,8 @@ export function createLiveDeps(
       const model = (payload.model as string) ?? undefined;
       let coachClient: ChatClient = chatClient;
       if (provider || model) {
-        try {
-          const cfg = resolveModelConfig({ provider, model, task: 'icp' });
-          coachClient = buildChatClientForModel(cfg as any);
-        } catch {
-          coachClient = chatClient;
-        }
+        const cfg = resolveModelConfig({ provider, model, task: 'icp' });
+        coachClient = buildChatClientForModel(cfg as any);
       }
       const { jobId, profile } = await createIcpProfileViaCoach(supabase, coachClient, {
         name,
@@ -1105,12 +1290,8 @@ export function createLiveDeps(
       const model = (payload.model as string) ?? undefined;
       let coachClient: ChatClient = chatClient;
       if (provider || model) {
-        try {
-          const cfg = resolveModelConfig({ provider, model, task: 'hypothesis' });
-          coachClient = buildChatClientForModel(cfg as any);
-        } catch {
-          coachClient = chatClient;
-        }
+        const cfg = resolveModelConfig({ provider, model, task: 'hypothesis' });
+        coachClient = buildChatClientForModel(cfg as any);
       }
       const { jobId, hypothesis } = await createIcpHypothesisViaCoach(supabase, coachClient, {
         icpProfileId,
@@ -1179,6 +1360,212 @@ export function createLiveDeps(
       ? async ({ runId, candidateIds, segmentId }) =>
           promoteIcpDiscoveryCandidatesToSegment(supabase, { runId, candidateIds, segmentId })
       : undefined,
+    getFilterPreview: async (filterDefinition) => {
+      return await getFilterPreviewCounts(supabase, filterDefinition);
+    },
+    aiSuggestFilters: async (request) => {
+      return await generateSegmentFiltersViaCoach(chatClient, request);
+    },
+    searchExaWebset: async (request) => {
+      return await searchExaWebset(request);
+    },
+    saveExaSegment: async (payload: {
+      name: string;
+      locale: string;
+      companies: any[];
+      employees: any[];
+      query: string;
+      description?: string;
+    }) => {
+      // Create segment
+      const { data: segment, error: segmentError } = await supabase
+        .from('segments')
+        .insert({
+          name: payload.name,
+          locale: payload.locale,
+          description: payload.description || `EXA Web Search: ${payload.query}`,
+          filter_definition: JSON.stringify([]), // EXA segments don't use filter definitions
+        })
+        .select()
+        .single();
+
+      if (segmentError || !segment) {
+        throw new Error(segmentError?.message || 'Failed to create segment');
+      }
+
+      const segmentId = segment.id as string;
+      const segmentVersion = 1;
+
+      // Process companies with duplicate detection
+      const companyMap = new Map<string, string>();
+
+      for (const company of payload.companies) {
+        const domain = company.domain?.toLowerCase()?.trim() || null;
+        const name = company.name?.trim() || 'Unknown Company';
+
+        let companyId: string | null = null;
+
+        if (domain) {
+          const { data: existing } = await supabase
+            .from('companies')
+            .select('id')
+            .eq('website', domain)
+            .maybeSingle();
+
+          if (existing) {
+            companyId = existing.id as string;
+          }
+        }
+
+        if (!companyId) {
+          const { data: newCompany, error: insertError } = await supabase
+            .from('companies')
+            .insert({
+              company_name: name,
+              website: domain,
+              segment: company.industry || null,
+              status: 'Active',
+            })
+            .select('id')
+            .single();
+
+          if (!insertError && newCompany) {
+            companyId = newCompany.id as string;
+          }
+        }
+
+        if (companyId) {
+          const key = domain || name.toLowerCase();
+          companyMap.set(key, companyId);
+        }
+      }
+
+      // Process employees with duplicate detection
+      const employeeMap = new Map<string, { employeeId: string; companyId: string }>();
+
+      for (const employee of payload.employees) {
+        const email = employee.email?.toLowerCase()?.trim() || null;
+        const name = employee.name?.trim() || 'Unknown Employee';
+        const role = employee.role || employee.title || null;
+        const companyDomain = employee.companyDomain?.toLowerCase()?.trim() || null;
+        const companyName = employee.companyName?.trim() || null;
+
+        let companyId: string | null = null;
+
+        if (companyDomain) {
+          if (companyMap.has(companyDomain)) {
+            companyId = companyMap.get(companyDomain)!;
+          } else {
+            const { data: existing } = await supabase
+              .from('companies')
+              .select('id')
+              .eq('website', companyDomain)
+              .maybeSingle();
+
+            if (existing) {
+              companyId = existing.id as string;
+              companyMap.set(companyDomain, companyId);
+            }
+          }
+        }
+
+        if (!companyId && (companyName || companyDomain)) {
+          const { data: newCompany, error: insertError } = await supabase
+            .from('companies')
+            .insert({
+              company_name: companyName || companyDomain || 'Unknown Company',
+              website: companyDomain,
+              segment: null,
+              status: 'Active',
+            })
+            .select('id')
+            .single();
+
+          if (!insertError && newCompany) {
+            companyId = newCompany.id as string;
+            if (companyDomain) {
+              companyMap.set(companyDomain, companyId);
+            }
+          }
+        }
+
+        if (!companyId) continue;
+
+        let employeeId: string | null = null;
+
+        if (email) {
+          const { data: existing } = await supabase
+            .from('employees')
+            .select('id')
+            .eq('work_email', email)
+            .maybeSingle();
+
+          if (existing) {
+            employeeId = existing.id as string;
+          }
+        }
+
+        if (!employeeId) {
+          const { data: newEmployee, error: insertError } = await supabase
+            .from('employees')
+            .insert({
+              company_id: companyId,
+              full_name: name,
+              work_email: email,
+              position: role,
+            })
+            .select('id')
+            .single();
+
+          if (!insertError && newEmployee) {
+            employeeId = newEmployee.id as string;
+          }
+        }
+
+        if (employeeId && email) {
+          employeeMap.set(email, { employeeId, companyId });
+        }
+      }
+
+      // Create segment_members entries
+      const segmentMembers: Array<{
+        segment_id: string;
+        segment_version: number;
+        contact_id: string;
+        company_id: string;
+        snapshot: object;
+      }> = [];
+
+      for (const [_email, { employeeId, companyId }] of employeeMap.entries()) {
+        segmentMembers.push({
+          segment_id: segmentId,
+          segment_version: segmentVersion,
+          contact_id: employeeId,
+          company_id: companyId,
+          snapshot: { source: 'exa', query: payload.query },
+        });
+      }
+
+      if (segmentMembers.length > 0) {
+        const { error: membersError } = await supabase
+          .from('segment_members')
+          .insert(segmentMembers);
+
+        if (membersError) {
+          console.error('Failed to insert segment members:', membersError);
+        }
+      }
+
+      return {
+        id: segmentId,
+        name: payload.name,
+        stats: {
+          companiesProcessed: companyMap.size,
+          employeesProcessed: employeeMap.size,
+          segmentMembersCreated: segmentMembers.length,
+        },
+      };
+    },
   };
 }
 

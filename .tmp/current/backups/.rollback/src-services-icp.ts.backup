@@ -1,28 +1,6 @@
 /* eslint-disable security-node/detect-unhandled-async-errors */
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export interface IcpProfile {
-  id: string;
-  name: string;
-  description: string | null;
-  company_criteria: Record<string, unknown>;
-  persona_criteria: Record<string, unknown>;
-  phase_outputs: Record<string, unknown> | null;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface IcpHypothesis {
-  id: string;
-  icp_id: string;
-  hypothesis_label: string;
-  search_config: Record<string, unknown>;
-  status: 'draft' | 'active' | 'deprecated';
-  created_at: string;
-  updated_at: string;
-}
-
 export interface IcpProfileInput {
   name: string;
   description?: string;
@@ -43,7 +21,7 @@ export interface IcpHypothesisInput {
 export async function createIcpProfile(
   client: SupabaseClient,
   input: IcpProfileInput
-): Promise<IcpProfile> {
+): Promise<Record<string, any>> {
   const { data, error } = await client
     .from('icp_profiles')
     .insert([
@@ -63,13 +41,13 @@ export async function createIcpProfile(
     throw error ?? new Error('Failed to create ICP profile');
   }
 
-  return data as IcpProfile;
+  return data as Record<string, any>;
 }
 
 export async function createIcpHypothesis(
   client: SupabaseClient,
   input: IcpHypothesisInput
-): Promise<IcpHypothesis> {
+): Promise<Record<string, any>> {
   const { data, error } = await client
     .from('icp_hypotheses')
     .insert([
@@ -88,10 +66,10 @@ export async function createIcpHypothesis(
   }
 
   if (input.segmentId) {
-    await attachIcpToSegment(client, input.segmentId, data.id, input.icpProfileId);
+    await attachIcpToSegment(client, input.segmentId, data.id as string, input.icpProfileId);
   }
 
-  return data as IcpHypothesis;
+  return data as Record<string, any>;
 }
 
 export async function attachIcpToSegment(

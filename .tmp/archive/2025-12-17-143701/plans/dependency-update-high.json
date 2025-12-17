@@ -1,0 +1,67 @@
+{
+  "workflow": "dependency-management",
+  "phase": "update",
+  "phaseNumber": 2,
+  "config": {
+    "priority": "high",
+    "maxDependenciesPerRun": 50,
+    "sourceReport": "dependency-scan-report.md",
+    "updateStrategy": "conservative",
+    "dependencies": [
+      {
+        "package": "commander",
+        "currentVersion": "12.1.0",
+        "targetVersion": "14.0.2",
+        "updateType": "major",
+        "workspace": "root",
+        "requiresTesting": true,
+        "breakingChanges": true,
+        "notes": "CLI framework - test all commands after update"
+      },
+      {
+        "package": "dotenv",
+        "currentVersion": "16.6.1",
+        "targetVersion": "17.2.3",
+        "updateType": "major",
+        "workspace": "root",
+        "requiresTesting": true,
+        "breakingChanges": false,
+        "notes": "Minimal breaking changes expected for basic usage"
+      },
+      {
+        "package": "vitest",
+        "currentVersion": "1.6.1",
+        "targetVersion": "4.0.16",
+        "updateType": "major",
+        "workspace": "root",
+        "requiresTesting": true,
+        "breakingChanges": true,
+        "notes": "Test framework - significant API changes, must run full test suite"
+      },
+      {
+        "package": "@vitest/coverage-v8",
+        "currentVersion": "1.6.1",
+        "targetVersion": "4.0.16",
+        "updateType": "major",
+        "workspace": "root",
+        "requiresTesting": true,
+        "breakingChanges": true,
+        "notes": "Must update with vitest to maintain compatibility"
+      }
+    ]
+  },
+  "validation": {
+    "required": ["report-exists", "build"],
+    "optional": ["tests"]
+  },
+  "nextAgent": "dependency-updater",
+  "timestamp": "2025-12-17T00:00:00Z",
+  "metadata": {
+    "createdBy": "dependency-orchestrator",
+    "iteration": 1,
+    "maxIterations": 3,
+    "stage": "high",
+    "attempt": 1,
+    "maxAttempts": 3
+  }
+}

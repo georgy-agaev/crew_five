@@ -1,4 +1,5 @@
 /* eslint-disable security-node/detect-crlf */
+import { randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { URL, fileURLToPath } from 'node:url';
 
@@ -838,7 +839,7 @@ export function createMockDeps(): AdapterDeps {
       companyIds ? mockContacts.filter((c) => companyIds.includes(c.company_id)) : mockContacts,
     listSegments: async () => mockSegments,
     createSegment: async (input) => ({
-      id: `seg-${Math.random().toString(36).substring(7)}`,
+      id: `seg-${randomUUID().substring(0, 8)}`,
       ...input,
       filter_definition: input.filterDefinition,
       created_by: input.createdBy,

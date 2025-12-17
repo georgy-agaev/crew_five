@@ -13,24 +13,25 @@
     "audit": "pnpm audit --prod --audit-level high"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.48.1",
-    "commander": "^12.1.0",
-    "dotenv": "^16.4.5"
+    "@supabase/supabase-js": "^2.88.0",
+    "commander": "^14.0.2",
+    "dotenv": "^17.2.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
-    "@types/node": "^20.11.30",
+    "@types/node": "^22.19.3",
     "@typescript-eslint/eslint-plugin": "^8.48.0",
     "@typescript-eslint/parser": "^8.48.0",
-    "@vitest/coverage-v8": "^1.6.1",
+    "@vitest/coverage-v8": "^4.0.16",
     "eslint": "^9.39.1",
     "eslint-plugin-security": "^3.0.1",
     "eslint-plugin-security-node": "^1.1.4",
     "globals": "^16.5.0",
     "jsdom": "^27.2.0",
-    "tsx": "^4.19.2",
+    "knip": "^5.75.1",
+    "tsx": "^4.21.0",
     "typescript": "^5.6.3",
-    "vitest": "^1.6.1"
+    "vitest": "^4.0.16"
   },
   "pnpm": {
     "overrides": {

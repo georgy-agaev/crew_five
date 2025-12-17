@@ -1,0 +1,25 @@
+{
+  "workflow": "dependency-management",
+  "phase": "detection",
+  "phaseNumber": 1,
+  "config": {
+    "scanTypes": ["outdated", "security", "unused", "conflicts", "peer-dependencies"],
+    "packageManager": "pnpm",
+    "includeDevDependencies": true,
+    "maxDependenciesPerRun": 1000
+  },
+  "validation": {
+    "required": ["report-exists", "dependency-count"],
+    "optional": ["security-audit"]
+  },
+  "nextAgent": "dependency-auditor",
+  "timestamp": "2025-12-17T00:00:00.000Z",
+  "metadata": {
+    "createdBy": "dependency-orchestrator",
+    "iteration": 1,
+    "maxIterations": 3,
+    "projectPath": "/Users/georgyagaev/crew_five",
+    "packageJsonExists": true,
+    "gitStatus": "dirty"
+  }
+}

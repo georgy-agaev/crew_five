@@ -22,19 +22,6 @@ export interface IcpBrief {
   createdBy?: string;
 }
 
-interface PromptTextRow {
-  prompt_text: string;
-}
-
-function isPromptTextRow(obj: unknown): obj is PromptTextRow {
-  return (
-    obj !== null &&
-    typeof obj === 'object' &&
-    'prompt_text' in obj &&
-    typeof (obj as PromptTextRow).prompt_text === 'string'
-  );
-}
-
 export async function resolveCoachPromptText(client: SupabaseClient, promptId: string): Promise<string> {
   const { data, error } = await client
     .from('prompt_registry')
@@ -43,9 +30,9 @@ export async function resolveCoachPromptText(client: SupabaseClient, promptId: s
     .limit(1);
 
   if (error) {
-    const msg = error.message?.toLowerCase() ?? '';
+    const msg = String((error as any)?.message ?? '').toLowerCase();
     if (msg.includes('prompt_text') && msg.includes('column')) {
-      const friendly = new Error('prompt_registry.prompt_text column is missing; cannot resolve coach prompts') as Error & { code: string };
+      const friendly: any = new Error('prompt_registry.prompt_text column is missing; cannot resolve coach prompts');
       friendly.code = 'PROMPT_TEXT_COLUMN_MISSING';
       throw friendly;
     }
@@ -57,15 +44,11 @@ export async function resolveCoachPromptText(client: SupabaseClient, promptId: s
     throw new Error(`Coach prompt ${promptId} not found in prompt_registry`);
   }
 
-  const row = rows[0];
-  if (!isPromptTextRow(row)) {
-    throw new Error(`Coach prompt ${promptId} has invalid structure`);
-  }
-
-  if (!row.prompt_text.trim()) {
+  const text = (rows[0] as any)?.prompt_text;
+  if (!text || typeof text !== 'string' || !text.trim()) {
     throw new Error(`Coach prompt ${promptId} has no prompt_text content`);
   }
-  return row.prompt_text;
+  return text;
 }
 
 export async function generateIcpProfileFromBrief(
@@ -79,7 +62,7 @@ export async function generateIcpProfileFromBrief(
     personaCriteria: brief.personaCriteria,
     createdBy: brief.createdBy,
   });
-  return { id: profile.id };
+  return { id: profile.id as string };
 }
 
 export async function generateIcpHypothesisForSegment(
@@ -95,7 +78,7 @@ export async function generateIcpHypothesisForSegment(
     searchConfig,
     segmentId,
   });
-  return { id: hypothesis.id };
+  return { id: hypothesis.id as string };
 }
 
 export async function generateDraftsForSegmentWithIcp(
@@ -225,10 +208,9 @@ export async function createIcpProfileViaCoach(
       ...(promptTextOverride ? { promptTextOverride } : {}),
     };
     payload = await runIcpCoachProfileLlm(chatClient, llmInput);
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'ICP coach profile generation failed';
+  } catch (error: any) {
     await updateJobStatus(client, job.id, 'failed', {
-      error: errorMessage,
+      error: error?.message ?? 'ICP coach profile generation failed',
     });
     throw error;
   }
@@ -259,7 +241,7 @@ export async function createIcpProfileViaCoach(
 
   return {
     jobId: job.id,
-    profile: profile as unknown as { id: string } & Record<string, unknown>,
+    profile: profile as { id: string } & Record<string, unknown>,
   };
 }
 
@@ -292,10 +274,9 @@ export async function createIcpHypothesisViaCoach(
       ...(promptTextOverride ? { promptTextOverride } : {}),
     };
     payload = await runIcpCoachHypothesisLlm(chatClient, llmInput);
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'ICP coach hypothesis generation failed';
+  } catch (error: any) {
     await updateJobStatus(client, job.id, 'failed', {
-      error: errorMessage,
+      error: error?.message ?? 'ICP coach hypothesis generation failed',
     });
     throw error;
   }
@@ -312,6 +293,6 @@ export async function createIcpHypothesisViaCoach(
 
   return {
     jobId: job.id,
-    hypothesis: hypothesis as unknown as { id: string } & Record<string, unknown>,
+    hypothesis: hypothesis as { id: string } & Record<string, unknown>,
   };
 }

@@ -1,0 +1,1 @@
+{"files":[],"issues":[{"file":"package.json","dependencies":[],"devDependencies":[{"name":"@vitest/coverage-v8","line":25,"col":6,"pos":710}],"optionalPeerDependencies":[],"unlisted":[],"binaries":[{"name":"ast-grep"},{"name":"gitleaks"}],"unresolved":[],"catalog":[]}]}

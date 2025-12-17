@@ -3,22 +3,15 @@
   "phase": "detection",
   "phaseNumber": 1,
   "config": {
-    "categories": [
-      "type-errors",
-      "runtime-errors",
-      "security",
-      "performance",
-      "dead-code",
-      "debug-code"
-    ],
+    "categories": ["type-errors", "runtime-errors", "security", "performance", "dead-code", "debug-code"],
     "maxBugsPerRun": 1000
   },
   "validation": {
-    "required": ["report-exists", "build"],
+    "required": ["report-exists", "type-check"],
     "optional": ["tests"]
   },
   "nextAgent": "bug-hunter",
-  "timestamp": "2025-12-11T00:00:00.000Z",
+  "timestamp": "2025-12-17T00:00:00.000Z",
   "metadata": {
     "createdBy": "bug-orchestrator",
     "iteration": 1,
