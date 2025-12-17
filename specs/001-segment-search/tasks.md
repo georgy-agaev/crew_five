@@ -45,9 +45,12 @@
 
 **Purpose**: Project initialization and dependency installation
 
-- [ ] T001 [EXECUTOR: MAIN] [SEQUENTIAL] Install use-debounce dependency in web/ for filter preview debouncing: `cd web && pnpm add use-debounce`
-- [ ] T002 [EXECUTOR: MAIN] [PARALLEL-GROUP-1] Create types for filter UI in web/src/types/filters.ts
-- [ ] T003 [EXECUTOR: MAIN] [PARALLEL-GROUP-1] Create types for EXA Webset results in web/src/types/exaWebset.ts
+- [X] T001 [EXECUTOR: MAIN] [SEQUENTIAL] Install use-debounce dependency in web/ for filter preview debouncing: `cd web && pnpm add use-debounce`
+  → Artifacts: [package.json](web/package.json), [pnpm-lock.yaml](web/pnpm-lock.yaml)
+- [X] T002 [EXECUTOR: MAIN] [PARALLEL-GROUP-1] Create types for filter UI in web/src/types/filters.ts
+  → Artifacts: [filters.ts](web/src/types/filters.ts)
+- [X] T003 [EXECUTOR: MAIN] [PARALLEL-GROUP-1] Create types for EXA Webset results in web/src/types/exaWebset.ts
+  → Artifacts: [exaWebset.ts](web/src/types/exaWebset.ts)
 
 ---
 
