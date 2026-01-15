@@ -11,7 +11,10 @@ import {
   triggerDraftGenerate,
   triggerSmartleadPreview,
   enqueueSegmentEnrichment,
+  enqueueSegmentEnrichmentMulti,
   fetchEnrichmentStatus,
+  fetchEnrichmentSettings,
+  saveEnrichmentSettings,
   triggerIcpDiscovery,
   generateIcpProfileViaCoach,
   generateHypothesisViaCoach,
@@ -33,6 +36,7 @@ import { SegmentBuilder } from '../components/SegmentBuilder';
 import { ExaWebsetSearch } from '../components/ExaWebsetSearch';
 import { loadSettings, saveSettings, type Settings } from '../hooks/useSettingsStore';
 import { getRecommendedModels, type ModelEntry } from '../../../src/config/modelCatalog';
+import { getWorkspaceColors } from '../theme';
 
 export function formatDraftSummary(params: {
   generated: number;
@@ -298,7 +302,13 @@ export function openIcpDiscoveryForLatestRun() {
   const params = buildDiscoveryLinkParams(meta);
   const search = new URLSearchParams(params as any).toString();
   const base = window.location.href.split('?')[0];
-  window.location.assign(`${base}?${search}`);
+  const url = `${base}?${search}`;
+  try {
+    window.location.assign(url);
+  } catch {
+    // jsdom can throw on navigation; best-effort only
+  }
+  return url;
 }
 
 export function buildPromptCreateEntry(form: {
@@ -562,6 +572,18 @@ type PipelineWorkspaceProps = {
   });
 
   const [services, setServices] = useState<ServiceConfig[]>([]);
+  const enrichmentProviderOptions = [
+    { id: 'exa', label: 'EXA', serviceName: 'Exa' },
+    { id: 'parallel', label: 'Parallel', serviceName: 'Parallel' },
+    { id: 'firecrawl', label: 'Firecrawl', serviceName: 'Firecrawl' },
+    { id: 'anysite', label: 'Anysite', serviceName: 'Anysite' },
+    { id: 'mock', label: 'Mock', serviceName: null },
+  ] as const;
+  const [enrichmentSettings, setEnrichmentSettingsState] = useState<any | null>(null);
+  const [enrichmentSettingsBusy, setEnrichmentSettingsBusy] = useState(false);
+  const [enrichmentSettingsError, setEnrichmentSettingsError] = useState<string | null>(null);
+  const [selectedEnrichmentProviders, setSelectedEnrichmentProviders] = useState<string[]>([]);
+  const [enrichResults, setEnrichResults] = useState<any[] | null>(null);
   const [icpProfiles, setIcpProfiles] = useState<any[]>([]);
   const [hypotheses, setHypotheses] = useState<any[]>([]);
   const [segments, setSegments] = useState<any[]>([]);
@@ -1626,6 +1648,84 @@ type PipelineWorkspaceProps = {
     };
   }, []);
 
+  const isEnrichmentProviderReady = (providerId: string) => {
+    if (providerId === 'mock') return true;
+    const cfg = enrichmentProviderOptions.find((p) => p.id === providerId);
+    if (!cfg?.serviceName) return false;
+    const service = services.find((s) => String(s.name).toLowerCase() === cfg.serviceName.toLowerCase());
+    return Boolean(service?.hasApiKey && service?.status === 'connected');
+  };
+
+  const setEnrichmentSettings = (next: any) => {
+    setEnrichmentSettingsState(next);
+    if (!selectedEnrichmentProviders.length && next?.defaultProviders?.length) {
+      setSelectedEnrichmentProviders(next.defaultProviders);
+    }
+  };
+
+  const persistEnrichmentSettings = async (next: any) => {
+    setEnrichmentSettingsBusy(true);
+    setEnrichmentSettingsError(null);
+    try {
+      const saved = await saveEnrichmentSettings({
+        defaultProviders: next.defaultProviders,
+        primaryCompanyProvider: next.primaryCompanyProvider,
+        primaryEmployeeProvider: next.primaryEmployeeProvider,
+      });
+      setEnrichmentSettings(saved);
+    } catch (err: any) {
+      setEnrichmentSettingsError(err?.message ?? 'Failed to save enrichment settings');
+    } finally {
+      setEnrichmentSettingsBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const settings = await fetchEnrichmentSettings();
+        if (cancelled) return;
+        const defaults = Array.isArray((settings as any)?.defaultProviders)
+          ? (settings as any).defaultProviders.filter((p: string) => isEnrichmentProviderReady(p))
+          : [];
+        const safeDefaults = defaults.length ? defaults : ['mock'];
+        const legacyPrimary = typeof (settings as any)?.primaryProvider === 'string' ? (settings as any).primaryProvider : null;
+        const primaryCompanyRaw =
+          typeof (settings as any)?.primaryCompanyProvider === 'string' ? (settings as any).primaryCompanyProvider : legacyPrimary;
+        const primaryEmployeeRaw =
+          typeof (settings as any)?.primaryEmployeeProvider === 'string' ? (settings as any).primaryEmployeeProvider : legacyPrimary;
+
+        const primaryCompany =
+          primaryCompanyRaw && safeDefaults.includes(primaryCompanyRaw) ? primaryCompanyRaw : safeDefaults[0];
+        const primaryEmployee =
+          primaryEmployeeRaw && safeDefaults.includes(primaryEmployeeRaw) ? primaryEmployeeRaw : safeDefaults[0];
+        const normalized = {
+          version: 2,
+          defaultProviders: safeDefaults,
+          primaryCompanyProvider: primaryCompany,
+          primaryEmployeeProvider: primaryEmployee,
+        };
+        setEnrichmentSettings(normalized);
+        setSelectedEnrichmentProviders(normalized.defaultProviders);
+      } catch (err: any) {
+        if (!cancelled) {
+          setEnrichmentSettings({
+            version: 2,
+            defaultProviders: ['mock'],
+            primaryCompanyProvider: 'mock',
+            primaryEmployeeProvider: 'mock',
+          });
+          setSelectedEnrichmentProviders(['mock']);
+        }
+      }
+    };
+    load().catch(() => null);
+    return () => {
+      cancelled = true;
+    };
+  }, [services]);
+
   useEffect(() => {
     let cancelled = false;
     const loadSegments = async () => {
@@ -1814,39 +1914,7 @@ type PipelineWorkspaceProps = {
     { code: 'ru', label: 'RU', name: 'Русский' },
   ];
 
-  const colors = isDark
-    ? {
-        bg: '#0A0A0A',
-        card: '#161616',
-        cardHover: '#1E1E1E',
-        text: '#FAFAFA',
-        textMuted: '#A0A0A0',
-        border: '#2A2A2A',
-        orange: '#FF8A5B',
-        orangeLight: '#2A1810',
-        sidebar: '#0D0D0D',
-        navSidebar: '#080808',
-        pattern: '#1A1A1A',
-        success: '#10B981',
-        warning: '#F59E0B',
-        error: '#EF4444',
-      }
-    : {
-        bg: '#FAFAFA',
-        card: '#FFFFFF',
-        cardHover: '#FEFEFE',
-        text: '#1A1A1A',
-        textMuted: '#6B6B6B',
-        border: '#E5E5E5',
-        orange: '#FF6B35',
-        orangeLight: '#FFF4F0',
-        sidebar: '#F5F5F5',
-        navSidebar: '#F0F0F0',
-        pattern: '#E8E8E8',
-        success: '#10B981',
-        warning: '#F59E0B',
-        error: '#EF4444',
-      };
+  const colors = getWorkspaceColors(isDark);
 
   const icpSummary = completed.icp ? buildIcpSummaryFromProfile(completed.icp) : null;
   const hypothesisSummary = completed.hypothesis
@@ -1854,13 +1922,26 @@ type PipelineWorkspaceProps = {
     : null;
 
   const handleSelectExisting = (type, item) => {
-    setCompleted(prev => ({
+    setCompleted((prev) => ({
       ...prev,
-      [type]: item
+      [type]: item,
     }));
-    const currentIndex = pipeline.findIndex(s => s.id === type);
-    if (currentIndex < pipeline.length - 1) {
-      const nextStep = pipeline[currentIndex + 1];
+
+    const selectedIndex = pipeline.findIndex((s) => s.id === type);
+    if (selectedIndex === -1) return;
+
+    const currentIndex = pipeline.findIndex((s) => s.id === currentStep);
+
+    // If user clicks a previous step (e.g., from Segment back to Hypothesis or ICP),
+    // move focus back to that step instead of auto-advancing.
+    if (currentIndex > selectedIndex) {
+      setCurrentStep(type);
+      return;
+    }
+
+    // For the current step, keep the auto-advance behaviour to the next unlocked step.
+    if (selectedIndex < pipeline.length - 1) {
+      const nextStep = pipeline[selectedIndex + 1];
       if (!nextStep.locked || type === currentStep) {
         setCurrentStep(nextStep.id);
       }
@@ -2129,17 +2210,32 @@ type PipelineWorkspaceProps = {
     }
     setEnrichLoading(true);
     setAiError(null);
+    setEnrichResults(null);
     try {
-      const res = (await enqueueSegmentEnrichment({
-        segmentId: completed.segment.id,
-        adapter: 'mock',
-        runNow: true,
-      })) as any;
-      const status = res?.status ?? res?.summary?.status ?? 'queued';
-      setEnrichStatus(status);
-      const latest = await fetchEnrichmentStatus(completed.segment.id);
-      const latestStatus = (latest as any)?.status ?? status;
-      setEnrichStatus(latestStatus);
+      const defaultLimit = 25;
+      const providers = (selectedEnrichmentProviders?.length
+        ? selectedEnrichmentProviders
+        : enrichmentSettings?.defaultProviders) ?? ['mock'];
+
+      if (providers.length === 1) {
+        const res = (await enqueueSegmentEnrichment({
+          segmentId: completed.segment.id,
+          adapter: providers[0],
+          limit: defaultLimit,
+          runNow: true,
+        })) as any;
+        const status = res?.status ?? res?.summary?.status ?? 'queued';
+        setEnrichStatus(status);
+      } else {
+        const res = (await enqueueSegmentEnrichmentMulti({
+          segmentId: completed.segment.id,
+          providers,
+          limit: defaultLimit,
+          runNow: true,
+        })) as any;
+        setEnrichResults(res?.results ?? null);
+        setEnrichStatus('completed');
+      }
     } catch (err: any) {
       setAiError(mapEnrichmentErrorMessage(err));
     } finally {
@@ -2726,6 +2822,77 @@ type PipelineWorkspaceProps = {
               </div>
             </div>
 
+            <div style={{ marginBottom: '18px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: colors.textMuted, marginBottom: '10px' }}>
+                Providers
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                {enrichmentProviderOptions.map((p) => {
+                  const selected = selectedEnrichmentProviders.includes(p.id);
+                  const ready = isEnrichmentProviderReady(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      disabled={!ready || enrichLoading}
+                      onClick={() => {
+                        if (!ready) return;
+                        setSelectedEnrichmentProviders((prev) => {
+                          const has = prev.includes(p.id);
+                          if (has) {
+                            const next = prev.filter((x) => x !== p.id);
+                            return next.length ? next : prev;
+                          }
+                          return [...prev, p.id];
+                        });
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '999px',
+                        border: selected ? `1px solid ${colors.orange}` : `1px solid ${colors.border}`,
+                        background: selected ? colors.orangeLight : colors.sidebar,
+                        color: selected ? colors.orange : colors.text,
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: !ready || enrichLoading ? 'not-allowed' : 'pointer',
+                        opacity: !ready ? 0.5 : 1,
+                      }}
+                      title={!ready ? 'Configure API key in Settings to enable' : undefined}
+                    >
+                      {p.label}
+                    </button>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  disabled={enrichLoading || !enrichmentSettings?.defaultProviders?.length}
+                  onClick={() => setSelectedEnrichmentProviders(enrichmentSettings?.defaultProviders ?? ['mock'])}
+                  style={{
+                    marginLeft: '6px',
+                    padding: '8px 12px',
+                    borderRadius: '999px',
+                    border: `1px solid ${colors.border}`,
+                    background: 'transparent',
+                    color: colors.textMuted,
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: enrichLoading ? 'not-allowed' : 'pointer',
+                    opacity: enrichLoading ? 0.6 : 1,
+                  }}
+                >
+                  Reset to defaults
+                </button>
+              </div>
+
+              <div style={{ marginTop: '10px', fontSize: '12px', color: colors.textMuted }}>
+                Primary providers for workflow:{' '}
+                <span style={{ color: colors.text, fontWeight: 600 }}>
+                  company {enrichmentSettings?.primaryCompanyProvider ?? '—'}, lead {enrichmentSettings?.primaryEmployeeProvider ?? '—'}
+                </span>
+              </div>
+            </div>
+
             <div style={{ display: 'flex', gap: '12px' }}>
               <button
                 onClick={() => handleEnrichSegment().catch(() => null)}
@@ -2767,7 +2934,18 @@ type PipelineWorkspaceProps = {
               </button>
             </div>
 
-            {enrichStatus && (
+            {enrichResults?.length ? (
+              <div style={{ marginTop: '12px', fontSize: '12px', color: colors.textMuted, display: 'grid', gap: '6px' }}>
+                {enrichResults.map((r: any) => (
+                  <div key={r.provider}>
+                    <span style={{ fontWeight: 700, color: colors.text }}>{String(r.provider).toUpperCase()}</span>
+                    {': '}
+                    {r.status}
+                    {r.error ? ` — ${r.error}` : ''}
+                  </div>
+                ))}
+              </div>
+            ) : enrichStatus ? (
               <div
                 style={{
                   marginTop: '12px',
@@ -2777,7 +2955,7 @@ type PipelineWorkspaceProps = {
               >
                 Enrichment status: {enrichStatus}
               </div>
-            )}
+            ) : null}
           </div>
         );
 
@@ -4545,9 +4723,23 @@ type PipelineWorkspaceProps = {
                   onClick={() => !step.locked && !step.comingSoon && setCurrentStep(step.id)}
                   disabled={step.locked || step.comingSoon}
                   style={{
-                    background: completed[step.id] ? colors.orange : currentStep === step.id ? colors.orangeLight : 'transparent',
-                    border: `2px solid ${completed[step.id] || currentStep === step.id ? colors.orange : colors.border}`,
-                    color: completed[step.id] ? '#FFF' : currentStep === step.id ? colors.orange : step.locked || step.comingSoon ? colors.textMuted : colors.text,
+                    background:
+                      currentStep === step.id
+                        ? colors.orange
+                        : completed[step.id]
+                        ? colors.orangeLight
+                        : 'transparent',
+                    border: `2px solid ${
+                      currentStep === step.id || completed[step.id] ? colors.orange : colors.border
+                    }`,
+                    color:
+                      currentStep === step.id
+                        ? '#FFF'
+                        : completed[step.id]
+                        ? colors.orange
+                        : step.locked || step.comingSoon
+                        ? colors.textMuted
+                        : colors.text,
                     padding: '8px 16px',
                     borderRadius: '8px',
                     cursor: step.locked || step.comingSoon ? 'not-allowed' : 'pointer',
@@ -5270,6 +5462,203 @@ type PipelineWorkspaceProps = {
                   })}
                 </div>
               </div>
+
+              {/* Enrichment Provider Defaults */}
+              <div
+                style={{
+                  marginBottom: '12px',
+                  background: colors.card,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '12px',
+                  padding: '16px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <div style={{ fontSize: '16px', fontWeight: 700, color: colors.text }}>Enrichment providers</div>
+                  {enrichmentSettingsBusy && (
+                    <div style={{ fontSize: '12px', color: colors.textMuted }}>Saving…</div>
+                  )}
+                </div>
+
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  {enrichmentProviderOptions.map((p) => {
+                    const ready = isEnrichmentProviderReady(p.id);
+                    const enabled = Boolean(enrichmentSettings?.defaultProviders?.includes(p.id));
+                    const disabled = enrichmentSettingsBusy || (!ready && p.id !== 'mock');
+                    return (
+                      <div
+                        key={p.id}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '10px 12px',
+                          background: colors.sidebar,
+                          borderRadius: '10px',
+                          border: `1px solid ${colors.border}`,
+                          opacity: disabled ? 0.7 : 1,
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <div style={{ fontSize: '13px', fontWeight: 700, color: colors.text }}>{p.label}</div>
+                          <div style={{ fontSize: '11px', color: colors.textMuted }}>
+                            {p.id === 'mock'
+                              ? 'Built-in (no API key required)'
+                              : ready
+                                ? 'Ready'
+                                : 'Missing API key'}
+                          </div>
+                        </div>
+
+                        <label style={{ position: 'relative', display: 'inline-block', width: '44px', height: '24px', cursor: disabled ? 'not-allowed' : 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={enabled}
+                            disabled={disabled}
+                            onChange={() => {
+                              if (disabled) return;
+                              const current = enrichmentSettings ?? {
+                                version: 2,
+                                defaultProviders: ['mock'],
+                                primaryCompanyProvider: 'mock',
+                                primaryEmployeeProvider: 'mock',
+                              };
+                              const nextDefaults = enabled
+                                ? current.defaultProviders.filter((x: string) => x !== p.id)
+                                : [...current.defaultProviders, p.id];
+                              const safeDefaults = nextDefaults.length ? nextDefaults : ['mock'];
+                              const nextPrimaryCompany = safeDefaults.includes(current.primaryCompanyProvider)
+                                ? current.primaryCompanyProvider
+                                : safeDefaults[0];
+                              const nextPrimaryEmployee = safeDefaults.includes(current.primaryEmployeeProvider)
+                                ? current.primaryEmployeeProvider
+                                : safeDefaults[0];
+                              persistEnrichmentSettings({
+                                ...current,
+                                defaultProviders: safeDefaults,
+                                primaryCompanyProvider: nextPrimaryCompany,
+                                primaryEmployeeProvider: nextPrimaryEmployee,
+                              }).catch(() => null);
+                            }}
+                            style={{ opacity: 0, width: 0, height: 0 }}
+                          />
+                          <span
+                            style={{
+                              position: 'absolute',
+                              inset: 0,
+                              background: enabled ? colors.orange : colors.border,
+                              borderRadius: '24px',
+                              transition: 'background 0.2s',
+                            }}
+                          />
+                          <span
+                            style={{
+                              position: 'absolute',
+                              left: enabled ? '22px' : '2px',
+                              top: '2px',
+                              width: '20px',
+                              height: '20px',
+                              background: '#FFF',
+                              borderRadius: '50%',
+                              transition: 'left 0.2s',
+                            }}
+                          />
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{ marginTop: '14px', display: 'grid', gap: '6px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: colors.textMuted }}>
+                    Primary provider (company)
+                  </div>
+                  <select
+                    value={enrichmentSettings?.primaryCompanyProvider ?? 'mock'}
+                    disabled={enrichmentSettingsBusy}
+                    onChange={(e) => {
+                      const current = enrichmentSettings ?? {
+                        version: 2,
+                        defaultProviders: ['mock'],
+                        primaryCompanyProvider: 'mock',
+                        primaryEmployeeProvider: 'mock',
+                      };
+                      const nextPrimary = e.target.value;
+                      persistEnrichmentSettings({
+                        ...current,
+                        primaryCompanyProvider: nextPrimary,
+                      }).catch(() => null);
+                    }}
+                    style={{
+                      width: '100%',
+                      background: colors.sidebar,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: '8px',
+                      padding: '10px 12px',
+                      fontSize: '13px',
+                      color: colors.text,
+                      cursor: enrichmentSettingsBusy ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {(enrichmentSettings?.defaultProviders ?? ['mock']).map((p: string) => {
+                      const label = enrichmentProviderOptions.find((x) => x.id === p)?.label ?? p;
+                      return (
+                        <option key={p} value={p}>
+                          {label}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div style={{ marginTop: '12px', display: 'grid', gap: '6px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: colors.textMuted }}>
+                    Primary provider (lead)
+                  </div>
+                  <select
+                    value={enrichmentSettings?.primaryEmployeeProvider ?? 'mock'}
+                    disabled={enrichmentSettingsBusy}
+                    onChange={(e) => {
+                      const current = enrichmentSettings ?? {
+                        version: 2,
+                        defaultProviders: ['mock'],
+                        primaryCompanyProvider: 'mock',
+                        primaryEmployeeProvider: 'mock',
+                      };
+                      const nextPrimary = e.target.value;
+                      persistEnrichmentSettings({
+                        ...current,
+                        primaryEmployeeProvider: nextPrimary,
+                      }).catch(() => null);
+                    }}
+                    style={{
+                      width: '100%',
+                      background: colors.sidebar,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: '8px',
+                      padding: '10px 12px',
+                      fontSize: '13px',
+                      color: colors.text,
+                      cursor: enrichmentSettingsBusy ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {(enrichmentSettings?.defaultProviders ?? ['mock']).map((p: string) => {
+                      const label = enrichmentProviderOptions.find((x) => x.id === p)?.label ?? p;
+                      return (
+                        <option key={p} value={p}>
+                          {label}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {enrichmentSettingsError && (
+                  <div style={{ marginTop: '10px', fontSize: '12px', color: colors.error }}>
+                    {enrichmentSettingsError}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -5312,12 +5701,14 @@ type PipelineWorkspaceProps = {
         isOpen={showSegmentBuilder}
         onClose={() => setShowSegmentBuilder(false)}
         onCreate={handleCreateSegment}
+        colors={colors}
       />
 
       <ExaWebsetSearch
         isOpen={showExaWebsetSearch}
         onClose={() => setShowExaWebsetSearch(false)}
         onSave={handleSaveExaSegment}
+        colors={colors}
       />
     </div>
   );

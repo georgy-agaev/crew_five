@@ -18,16 +18,16 @@ describe('fetchContactsForSegment', () => {
 
     await fetchContactsForSegment(client, [
       { field: 'employees.role', op: 'eq', value: 'CTO' },
-      { field: 'employees.headcount', op: 'gte', value: 50 },
-      { field: 'employees.headcount', op: 'lte', value: 500 },
+      { field: 'companies.employee_count', op: 'gte', value: 50 },
+      { field: 'companies.employee_count', op: 'lte', value: 500 },
       { field: 'companies.segment', op: 'in', value: ['Fintech', 'AI'] },
     ]);
 
     expect(from).toHaveBeenCalledWith('employees');
     expect(chain.select).toHaveBeenCalled();
-    expect(chain.eq).toHaveBeenCalledWith('role', 'CTO');
-    expect(chain.gte).toHaveBeenCalledWith('headcount', 50);
-    expect(chain.lte).toHaveBeenCalledWith('headcount', 500);
+    expect(chain.eq).toHaveBeenCalledWith('position', 'CTO');
+    expect(chain.gte).toHaveBeenCalledWith('company.employee_count', 50);
+    expect(chain.lte).toHaveBeenCalledWith('company.employee_count', 500);
     expect(chain.in).toHaveBeenCalledWith('company.segment', ['Fintech', 'AI']);
   });
 

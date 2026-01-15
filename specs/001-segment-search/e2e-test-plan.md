@@ -400,37 +400,122 @@ LIMIT 5;
 
 ---
 
-## Test Execution Log
+## Test Execution Log (2025-12-17)
 
-### T029: Filter-Based Segment
+### Environment Notes
 
-**Date**: _____________________
-**Tester**: ____________________
-
-- [ ] Step 1: Segment created ✅ / ❌
-- [ ] Step 2: Snapshot created ✅ / ❌
-- [ ] Step 3: Enrichment completed ✅ / ❌
-- [ ] Step 4: UI verification ✅ / ❌
-
-**Notes**:
-_________________________________________________________________
-_________________________________________________________________
-
-### T030: EXA Segment
-
-**Date**: _____________________
-**Tester**: ____________________
-
-- [ ] Step 1: Segment created ✅ / ❌
-- [ ] Step 2: Enrichment completed (no snapshot) ✅ / ❌
-- [ ] Step 3: UI verification ✅ / ❌
-
-**Notes**:
-_________________________________________________________________
-_________________________________________________________________
+- Web UI: `http://localhost:5173` (Pipeline workspace visible and interactive).
+- Adapter base URL in UI: `http://localhost:8787/api`, meta panel reports `mode = live`, Supabase + Smartlead ready.
+- Supabase: spine tables present with seed data (`companies`, `employees`, `segments`, `segment_members`, `jobs`).
+- Playwright CLI: `pnpm --dir web test:e2e` currently fails before running tests because the Playwright runtime cannot find its headless Chromium binary (`…chrome-headless-shell-mac-arm64/chrome-headless-shell`). Browser-driven E2E assertions in this run were performed via the Playwright MCP tools instead.
+- Live adapter version at `http://localhost:8787/api` does **not** expose `POST /api/filters/preview` or `POST /api/segments/exa` (both return `404 Not Found` in this environment), even though those endpoints exist in this repo’s `src/web/server.ts`.
 
 ---
 
-## Conclusion
+### T029: Filter-Based Segment → Enrichment Workflow
 
-Both segment types (filter-based and EXA) should successfully integrate with the existing enrichment workflow. The key difference is that EXA segments are immediately enrichable, while filter-based segments require a snapshot step first.
+**Run Date**: 2025-12-17  
+**Tester**: Agent (CLI + Supabase + Web MCP)
+
+#### Execution Summary
+
+- UI gating verified:
+  - ICP step: selected `AI SDR ICP (e2e)`.
+  - Hypothesis step: selected `Mid-market SaaS expansion (e2e)`.
+  - Segment step: “Select or Generate Segments” panel visible with “Search Database” and “EXA Web Search” tiles.
+  - SegmentBuilder modal opens from “Search Database” as expected, but preview shows `API error 404: Not found` because `POST /api/filters/preview` is not implemented on the live adapter used in this run.
+- Because the seed data contained **no** employees with `position = 'CTO'`, two variants were executed:
+
+1. **Exact-plan filter (`employees.position = 'CTO'`)**
+   - Segment creation (CLI):
+     - `pnpm cli segment:create --name "Test CTOs - Filter Based - <ts>" --locale en --filter '[{"field":"employees.position","operator":"eq","value":"CTO"}]' …`
+     - `segments.filter_definition` stored exactly as in the plan.
+   - Snapshot:
+     - `pnpm cli segment:snapshot --segment-id <segment-id> --allow-empty`.
+     - `segment_members` count for `(segment_id, segment_version)` remained `0` because no employees match `position = 'CTO'` in this database.
+   - Enrichment for this segment would be trivially empty; this branch confirms filter + snapshot behavior, but not enrichment, given the data.
+
+2. **Adapted filter with real data (`employees.position = 'Генеральный Директор'`)**
+   - Segment creation (CLI):
+     - `pnpm cli segment:create --name "Test Directors - Filter Based - <ts>" --locale en --filter '[{"field":"employees.position","operator":"eq","value":"Генеральный Директор"}]' …`
+     - `segments.filter_definition` stored as `[{ field: 'employees.position', operator: 'eq', value: 'Генеральный Директор' }]`.
+   - Snapshot:
+     - Pre-snapshot: `segment_members` count = `0` for `(segment_id, version = 1)`.
+     - `pnpm cli segment:snapshot --segment-id <segment-id> --allow-empty`.
+     - Post-snapshot: `segment_members` count = `202` (matches the number of employees with that position).
+     - Sample join across `segment_members`, `employees`, `companies` confirms:
+       - All sampled employees have `position = 'Генеральный Директор'`.
+       - `contact_id` and `company_id` are valid FKs, matching the spec’s FK checks.
+   - Enrichment:
+     - `pnpm cli enrich:run --segment-id <segment-id> --adapter mock --limit 10 --run-now`.
+     - CLI output:
+       - `status = "completed"`, `mode = "async_run_now"`.
+       - `summary = { processed: 20, skipped: 0, failed: 0, dryRun: false, jobId: '<uuid>' }`.
+     - `jobs` table:
+       - Latest job for that segment: `type = 'enrich'`, `status = 'completed'`, `segment_id` and `segment_version` match.
+       - `payload` contains the adapter name, limit, and the member company/contact IDs.
+       - `result` JSON matches the CLI summary.
+     - `companies.company_research`:
+       - For companies in the segment, at least some rows have non-null `company_research` (mock adapter writes structured JSON / mock payloads).
+     - `employees.ai_research_data`:
+       - For employees in the segment, sampled rows have non-null `ai_research_data` (e.g. `{ "insight": "mock-employee", "contact_id": "<uuid>" }`).
+
+#### T029 Status (this run)
+
+- [x] Segment created with correct `filter_definition` (using real position value).
+- [x] Snapshot created `segment_members` entries for the adapted filter.
+- [x] `segment_members` have correct `contact_id` and `company_id` FK relationships; employee positions match the filter.
+- [x] Enrichment job completed successfully (`jobs.status = 'completed'`, summary as expected).
+- [x] `companies.company_research` updated for at least some companies in the segment.
+- [x] `employees.ai_research_data` updated for at least some contacts in the segment.
+- [ ] UI preview counts match plan – **blocked** in this environment because `/api/filters/preview` returns `404`.
+
+**Notes**:
+- In this dataset, `position = 'CTO'` yields zero matches; for a fully “green” T029 run strictly as written, either seed CTO data must be added or the spec should note an alternative position value (for example `'Генеральный Директор'`) as a valid variant.
+- The enrichment flow itself (snapshot → job → research columns) behaves as designed once a non-empty snapshot exists.
+
+---
+
+### T030: EXA Segment → Enrichment Workflow
+
+**Run Date**: 2025-12-17  
+**Tester**: Agent (Web MCP + Supabase)
+
+#### Execution Summary
+
+- UI:
+  - Segment step displays an `EXA Web Search` tile.
+  - The EXA Web Search modal is present (title, textarea, Search button, tab layout) and opens from the Segment step as expected.
+- Adapter / API:
+  - `POST /api/segments/exa` against `http://localhost:8787/api/segments/exa` returned:
+    - Status `404 Not Found`
+    - Body `{"error": "Not found"}`
+  - Direct calls to `POST /api/filters/preview` also returned `404 Not Found`.
+  - No segments exist in `public.segments` with `description like 'EXA Web Search:%'` or with an obviously EXA-style empty `filter_definition` from prior runs.
+
+Because the live adapter used during this run does **not** expose `POST /api/segments/exa`, it is not possible (from within this environment) to:
+
+- Persist a new EXA segment via the `saveExaSegment` code path, or
+- Verify immediate `segment_members` creation, duplicate detection by domain/email, or EXA-specific snapshot metadata (e.g. `{ source: 'exa', query: '…' }`) end-to-end.
+
+The enrichment side of the pipeline (jobs + research columns) is already validated via T029; T030’s missing piece here is specifically the EXA segment creation and duplicate detection behavior behind `/api/segments/exa`.
+
+#### T030 Status (this run)
+
+- [ ] EXA search executed successfully and persisted via `/api/segments/exa` – **blocked** in this environment (`404 Not Found` from the live adapter).
+- [ ] EXA segment with empty `filter_definition` and immediate `segment_members` verified – **not executed** (no persisted EXA segments).
+- [ ] Duplicate detection (domain/email) verified on EXA `segment_members` – **not executed**.
+- [ ] Enrichment job for an EXA segment – **not executed** due to missing persisted EXA segment.
+- [ ] Web UI enrichment status for an EXA segment – **not executed**.
+
+**Notes**:
+- The repository’s `src/web/server.ts` implements `POST /api/segments/exa`, but the adapter instance at `http://localhost:8787/api` in this run appears to be from an older or different build that does not include that route.
+- Once the running adapter and the repo version are aligned (and EXA credentials configured), this plan should be re-run to validate T030 end-to-end. The enrichment flow itself is already covered via T029; the remaining risk is limited to EXA segment creation and duplicate-detection logic.
+
+---
+
+## Conclusion (2025-12-17 Run)
+
+- T029 (filter-based segments) is **functionally validated** against the live database and CLI for a real, populated position value. The enrichment pipeline (snapshot → jobs → research columns) behaves as specified once filters match data.
+- UI wiring for the Segment step and SegmentBuilder modal is present, but filter preview and EXA segment persistence are currently blocked in this environment by missing endpoints on the running web adapter.
+- T030 (EXA segments) remains **partially unvalidated** here: the UI is wired, but `/api/segments/exa` is not reachable on the live adapter, so EXA segments cannot be created and enriched end-to-end from this agent’s vantage point. Once the adapter exposes that endpoint, this plan can be re-run with the existing Playwright specs (`web/e2e/segment-exa-search.spec.ts`, `web/e2e/segment-enrichment.spec.ts`) and the SQL checks above.

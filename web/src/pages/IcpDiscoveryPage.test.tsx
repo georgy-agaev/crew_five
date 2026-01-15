@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   deriveQueries,
@@ -12,6 +12,11 @@ import * as apiClient from '../apiClient';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 describe('IcpDiscoveryPage helpers', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.sessionStorage.clear();
+  });
+
   it('builds Exa-friendly queries', () => {
     const queries = deriveQueries({
       industry: 'AI infra',

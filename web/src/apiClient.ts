@@ -10,6 +10,7 @@ export interface DraftRow {
   id: string;
   status?: string;
   contact?: string;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface DraftSummary {
@@ -608,9 +609,43 @@ export async function enqueueSegmentEnrichment(payload: {
   });
 }
 
+export async function enqueueSegmentEnrichmentMulti(payload: {
+  segmentId: string;
+  providers: string[];
+  limit?: number;
+  dryRun?: boolean;
+  runNow?: boolean;
+}) {
+  return fetchJson('/enrich/segment/multi', {
+    method: 'POST',
+    body: JSON.stringify({
+      segmentId: payload.segmentId,
+      providers: payload.providers,
+      limit: payload.limit,
+      dryRun: payload.dryRun,
+      runNow: payload.runNow,
+    }),
+  });
+}
+
 export async function fetchEnrichmentStatus(segmentId: string) {
   const params = new URLSearchParams({ segmentId });
   return fetchJson(`/enrich/status?${params.toString()}`);
+}
+
+export async function fetchEnrichmentSettings() {
+  return fetchJson('/settings/enrichment');
+}
+
+export async function saveEnrichmentSettings(payload: {
+  defaultProviders: string[];
+  primaryCompanyProvider: string;
+  primaryEmployeeProvider: string;
+}) {
+  return fetchJson('/settings/enrichment', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function fetchIcpProfiles() {

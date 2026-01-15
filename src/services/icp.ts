@@ -40,24 +40,49 @@ export interface IcpHypothesisInput {
   segmentId?: string;
 }
 
+let icpProfilesSupportsPhaseOutputs = true;
+
 export async function createIcpProfile(
   client: SupabaseClient,
   input: IcpProfileInput
 ): Promise<IcpProfile> {
-  const { data, error } = await client
-    .from('icp_profiles')
-    .insert([
-      {
-        name: input.name,
-        description: input.description ?? null,
-        company_criteria: input.companyCriteria ?? {},
-        persona_criteria: input.personaCriteria ?? {},
-        phase_outputs: input.phaseOutputs ?? null,
-        created_by: input.createdBy ?? null,
-      },
-    ])
-    .select()
-    .single();
+  const baseRow: Record<string, unknown> = {
+    name: input.name,
+    description: input.description ?? null,
+    company_criteria: input.companyCriteria ?? {},
+    persona_criteria: input.personaCriteria ?? {},
+    created_by: input.createdBy ?? null,
+  };
+
+  async function attemptInsert(includePhaseOutputs: boolean) {
+    const row = includePhaseOutputs
+      ? { ...baseRow, phase_outputs: input.phaseOutputs ?? null }
+      : baseRow;
+
+    const { data, error } = await client
+      .from('icp_profiles')
+      .insert([row])
+      .select()
+      .single();
+
+    return { data, error };
+  }
+
+  let { data, error } = await attemptInsert(icpProfilesSupportsPhaseOutputs);
+
+  // Some environments have not yet applied the phase_outputs column migration.
+  // When we detect that column is missing, retry once without it and remember
+  // that future inserts should omit the field.
+  const message = String((error as any)?.message ?? '').toLowerCase();
+  const code = (error as any)?.code as string | undefined;
+  const isPhaseOutputsMissing =
+    message.includes('phase_outputs') &&
+    (message.includes('does not exist') || message.includes('could not find'));
+
+  if (error && isPhaseOutputsMissing) {
+    icpProfilesSupportsPhaseOutputs = false;
+    ({ data, error } = await attemptInsert(false));
+  }
 
   if (error || !data) {
     throw error ?? new Error('Failed to create ICP profile');

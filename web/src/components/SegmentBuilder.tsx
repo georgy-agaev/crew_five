@@ -4,14 +4,33 @@ import { FilterRow } from './FilterRow';
 import { useFilterPreview } from '../hooks/useFilterPreview';
 import { aiSuggestFiltersAPI } from '../apiClient';
 import { AIFilterSuggestions } from './AIFilterSuggestions';
+import type { WorkspaceColors } from '../theme';
+import { lightWorkspaceColors } from '../theme';
 
 export interface SegmentBuilderProps {
   isOpen: boolean;
   onClose: () => void;
   onCreate: (segment: { name: string; filterDefinition: FilterDefinition[] }) => Promise<void>;
+  colors?: WorkspaceColors;
 }
 
-export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProps) {
+function formatPreviewError(rawError: string): string {
+  if (rawError.includes('Unknown field:')) {
+    const marker = 'Allowed fields:';
+    const idx = rawError.indexOf(marker);
+    if (idx !== -1) {
+      const allowed = rawError
+        .slice(idx + marker.length)
+        .trim()
+        .replace(/\.$/, '');
+      return `Invalid filter field. Supported fields: ${allowed}.`;
+    }
+    return 'Invalid filter field. Please use one of the suggested fields.';
+  }
+  return rawError;
+}
+
+export function SegmentBuilder({ isOpen, onClose, onCreate, colors }: SegmentBuilderProps) {
   const [segmentName, setSegmentName] = useState('');
   const [filters, setFilters] = useState<FilterDefinition[]>([
     { field: '', operator: 'eq', value: '' },
@@ -255,6 +274,8 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
   const hasValidationErrors = validationErrors.length > 0;
   const canCreate = segmentName.trim() !== '' && validFilters.length > 0 && !creating && !hasValidationErrors;
 
+  const palette: WorkspaceColors = colors ?? lightWorkspaceColors;
+
   return (
     <>
       <style>
@@ -299,7 +320,7 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
         <div
           style={{
             padding: '24px',
-            borderBottom: '1px solid #e2e8f0',
+            borderBottom: `1px solid ${palette.border}`,
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -382,7 +403,7 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
               style={{
                 marginTop: '8px',
                 padding: '10px 16px',
-                background: aiLoading ? '#cbd5e1' : '#0f172a',
+                background: aiLoading ? palette.border : palette.orange,
                 color: '#fff',
                 border: 'none',
                 borderRadius: '8px',
@@ -482,32 +503,32 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
             aria-label="Filter preview results"
             style={{
               padding: '16px',
-              background: '#f8fafc',
+              background: palette.sidebar,
               borderRadius: '12px',
-              border: '1px solid #e2e8f0',
+              border: `1px solid ${palette.border}`,
               marginTop: '16px',
             }}
           >
-            <div style={{ fontWeight: 600, marginBottom: '8px', color: '#0f172a' }}>
+            <div style={{ fontWeight: 600, marginBottom: '8px', color: palette.text }}>
               Preview
             </div>
             {previewLoading ? (
-              <div style={{ color: '#475569', fontSize: '14px' }} aria-busy="true">
+              <div style={{ color: palette.textMuted, fontSize: '14px' }} aria-busy="true">
                 <span style={{ display: 'inline-block', animation: 'pulse 1.5s ease-in-out infinite' }}>
                   Loading preview...
                 </span>
               </div>
             ) : previewError ? (
               <div className="alert alert--error" style={{ margin: 0 }} role="alert">
-                {previewError}
+                {formatPreviewError(previewError)}
               </div>
             ) : validFilters.length === 0 ? (
-              <div style={{ color: '#475569', fontSize: '14px' }}>
+              <div style={{ color: palette.textMuted, fontSize: '14px' }}>
                 Add filters to see preview
               </div>
             ) : (
               <>
-                <div style={{ fontSize: '14px', color: '#0f172a' }}>
+                <div style={{ fontSize: '14px', color: palette.text }}>
                   Matches: <strong>{companyCount}</strong> companies, <strong>{employeeCount}</strong> employees (
                   <strong>{totalCount}</strong> total)
                 </div>
@@ -517,7 +538,7 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
                       marginTop: '8px',
                       padding: '8px 12px',
                       background: '#fef3c7',
-                      color: '#92400e',
+                      color: palette.warning,
                       borderRadius: '6px',
                       fontSize: '13px',
                       border: '1px solid #fcd34d',
@@ -539,7 +560,7 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
                 marginTop: '16px',
                 padding: '12px 16px',
                 background: '#fee2e2',
-                color: '#991b1b',
+                color: palette.error,
                 borderRadius: '12px',
                 border: '1px solid #fca5a5',
               }}
@@ -567,7 +588,7 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
                 marginTop: '16px',
                 padding: '12px 16px',
                 background: createError.startsWith('Warning:') ? '#fef3c7' : '#fee2e2',
-                color: createError.startsWith('Warning:') ? '#92400e' : '#991b1b',
+                color: createError.startsWith('Warning:') ? palette.warning : palette.error,
                 borderRadius: '12px',
                 border: createError.startsWith('Warning:') ? '1px solid #fcd34d' : '1px solid #fca5a5',
                 fontSize: '14px',
@@ -582,7 +603,7 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
         <div
           style={{
             padding: '24px',
-            borderTop: '1px solid #e2e8f0',
+            borderTop: `1px solid ${palette.border}`,
             display: 'flex',
             justifyContent: 'flex-end',
             gap: '12px',
@@ -606,6 +627,11 @@ export function SegmentBuilder({ isOpen, onClose, onCreate }: SegmentBuilderProp
               alignItems: 'center',
               gap: '8px',
               justifyContent: 'center',
+              background: palette.orange,
+              borderColor: palette.orange,
+              color: '#FFF',
+              opacity: canCreate ? 1 : 0.6,
+              cursor: canCreate ? 'pointer' : 'not-allowed',
             }}
             aria-busy={creating}
             aria-label={creating ? 'Creating segment' : 'Create segment'}

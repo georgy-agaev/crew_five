@@ -96,9 +96,24 @@ describe('coach service', () => {
     const insertSelect = vi.fn().mockResolvedValue({ data: [{ id: 'draft-1' }], error: null });
     const insert = vi.fn().mockReturnValue({ select: insertSelect });
 
+    const appSettingsSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+      }),
+    });
+    const companiesSelect = vi.fn().mockReturnValue({
+      in: vi.fn().mockResolvedValue({ data: [], error: null }),
+    });
+    const employeesSelect = vi.fn().mockReturnValue({
+      in: vi.fn().mockResolvedValue({ data: [], error: null }),
+    });
+
     const from = vi.fn((table: string) => {
       if (table === 'campaigns') return { select: () => ({ eq: campaignEq }) };
       if (table === 'segment_members') return { select: () => ({ match: membersMatch }) };
+      if (table === 'app_settings') return { select: appSettingsSelect };
+      if (table === 'companies') return { select: companiesSelect };
+      if (table === 'employees') return { select: employeesSelect };
       if (table === 'drafts') return { insert };
       return { select: vi.fn(), insert: vi.fn() };
     });

@@ -2,6 +2,95 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.88] - 2026-01-15
+### Added
+- Firecrawl enrichment now runs deterministically via `search → scrape` using `companies.website`, storing prompt-safe `summary + sources` (no raw markdown blobs).
+- Enrichment settings now probe providers on save to prevent enabling invalid/expired credentials.
+- Enrichment jobs now persist richer `jobs.result` metadata: provider id, per-entity counts, and sampled errors.
+### Changed
+- Enrichment settings moved from single `primaryProvider` to per-entity primaries: `primaryCompanyProvider` and `primaryEmployeeProvider`.
+- Draft/Sim/Send provenance now carries per-entity primaries (`metadata.enrichment_provider` and `payload.enrichment_provider` as `{ company, employee }`).
+### Fixed
+- Web UI now saves and displays enrichment settings using the V2 shape and shows both company/lead primaries.
+- Drafts UI now renders primary provider provenance for both legacy (string) and new (object) metadata shapes.
+
+## [0.1.87] - 2025-12-27
+### Added
+- New reference doc with real provider outputs (pre-schema): `docs/enrichment_results_2025-12-27_ucmsgroup_topframe_voicexpert.md` captures EXA/Firecrawl/AnySite results plus Firecrawl **Search** outputs (and Parallel auth failures) for `ucmsgroup.ru`, `topframe.ru`, and `voicexpert.ru` to inform the next “fixed schema” decision.
+
+## [0.1.86] - 2025-12-26
+### Added
+- New reference doc: `docs/ENRICHMENT_PROVIDER_CONTRACT.md` defines the unified provider schema + multi-provider UX contract (primary authoritative + supplemental summaries).
+### Fixed
+- Segment step no longer shows “0 companies” for filter-based segments: `GET /api/segments` now attaches derived counts (`company_count`, `employee_count`, `total_count`) computed from each segment’s stored `filter_definition`.
+
+## [0.1.85] - 2025-12-26
+### Added
+- Drafts UI now shows enrichment provenance (primary provider + included providers) by consuming `metadata.enrichment_provider` and `metadata.enrichment_by_provider` from `GET /api/drafts`.
+### Changed
+- `GET /api/drafts` now returns `metadata` for each draft so later workflow phases can surface provenance consistently.
+
+## [0.1.84] - 2025-12-26
+### Added
+- Persisted hybrid enrichment provenance on drafts (`drafts.metadata.enrichment_provider` and `drafts.metadata.enrichment_by_provider`) and propagated it into send artifacts (`email_outbound.metadata`) for both SMTP and Smartlead sends.
+### Changed
+- Sim job creation now includes `payload.enrichment_provider` so simulation requests retain the selected primary provider context even before sim is implemented.
+
+## [0.1.83] - 2025-12-26
+### Added
+- Hybrid enrichment context for drafting: the AI request now includes `brief.context.enrichment_by_provider` (summarized payloads for all non-primary providers plus a primary marker), enabling “use all providers as supplemental, but primary is authoritative” without blowing up prompt size.
+### Changed
+- AI system prompt now explicitly instructs the model to treat `brief.context.enrichment_provider` as authoritative when providers conflict, using `enrichment_by_provider` only for gap-filling/validation.
+
+## [0.1.82] - 2025-12-26
+### Added
+- Per-provider enrichment result storage (`EnrichmentStoreV1`) for `companies.company_research` and `employees.ai_research_data`, so multi-source runs merge `providers.{providerId}` instead of overwriting prior provider outputs.
+### Changed
+- Draft generation now reads the global `primaryProvider` and injects the primary provider’s company + lead enrichment into the AI request (`brief.company.enrichment`, `brief.context.lead_enrichment`) alongside `brief.context.enrichment_provider`.
+- Vitest now runs as two projects (`node` + `web/jsdom`) so `pnpm test` covers the full suite consistently.
+### Fixed
+- Web Playwright E2E config now loads repo-root `.env` so Supabase-backed E2E tests can initialise without manual env exports.
+
+## [0.1.81] - 2025-12-26
+### Added
+- Global enrichment settings surface for provider defaults + a single `primaryProvider` (used for both company and employee enrichment downstream): new web endpoints `GET/POST /api/settings/enrichment`, web client helpers (`fetchEnrichmentSettings`, `saveEnrichmentSettings`), and Supabase schema support via `public.app_settings`.
+- Multi-provider enrichment endpoint `POST /api/enrich/segment/multi` (sequential per provider) plus web client helper `enqueueSegmentEnrichmentMulti`, enabling one-click runs across multiple selected providers.
+### Changed
+- Pipeline Enrichment step now lets users toggle providers via compact chips, reset to defaults, and displays the configured primary provider inline; Settings modal adds toggles for default providers and a primary-provider selector while preventing enabling providers without verified API credentials.
+
+## [0.1.80] - 2025-12-20
+### Fixed
+- ICP profile creation (CLI and `/api/icp/profiles`) now tolerates environments where the `icp_profiles.phase_outputs` column has not yet been migrated by retrying inserts without `phase_outputs` when that specific column-not-found error (including schema-cache variants like “Could not find the 'phase_outputs' column…”) is detected, while still persisting phase outputs when the column is present.
+### Verified
+- Confirmed that ICP profile creation via the AI coach (`createIcpProfileViaCoach` and `/api/coach/icp`) uses the same fallback logic and successfully persists profiles on the current Supabase project.
+- Confirmed that Hypothesis creation (`createIcpHypothesis`, `/api/icp/hypotheses`, and `createIcpHypothesisViaCoach`) already operates against existing columns only and works end-to-end without additional schema changes.
+### Changed
+- Pipeline step bar styling in `PipelineWorkspaceWithSidebar` now distinguishes the active step from previously completed ones, and clicking an earlier step (ICP or Hypothesis) correctly moves the visual focus back to that step so workflow colors stay in sync when navigating backwards from Segment.
+
+## [0.1.79] - 2025-12-19
+### Added
+- New `contains` operator to the segment filter DSL, allowing case-insensitive substring matches for text fields (implemented as SQL `ILIKE '%value%'`) across both backend (`src/filters/index.ts`) and web UI types (`web/src/types/filters.ts`). This makes filters like `employees.position contains "Генеральный"` possible without requiring exact matches.
+- Segment Builder’s filter row now exposes the `contains` operator in its operator dropdown, reusing the existing text input for values so manual segments and AI-suggested filters can describe roles and titles more naturally.
+### Changed
+- Filter coach system prompt and documentation (`docs/SEGMENT_FILTER_COACH.md`) updated so AI-generated filter suggestions may use `contains` in addition to `eq`, `in`, `not_in`, `gte`, and `lte`, keeping the LLM’s contract in sync with the backend DSL and validation.
+
+## [0.1.78] - 2025-12-19
+### Fixed
+- Hardened `/api/filters/preview` company-step logic so `companies.employee_count` and other company-level numeric filters always run on a filter-capable Supabase builder; if the base `from('companies')` builder is missing comparison/list operators, the service now upgrades it via `.select('*')` before applying `eq`/`in`/`not_in`/`gte`/`lte`, avoiding runtime errors like `current.gte is not a function`.
+- Extended filter preview tests to cover the mixed-builder case (base builder without `gte`, filter builder returned by `.select('*')`) and to verify that company filters still return realistic company/employee counts when constrained by `companies.employee_count`.
+
+## [0.1.77] - 2025-12-18
+### Fixed
+- Segment filter preview for `companies.employee_count` now uses a shared allowlisted DSL and an embedded `company:companies(...)` relationship in `getFilterPreviewCounts`, so filters like `companies.employee_count >= 45` return realistic counts instead of `0` matches or PostgREST embed errors.  
+- `/api/filters/preview` error handling is aligned with the filter validation helper, returning clear 400 responses when fields are not in the allowlist while preserving existing success semantics for the web adapter.
+### Changed
+- Segment Builder’s Preview panel now formats validation errors from `/api/filters/preview` into a user-friendly message (including the supported field list) instead of surfacing raw strings like `API error 400: Unknown field: companies.employee_`, making it easier for users to correct invalid filter fields without reading Supabase internals.
+
+## [0.1.76] - 2025-12-18
+### Added
+- Repository-wide **library-first rule** in `AGENTS.md` for non-core utilities and infrastructure code: before adding new helper logic (>20–30 lines), contributors must check npm for an actively maintained, typed library (≥1k weekly downloads, permissive license, acceptable bundle size for `web/`), adopt it when it cleanly covers ≥70% of the needed functionality, and reserve custom implementations for clearly domain-specific logic (GTM spine behaviour, Supabase schema semantics, `generate_email_draft` contract, segment filter DSL, campaign/judge analytics, Smartlead-specific orchestration). PRs are expected to include a brief note confirming the library-first check.
+- Workspace Hub design system hook-up for Segment forms: introduced a shared `WorkspaceColors` palette in `web/src/theme.ts`, wired `PipelineWorkspaceWithSidebar` to use it, and updated the Database Search `SegmentBuilder` and EXA Web Search `ExaWebsetSearch` modals to consume the palette (CTAs now use the orange accent and shared surface/border/text colors) while preserving existing modal structure. Added a “Design System & Colors” section in `AGENTS.md` so future Web UI work reuses the same palette instead of ad-hoc hex values.
+
 ## [0.1.75] - 2025-12-17
 ### Added
 - **AI-Assisted Segment Builder & EXA Webset Integration**: Three new segment creation methods in the Pipeline Workspace Segment tab:
@@ -14,6 +103,7 @@ All notable changes to this project will be documented in this file.
 - Frontend hooks: `useFilterPreview` for debounced filter preview (500ms), `useExaSearch` for EXA search state management with loading/error handling.
 - Type definitions: `web/src/types/filters.ts` for filter UI types, `web/src/types/exaWebset.ts` for EXA result types.
 - Comprehensive test coverage: 70+ tests across all components and hooks (FilterRow, SegmentBuilder, AIFilterSuggestions, ExaWebsetSearch, useFilterPreview, useExaSearch).
+- Playwright E2E coverage for segment search and enrichment (T029 filter-based and T030 EXA Web Search) implementing `specs/001-segment-search/e2e-test-plan.md`, including UI segment creation, CLI-driven `segment:snapshot` / `enrich:run`, and Supabase assertions for `segments`, `segment_members`, `jobs`, `companies.company_research`, and `employees.ai_research_data`.
 ### Changed
 - Pipeline Workspace Segment tab: "Search Database" button now opens SegmentBuilder modal (replaces AI chat), "EXA Web Search" button now functional and opens ExaWebsetSearch modal.
 - Segment list automatically refreshes after creation via both Database Search and EXA Web Search flows.

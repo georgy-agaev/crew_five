@@ -126,14 +126,17 @@ describe('useFilterPreview', () => {
 
     await waitFor(
       () => {
-        expect(result.current.companyCount).toBe(0);
+        expect(global.fetch).toHaveBeenCalledTimes(1);
       },
       { timeout: 1000 }
     );
 
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
     expect(result.current.employeeCount).toBe(0);
     expect(result.current.totalCount).toBe(0);
-    expect(result.current.loading).toBe(false);
     expect(result.current.error).toBe(null);
   });
 

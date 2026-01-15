@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { SegmentBuilder } from './SegmentBuilder';
 import type { FilterDefinition } from '../types/filters';
+import { lightWorkspaceColors } from '../theme';
 
 export function SegmentBuilderExample() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -72,6 +73,7 @@ export function SegmentBuilderExample() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onCreate={handleCreateSegment}
+        colors={lightWorkspaceColors}
       />
     </div>
   );

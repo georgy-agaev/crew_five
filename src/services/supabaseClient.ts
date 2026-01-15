@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-import type { AppEnv } from '../config/env';
+import type { AppEnv } from '../config/env.js';
 
 export function initSupabaseClient(env: AppEnv): SupabaseClient {
   return createClient(env.supabaseUrl, env.supabaseServiceRoleKey, {

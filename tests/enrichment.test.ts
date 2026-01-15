@@ -4,6 +4,7 @@ import { enrichCommand } from '../src/commands/enrich';
 import { enqueueSegmentEnrichment, runSegmentEnrichmentOnce } from '../src/services/enrichSegment';
 import { createEnrichmentProviderRegistry, getEnrichmentAdapter } from '../src/services/enrichment/registry';
 import * as exaIntegration from '../src/integrations/exa';
+import * as firecrawlIntegration from '../src/integrations/firecrawl';
 import * as enrichSegmentSvc from '../src/services/enrichSegment';
 import * as snapshotWorkflow from '../src/services/segmentSnapshotWorkflow';
 
@@ -191,6 +192,12 @@ describe('enrichment', () => {
   });
 
   it('run_segment_enrichment_writes_research_to_companies_and_employees', async () => {
+    const selectCompanies = vi.fn().mockReturnValue({
+      in: vi.fn().mockResolvedValue({ data: [], error: null }),
+    });
+    const selectEmployees = vi.fn().mockReturnValue({
+      in: vi.fn().mockResolvedValue({ data: [], error: null }),
+    });
     const updateCompanies = vi.fn().mockReturnValue({
       eq: vi.fn().mockResolvedValue({ error: null }),
     });
@@ -219,8 +226,8 @@ describe('enrichment', () => {
     });
 
     const from = vi.fn((table: string) => {
-      if (table === 'companies') return { update: updateCompanies };
-      if (table === 'employees') return { update: updateEmployees };
+      if (table === 'companies') return { select: selectCompanies, update: updateCompanies };
+      if (table === 'employees') return { select: selectEmployees, update: updateEmployees };
       if (table === 'jobs') return { update: updateJob };
       return { update: vi.fn(), from: vi.fn() };
     });
@@ -253,9 +260,39 @@ describe('enrichment', () => {
 
     expect(companySpy).toHaveBeenCalled();
     expect(employeeSpy).toHaveBeenCalled();
-    expect(updateCompanies).toHaveBeenCalled();
-    expect(updateEmployees).toHaveBeenCalled();
+    expect(updateCompanies).toHaveBeenCalledWith(
+      expect.objectContaining({
+        company_research: expect.objectContaining({
+          version: 1,
+          providers: expect.objectContaining({
+            mock: expect.anything(),
+          }),
+          lastUpdatedAt: expect.any(String),
+        }),
+      })
+    );
+    expect(updateEmployees).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ai_research_data: expect.objectContaining({
+          version: 1,
+          providers: expect.objectContaining({
+            mock: expect.anything(),
+          }),
+          lastUpdatedAt: expect.any(String),
+        }),
+      })
+    );
     expect(updateJob).toHaveBeenCalled();
+    expect(updateJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'completed',
+        result: expect.objectContaining({
+          provider: 'mock',
+          counts: expect.any(Object),
+          sampledErrors: expect.any(Object),
+        }),
+      })
+    );
     expect(summary.processed).toBeGreaterThan(0);
   });
 
@@ -291,6 +328,45 @@ describe('enrichment', () => {
     expect(mockResearchClient.researchCompany).toHaveBeenCalled();
     expect(mockResearchClient.researchContact).toHaveBeenCalled();
   });
+
+  it('get_enrichment_adapter_returns_firecrawl_and_uses_company_website', async () => {
+    const companyRow = { company_name: 'Acme Corp', website: 'acme.example', region: 'US' };
+
+    const selectCompanies = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({ data: companyRow, error: null }),
+      }),
+    });
+
+    const mockSupabase = { from: vi.fn(() => ({ select: selectCompanies })) } as any;
+
+    const search = vi.fn().mockResolvedValue([
+      { url: 'https://acme.example/about', title: 'About', description: 'About Acme' },
+      { url: 'https://acme.example/services', title: 'Services', description: 'Services list' },
+    ]);
+    const scrape = vi.fn().mockResolvedValue({
+      url: 'https://acme.example',
+      title: 'Acme',
+      description: 'Acme desc',
+      markdown: '# Acme\\nWe do things',
+    });
+
+    vi.spyOn(firecrawlIntegration, 'buildFirecrawlClientFromEnv').mockReturnValue({ search, scrape } as any);
+
+    const adapter = getEnrichmentAdapter('firecrawl', mockSupabase);
+    const result = await adapter.fetchCompanyInsights({ company_id: 'company-1' });
+
+    expect(result.provider).toBe('firecrawl');
+    expect(search).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: expect.stringContaining('site:acme.example'),
+      })
+    );
+    const scrapedOrigins = scrape.mock.calls.map(([args]) => new URL((args as any).url).origin);
+    expect(scrapedOrigins).toContain('https://acme.example');
+    expect(result.sources?.length).toBeGreaterThan(0);
+    expect(String(result.summary ?? '')).toMatch(/Acme/i);
+  });
   it('enrichment_provider_registry_registers_exa_parallel_firecrawl_anysite', () => {
     process.env.EXA_API_KEY = 'test-key';
     process.env.PARALLEL_API_KEY = 'test-parallel';
@@ -305,19 +381,29 @@ describe('enrichment', () => {
   });
 
   it('exa_enrichment_adapter_updates_company_research', async () => {
-    const selectCompany = vi.fn().mockReturnValue({
-      eq: vi.fn().mockReturnValue({
-        maybeSingle: vi.fn().mockResolvedValue({
-          data: {
-            company_name: 'Acme Corp',
-            website: 'https://acme.example',
-            region: 'US',
-          },
+    const selectCompany = vi.fn((columns: string) => {
+      if (columns.includes('id, company_research')) {
+        return {
+          in: vi.fn().mockResolvedValue({ data: [], error: null }),
+        };
+      }
+      return {
+        eq: vi.fn().mockReturnValue({
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: {
+              company_name: 'Acme Corp',
+              website: 'https://acme.example',
+              region: 'US',
+            },
+          }),
         }),
-      }),
+      };
     });
     const updateCompanies = vi.fn().mockReturnValue({
       eq: vi.fn().mockResolvedValue({ error: null }),
+    });
+    const selectEmployees = vi.fn().mockReturnValue({
+      in: vi.fn().mockResolvedValue({ data: [], error: null }),
     });
     const updateEmployees = vi.fn().mockReturnValue({
       eq: vi.fn().mockResolvedValue({ error: null }),
@@ -345,7 +431,7 @@ describe('enrichment', () => {
 
     const from = vi.fn((table: string) => {
       if (table === 'companies') return { select: selectCompany, update: updateCompanies };
-      if (table === 'employees') return { update: updateEmployees };
+      if (table === 'employees') return { select: selectEmployees, update: updateEmployees };
       if (table === 'jobs') return { update: updateJob };
       return { select: vi.fn(), update: vi.fn() };
     });
@@ -393,10 +479,15 @@ describe('enrichment', () => {
     expect(updateCompanies).toHaveBeenCalledWith(
       expect.objectContaining({
         company_research: expect.objectContaining({
-          provider: 'exa',
-          entity: 'company',
-          company_id: 'co1',
-          summary: 'Company summary',
+          version: 1,
+          providers: expect.objectContaining({
+            exa: expect.objectContaining({
+              provider: 'exa',
+              entity: 'company',
+              company_id: 'co1',
+              summary: 'Company summary',
+            }),
+          }),
         }),
       })
     );
@@ -404,18 +495,25 @@ describe('enrichment', () => {
   });
 
   it('exa_enrichment_adapter_updates_employee_ai_research_data', async () => {
-    const selectEmployee = vi.fn().mockReturnValue({
-      eq: vi.fn().mockReturnValue({
-        maybeSingle: vi.fn().mockResolvedValue({
-          data: {
-            id: 'contact-1',
-            full_name: 'Jane Doe',
-            position: 'CTO',
-            company_id: 'co1',
-            company_name: 'Acme Corp',
-          },
+    const selectEmployee = vi.fn((columns: string) => {
+      if (columns.includes('id, ai_research_data')) {
+        return {
+          in: vi.fn().mockResolvedValue({ data: [], error: null }),
+        };
+      }
+      return {
+        eq: vi.fn().mockReturnValue({
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: {
+              id: 'contact-1',
+              full_name: 'Jane Doe',
+              position: 'CTO',
+              company_id: 'co1',
+              company_name: 'Acme Corp',
+            },
+          }),
         }),
-      }),
+      };
     });
     const updateCompanies = vi.fn().mockReturnValue({
       eq: vi.fn().mockResolvedValue({ error: null }),
@@ -446,7 +544,7 @@ describe('enrichment', () => {
 
     const from = vi.fn((table: string) => {
       if (table === 'employees') return { select: selectEmployee, update: updateEmployees };
-      if (table === 'companies') return { update: updateCompanies };
+      if (table === 'companies') return { select: vi.fn().mockReturnValue({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }), update: updateCompanies };
       if (table === 'jobs') return { update: updateJob };
       return { select: vi.fn(), update: vi.fn() };
     });
@@ -496,10 +594,15 @@ describe('enrichment', () => {
     expect(updateEmployees).toHaveBeenCalledWith(
       expect.objectContaining({
         ai_research_data: expect.objectContaining({
-          provider: 'exa',
-          entity: 'employee',
-          contact_id: 'contact-1',
-          summary: 'Contact summary',
+          version: 1,
+          providers: expect.objectContaining({
+            exa: expect.objectContaining({
+              provider: 'exa',
+              entity: 'employee',
+              contact_id: 'contact-1',
+              summary: 'Contact summary',
+            }),
+          }),
         }),
       })
     );

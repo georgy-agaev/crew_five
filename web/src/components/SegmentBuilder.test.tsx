@@ -1,16 +1,19 @@
+import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import { SegmentBuilder } from './SegmentBuilder';
 
-// Mock the useFilterPreview hook
+// Mock the useFilterPreview hook with an overridable implementation
+const useFilterPreviewMock = vi.fn(() => ({
+  companyCount: 10,
+  employeeCount: 25,
+  totalCount: 35,
+  loading: false,
+  error: null,
+}));
+
 vi.mock('../hooks/useFilterPreview', () => ({
-  useFilterPreview: () => ({
-    companyCount: 10,
-    employeeCount: 25,
-    totalCount: 35,
-    loading: false,
-    error: null,
-  }),
+  useFilterPreview: (...args: any[]) => useFilterPreviewMock(...args),
 }));
 
 describe('SegmentBuilder', () => {
@@ -109,6 +112,30 @@ describe('SegmentBuilder', () => {
     expect(html).toContain('Create Segment');
   });
 
+  it('renders friendly error message for invalid filter field', () => {
+    const mockOnClose = vi.fn();
+    const mockOnCreate = vi.fn();
+
+    useFilterPreviewMock.mockReturnValueOnce({
+      companyCount: 0,
+      employeeCount: 0,
+      totalCount: 0,
+      loading: false,
+      error:
+        'API error 400: Unknown field: companies.employee_. Allowed fields: employees.role, employees.position, companies.segment, companies.employee_count',
+    });
+
+    const html = renderToString(
+      <SegmentBuilder
+        isOpen={true}
+        onClose={mockOnClose}
+        onCreate={mockOnCreate}
+      />
+    );
+
+    expect(html).toContain('Invalid filter field. Supported fields: employees.role, employees.position, companies.segment, companies.employee_count.');
+  });
+
   it('renders close button', () => {
     const mockOnClose = vi.fn();
     const mockOnCreate = vi.fn();
@@ -121,7 +148,7 @@ describe('SegmentBuilder', () => {
       />
     );
 
-    expect(html).toContain('aria-label="Close"');
+    expect(html).toContain('aria-label="Close segment builder dialog"');
     expect(html).toContain('✕');
   });
 

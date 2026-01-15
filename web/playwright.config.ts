@@ -1,4 +1,16 @@
 import { defineConfig, devices } from '@playwright/test';
+import dotenv from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment for E2E tests.
+// - Repo root `.env` is used for Supabase/service keys and web adapter config.
+// - Web `.env` is used for Vite client config (VITE_*).
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 /**
  * Playwright E2E Test Configuration
@@ -27,12 +39,6 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        // Use local Chromium installation
-        launchOptions: {
-          executablePath: process.env.PLAYWRIGHT_BROWSERS_PATH
-            ? undefined
-            : './node_modules/.cache/ms-playwright/chromium-1200/chrome-mac/Chromium.app/Contents/MacOS/Chromium'
-        }
       },
     },
   ],

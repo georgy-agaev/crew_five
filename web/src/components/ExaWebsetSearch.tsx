@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import type { ExaCompanyResult, ExaEmployeeResult } from '../types/exaWebset';
 import { useExaSearch } from '../hooks/useExaSearch';
+import type { WorkspaceColors } from '../theme';
+import { lightWorkspaceColors } from '../theme';
 
 export interface ExaWebsetSearchProps {
   isOpen: boolean;
@@ -11,9 +13,10 @@ export interface ExaWebsetSearchProps {
     employees: ExaEmployeeResult[];
     query: string;
   }) => Promise<void>;
+  colors?: WorkspaceColors;
 }
 
-export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProps) {
+export function ExaWebsetSearch({ isOpen, onClose, onSave, colors }: ExaWebsetSearchProps) {
   const [searchDescription, setSearchDescription] = useState('');
   const [segmentName, setSegmentName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -130,6 +133,8 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
 
   const canSave = segmentName.trim() !== '' && hasSearched && !saving;
 
+  const palette: WorkspaceColors = colors ?? lightWorkspaceColors;
+
   return (
     <>
       <style>
@@ -174,7 +179,7 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
         <div
           style={{
             padding: '24px',
-            borderBottom: '1px solid #e2e8f0',
+            borderBottom: `1px solid ${palette.border}`,
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -241,7 +246,7 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
               style={{
                 marginTop: '12px',
                 padding: '10px 16px',
-                background: loading ? '#cbd5e1' : '#0f172a',
+                background: loading ? palette.border : palette.orange,
                 color: '#fff',
                 border: 'none',
                 borderRadius: '8px',
@@ -291,7 +296,7 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
               style={{
                 padding: '12px 16px',
                 background: '#fee2e2',
-                color: '#b91c1c',
+                color: palette.error,
                 borderRadius: '8px',
                 marginBottom: '24px',
                 fontSize: '14px',
@@ -310,16 +315,16 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
                 aria-live="polite"
                 style={{
                   padding: '16px',
-                  background: '#f8fafc',
+                  background: palette.sidebar,
                   borderRadius: '12px',
-                  border: '1px solid #e2e8f0',
+                  border: `1px solid ${palette.border}`,
                   marginBottom: '24px',
                 }}
               >
-                <div style={{ fontWeight: 600, marginBottom: '4px', color: '#0f172a' }}>
+                <div style={{ fontWeight: 600, marginBottom: '4px', color: palette.text }}>
                   Search Results
                 </div>
-                <div style={{ fontSize: '14px', color: '#0f172a' }}>
+                <div style={{ fontSize: '14px', color: palette.text }}>
                   Found: <strong>{companies.length}</strong> companies, <strong>{employees.length}</strong> employees (
                   <strong>{totalResults}</strong> total results)
                 </div>
@@ -347,12 +352,12 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
                     padding: '12px 16px',
                     background: 'none',
                     border: 'none',
-                    borderBottom: activeTab === 'companies' ? '2px solid #0f172a' : '2px solid transparent',
+                    borderBottom: activeTab === 'companies' ? `2px solid ${palette.text}` : '2px solid transparent',
                     marginBottom: '-2px',
                     cursor: 'pointer',
                     fontSize: '14px',
                     fontWeight: activeTab === 'companies' ? 600 : 400,
-                    color: activeTab === 'companies' ? '#0f172a' : '#64748b',
+                    color: activeTab === 'companies' ? palette.text : palette.textMuted,
                   }}
                 >
                   Companies ({companies.length})
@@ -368,12 +373,12 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
                     padding: '12px 16px',
                     background: 'none',
                     border: 'none',
-                    borderBottom: activeTab === 'employees' ? '2px solid #0f172a' : '2px solid transparent',
+                    borderBottom: activeTab === 'employees' ? `2px solid ${palette.text}` : '2px solid transparent',
                     marginBottom: '-2px',
                     cursor: 'pointer',
                     fontSize: '14px',
                     fontWeight: activeTab === 'employees' ? 600 : 400,
-                    color: activeTab === 'employees' ? '#0f172a' : '#64748b',
+                    color: activeTab === 'employees' ? palette.text : palette.textMuted,
                   }}
                 >
                   Employees ({employees.length})
@@ -388,7 +393,7 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
                 style={{
                   maxHeight: '300px',
                   overflow: 'auto',
-                  border: '1px solid #e2e8f0',
+                  border: `1px solid ${palette.border}`,
                   borderRadius: '8px',
                   marginBottom: '24px',
                 }}
@@ -396,7 +401,7 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
                 {activeTab === 'companies' && (
                   <div>
                     {companies.length === 0 ? (
-                      <div style={{ padding: '16px', color: '#64748b', textAlign: 'center' }}>
+                      <div style={{ padding: '16px', color: palette.textMuted, textAlign: 'center' }}>
                         No companies found
                       </div>
                     ) : (
@@ -405,11 +410,11 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
                           key={index}
                           style={{
                             padding: '12px 16px',
-                            borderBottom: index < companies.length - 1 ? '1px solid #e2e8f0' : 'none',
+                            borderBottom: index < companies.length - 1 ? `1px solid ${palette.border}` : 'none',
                           }}
                         >
                           <div style={{ fontWeight: 600, marginBottom: '4px' }}>{company.name}</div>
-                          <div style={{ fontSize: '13px', color: '#64748b' }}>
+                          <div style={{ fontSize: '13px', color: palette.textMuted }}>
                             {company.domain && <div>Domain: {company.domain}</div>}
                             {company.location && <div>Location: {company.location}</div>}
                             {company.industry && <div>Industry: {company.industry}</div>}
@@ -427,7 +432,7 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
                 {activeTab === 'employees' && (
                   <div>
                     {employees.length === 0 ? (
-                      <div style={{ padding: '16px', color: '#64748b', textAlign: 'center' }}>
+                      <div style={{ padding: '16px', color: palette.textMuted, textAlign: 'center' }}>
                         No employees found
                       </div>
                     ) : (
@@ -436,11 +441,11 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
                           key={index}
                           style={{
                             padding: '12px 16px',
-                            borderBottom: index < employees.length - 1 ? '1px solid #e2e8f0' : 'none',
+                            borderBottom: index < employees.length - 1 ? `1px solid ${palette.border}` : 'none',
                           }}
                         >
                           <div style={{ fontWeight: 600, marginBottom: '4px' }}>{employee.name}</div>
-                          <div style={{ fontSize: '13px', color: '#64748b' }}>
+                          <div style={{ fontSize: '13px', color: palette.textMuted }}>
                             {employee.role && <div>Role: {employee.role}</div>}
                             {employee.title && <div>Title: {employee.title}</div>}
                             {employee.companyName && <div>Company: {employee.companyName}</div>}
@@ -485,7 +490,7 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
         <div
           style={{
             padding: '24px',
-            borderTop: '1px solid #e2e8f0',
+            borderTop: `1px solid ${palette.border}`,
             display: 'flex',
             justifyContent: 'flex-end',
             gap: '12px',
@@ -509,6 +514,11 @@ export function ExaWebsetSearch({ isOpen, onClose, onSave }: ExaWebsetSearchProp
               alignItems: 'center',
               gap: '8px',
               justifyContent: 'center',
+              background: palette.orange,
+              borderColor: palette.orange,
+              color: '#FFF',
+              opacity: canSave ? 1 : 0.6,
+              cursor: canSave ? 'pointer' : 'not-allowed',
             }}
             aria-busy={saving}
             aria-label={saving ? 'Saving segment' : 'Save as segment'}

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { FilterClause } from '../filters';
 import { buildContactQuery } from '../filters';
+import { getFilterPreviewCounts } from './filterPreview';
 
 export interface ContactSnapshotRow {
   contact_id: string;
@@ -89,4 +90,45 @@ export async function setSegmentVersion(
   }
 
   return data.version ?? version;
+}
+
+export async function listSegmentsWithCounts(client: SupabaseClient): Promise<any[]> {
+  const { data, error } = await client
+    .from('segments')
+    .select('id,name,version,created_at,filter_definition,icp_profile_id,icp_hypothesis_id')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  const rows = (data ?? []).filter((row: any) => (row.version ?? 0) >= 0);
+
+  const withCounts = await Promise.all(
+    rows.map(async (row: any) => {
+      try {
+        if (!row.filter_definition) {
+          return {
+            ...row,
+            company_count: 0,
+            employee_count: 0,
+            total_count: 0,
+          };
+        }
+        const counts = await getFilterPreviewCounts(client, row.filter_definition);
+        return {
+          ...row,
+          company_count: counts.companyCount,
+          employee_count: counts.employeeCount,
+          total_count: counts.totalCount,
+        };
+      } catch {
+        return {
+          ...row,
+          company_count: 0,
+          employee_count: 0,
+          total_count: 0,
+        };
+      }
+    })
+  );
+
+  return withCounts;
 }

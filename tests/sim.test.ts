@@ -21,6 +21,22 @@ describe('sim service (Option 2 stub)', () => {
     const insertSelect = vi.fn().mockReturnValue({ single: insertSingle });
     const insert = vi.fn().mockReturnValue({ select: insertSelect });
 
+    const appSettingsSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: {
+            value: {
+              version: 2,
+              defaultProviders: ['exa', 'firecrawl'],
+              primaryCompanyProvider: 'firecrawl',
+              primaryEmployeeProvider: 'exa',
+            },
+          },
+          error: null,
+        }),
+      }),
+    });
+
     const updateSingle = vi.fn().mockResolvedValue({
       data: {
         id: 'job-1',
@@ -43,6 +59,9 @@ describe('sim service (Option 2 stub)', () => {
       if (table === 'jobs') {
         return { insert, update };
       }
+      if (table === 'app_settings') {
+        return { select: appSettingsSelect };
+      }
       throw new Error(`Unexpected table ${table}`);
     });
     const client = { from } as any;
@@ -55,6 +74,8 @@ describe('sim service (Option 2 stub)', () => {
     });
 
     expect(insert).toHaveBeenCalled();
+    const insertedJob = insert.mock.calls[0]?.[0] as any;
+    expect(insertedJob.payload?.enrichment_provider).toEqual({ company: 'firecrawl', employee: 'exa' });
     expect(update).toHaveBeenCalled();
     expect(result.jobId).toBe('job-1');
     expect(result.status).toBe('not_implemented');
@@ -94,4 +115,3 @@ describe('sim service (Option 2 stub)', () => {
     expect(updated.result).toEqual({ reason: 'custom reason' });
   });
 });
-

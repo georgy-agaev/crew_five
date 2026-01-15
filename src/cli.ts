@@ -2,7 +2,7 @@
 import { Command } from 'commander';
 import { fileURLToPath } from 'node:url';
 
-import { loadEnv } from './config/env';
+import { loadEnv } from './config/env.js';
 import { campaignCreateHandler } from './commands/campaignCreate';
 import { campaignUpdateHandler } from './commands/campaignUpdate';
 import { campaignStatusHandler } from './commands/campaignStatus';
@@ -30,7 +30,7 @@ import { emailSendHandler } from './cli-email-send';
 import { eventIngestHandler } from './cli-event-ingest';
 import { buildSmartleadMcpClient, type SmartleadMcpClient } from './integrations/smartleadMcp';
 import { AiClient, type EmailDraftRequest } from './services/aiClient';
-import { resolveModelConfig } from './config/modelCatalog';
+import { resolveModelConfig } from './config/modelCatalog.js';
 import { buildChatClientForModel } from './services/providers/buildChatClient';
 import { initSupabaseClient } from './services/supabaseClient';
 import type { ChatClient } from './services/chatClient';

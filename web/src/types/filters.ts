@@ -3,7 +3,7 @@
  * Based on backend filter system in src/filters/index.ts
  */
 
-export type FilterOperator = 'eq' | 'in' | 'not_in' | 'gte' | 'lte';
+export type FilterOperator = 'eq' | 'in' | 'not_in' | 'gte' | 'lte' | 'contains';
 
 export interface FilterDefinition {
   field: string;

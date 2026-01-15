@@ -20,10 +20,11 @@
     },
     "playwright": {
       "command": "npx",
-      "args": ["-y", "@playwright/test"],
-      "env": {
-        "PLAYWRIGHT_BROWSERS_PATH": "${HOME}/.cache/ms-playwright"
-      }
+      "args": ["-y", "@playwright/mcp@latest"]
+    },
+    "shadcn": {
+      "command": "npx",
+      "args": ["-y", "shadcn@latest", "mcp"]
     }
   }
 }

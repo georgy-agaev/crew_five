@@ -80,7 +80,8 @@ describe('web adapter server', () => {
       { method: 'POST', pathname: '/api/enrich/segment', body: { segmentId: 's1', runNow: true, adapter: 'mock' } },
       buildMeta({ mode: 'live' })
     );
-    expect(enqueueSegmentEnrichment).toHaveBeenCalledWith({ segmentId: 's1', adapter: 'mock', dryRun: undefined, limit: undefined });
+    expect(snapshotSegment).toHaveBeenCalledWith({ segmentId: 's1', finalize: true, allowEmpty: false });
+    expect(enqueueSegmentEnrichment).toHaveBeenCalledWith({ segmentId: 's1', adapter: 'mock', dryRun: undefined, limit: 25 });
     expect(runSegmentEnrichmentOnce).toHaveBeenCalledTimes(1);
     expect((resEnrich.body as any).summary.jobId).toBe('job1');
 
@@ -91,6 +92,48 @@ describe('web adapter server', () => {
     );
     expect(getSegmentEnrichmentStatus).toHaveBeenCalledWith('s1');
     expect((resStatus.body as any).status).toBe('completed');
+
+    const resMulti = await dispatch(
+      baseDeps,
+      {
+        method: 'POST',
+        pathname: '/api/enrich/segment/multi',
+        body: { segmentId: 's1', providers: ['exa', 'parallel'], runNow: true },
+      },
+      buildMeta({ mode: 'live' })
+    );
+    expect(resMulti.status).toBe(200);
+    expect(snapshotSegment).toHaveBeenCalledWith({ segmentId: 's1', finalize: true, allowEmpty: false });
+    expect(enqueueSegmentEnrichment).toHaveBeenCalledWith({ segmentId: 's1', adapter: 'exa', dryRun: false, limit: 25 });
+    expect(enqueueSegmentEnrichment).toHaveBeenCalledWith({ segmentId: 's1', adapter: 'parallel', dryRun: false, limit: 25 });
+    expect(runSegmentEnrichmentOnce).toHaveBeenCalledTimes(3); // 1 from single + 2 from multi
+  });
+
+  it('routes enrichment settings endpoints', async () => {
+    const getEnrichmentSettings = vi.fn(async () => ({
+      version: 2,
+      defaultProviders: ['mock'],
+      primaryCompanyProvider: 'mock',
+      primaryEmployeeProvider: 'mock',
+    }));
+    const setEnrichmentSettings = vi.fn(async (payload) => ({ ...payload, version: 2 }));
+    const baseDeps: any = { ...deps, getEnrichmentSettings, setEnrichmentSettings };
+
+    const resGet = await dispatch(baseDeps, { method: 'GET', pathname: '/api/settings/enrichment' });
+    expect(resGet.status).toBe(200);
+    expect(getEnrichmentSettings).toHaveBeenCalledTimes(1);
+
+    const resPost = await dispatch(baseDeps, {
+      method: 'POST',
+      pathname: '/api/settings/enrichment',
+      body: { defaultProviders: ['exa', 'firecrawl'], primaryCompanyProvider: 'firecrawl', primaryEmployeeProvider: 'exa' },
+    });
+    expect(resPost.status).toBe(200);
+    expect(setEnrichmentSettings).toHaveBeenCalledWith({
+      defaultProviders: ['exa', 'firecrawl'],
+      primaryCompanyProvider: 'firecrawl',
+      primaryEmployeeProvider: 'exa',
+    });
   });
 
   it('validates required fields for POST /api/segments', async () => {

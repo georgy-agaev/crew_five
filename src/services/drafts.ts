@@ -4,6 +4,9 @@ import type { AiClient, EmailDraftRequest } from './aiClient';
 import { applyGracefulFallback, ensureGracefulToggle, getFallbackTemplate } from './fallbackTemplates';
 import { applyVariantToDraft } from './experiments';
 import { resolvePromptForStep } from './promptRegistry';
+import { getPrimaryProvidersForWorkflow } from './enrichmentSettings';
+import { getProviderResult } from './enrichment/store';
+import { buildHybridEnrichmentByProvider } from './enrichment/hybridContext';
 
 interface GenerateDraftsOptions {
   campaignId: string;
@@ -28,6 +31,72 @@ interface SegmentMemberRow {
   company_id: string;
   snapshot: {
     request?: EmailDraftRequest;
+  };
+}
+
+function applyHybridEnrichmentToRequest(params: {
+  request: EmailDraftRequest;
+  primaryProviders: { company: string; employee: string };
+  companyResearch: unknown;
+  employeeResearch: unknown;
+}) {
+  const companyPrimary = getProviderResult(params.companyResearch, params.primaryProviders.company);
+  const employeePrimary = getProviderResult(params.employeeResearch, params.primaryProviders.employee);
+
+  const byProvider = buildHybridEnrichmentByProvider({
+    primaryProvider: params.primaryProviders.company,
+    companyStore: params.companyResearch,
+    employeeStore: params.employeeResearch,
+  });
+
+  const supplementalByProvider =
+    byProvider &&
+    Object.fromEntries(
+      Object.entries(byProvider).map(([providerId, entry]) => {
+        const primaryFor: Array<'company' | 'employee'> = [];
+        if (providerId === params.primaryProviders.company) primaryFor.push('company');
+        if (providerId === params.primaryProviders.employee) primaryFor.push('employee');
+
+        if (primaryFor.length) {
+          return [
+            providerId,
+            {
+              primaryFor,
+              mode: 'primary',
+              meta: (entry as any)?.meta,
+            },
+          ];
+        }
+
+        return [providerId, entry];
+      })
+    );
+
+  const enrichmentByProvider = supplementalByProvider ?? null;
+
+  if (!companyPrimary && !employeePrimary && !enrichmentByProvider) {
+    return { request: params.request, enrichmentProvider: params.primaryProviders, enrichmentByProvider };
+  }
+
+  return {
+    enrichmentProvider: params.primaryProviders,
+    enrichmentByProvider,
+    request: {
+      ...params.request,
+      brief: {
+        ...params.request.brief,
+        company: {
+          ...params.request.brief.company,
+          enrichment: companyPrimary ?? null,
+        },
+        context: {
+          ...params.request.brief.context,
+          enrichment_provider: params.primaryProviders,
+          lead_enrichment: employeePrimary ?? null,
+          enrichment_by_provider: enrichmentByProvider,
+        },
+      },
+    },
   };
 }
 
@@ -86,7 +155,30 @@ export async function generateDrafts(
     });
   }
 
-  for (const member of membersRes.data as SegmentMemberRow[]) {
+  const primaryProvider = await getPrimaryProvidersForWorkflow(client, 'mock');
+  const memberRows = membersRes.data as SegmentMemberRow[];
+  const contactIds = Array.from(new Set(memberRows.map((m) => m.contact_id).filter(Boolean)));
+  const companyIds = Array.from(new Set(memberRows.map((m) => m.company_id).filter(Boolean)));
+
+  const companyResearchById = new Map<string, unknown>();
+  if (companyIds.length) {
+    const { data, error } = await client.from('companies').select('id, company_research').in('id', companyIds);
+    if (error) throw error;
+    for (const row of (data ?? []) as any[]) {
+      companyResearchById.set(String(row.id), row.company_research);
+    }
+  }
+
+  const employeeResearchById = new Map<string, unknown>();
+  if (contactIds.length) {
+    const { data, error } = await client.from('employees').select('id, ai_research_data').in('id', contactIds);
+    if (error) throw error;
+    for (const row of (data ?? []) as any[]) {
+      employeeResearchById.set(String(row.id), row.ai_research_data);
+    }
+  }
+
+  for (const member of memberRows) {
     if (!member.snapshot?.request) {
       continue;
     }
@@ -96,7 +188,13 @@ export async function generateDrafts(
       continue;
     }
 
-    const response = await aiClient.generateDraft(member.snapshot.request);
+    const enriched = applyHybridEnrichmentToRequest({
+      request: member.snapshot.request,
+      primaryProviders: primaryProvider,
+      companyResearch: companyResearchById.get(member.company_id) ?? null,
+      employeeResearch: employeeResearchById.get(member.contact_id) ?? null,
+    });
+    const response = await aiClient.generateDraft(enriched.request);
     let subject = response.subject;
     let body = response.body;
 
@@ -141,6 +239,8 @@ export async function generateDrafts(
         icp_hypothesis_id: options.icpHypothesisId ?? null,
         provider: options.provider ?? existingProvider ?? null,
         model: options.model ?? existingModel ?? null,
+        enrichment_provider: enriched.enrichmentProvider,
+        enrichment_by_provider: enriched.enrichmentByProvider,
       },
       status: 'generated',
     });

@@ -301,6 +301,7 @@ Generate 1-3 filter configuration suggestions based on the user's description. E
    - not_in: Value is not in array (requires array value)
    - gte: Greater than or equal (requires number value)
    - lte: Less than or equal (requires number value)
+   - contains: Substring match for text fields (case-insensitive, uses SQL ILIKE)
 
 3. **Common field examples:**
    - employees.role: "CTO", "VP Engineering", "Head of Product"

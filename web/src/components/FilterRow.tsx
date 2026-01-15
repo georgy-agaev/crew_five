@@ -1,3 +1,4 @@
+import React from 'react';
 import type { FilterDefinition, FilterOperator } from '../types/filters';
 
 interface FilterRowProps {
@@ -9,15 +10,9 @@ interface FilterRowProps {
 // Common field suggestions for the filter builder
 const SUGGESTED_FIELDS = [
   'employees.role',
-  'employees.title',
-  'employees.seniority',
-  'employees.department',
-  'companies.industry',
-  'companies.size',
+  'employees.position',
+  'companies.segment',
   'companies.employee_count',
-  'companies.revenue',
-  'companies.location',
-  'companies.founded_year',
 ];
 
 // Operator display labels
@@ -27,6 +22,7 @@ const OPERATOR_LABELS: Record<FilterOperator, string> = {
   not_in: 'not in list',
   gte: 'greater than or equal',
   lte: 'less than or equal',
+  contains: 'contains',
 };
 
 // Operators that expect array values

@@ -5,7 +5,18 @@ import { smartleadSendCommand } from '../src/commands/smartleadSend';
 describe('smartleadSendCommand', () => {
   it('sends_and_logs_summary', async () => {
     const drafts = [
-      { id: 'd1', campaign_id: 'c1', contact_id: 'lead1@example.com', company_id: 'co1', subject: 'Hi', body: 'Hello', metadata: {} },
+      {
+        id: 'd1',
+        campaign_id: 'c1',
+        contact_id: 'lead1@example.com',
+        company_id: 'co1',
+        subject: 'Hi',
+        body: 'Hello',
+        metadata: {
+          enrichment_provider: { company: 'firecrawl', employee: 'exa' },
+          enrichment_by_provider: { exa: { mode: 'primary', primaryFor: ['employee'] } },
+        },
+      },
     ];
 
     const select = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue({ data: drafts, error: null }) }) });
@@ -32,6 +43,11 @@ describe('smartleadSendCommand', () => {
     expect(summary.fetched).toBe(1);
     expect(insert).toHaveBeenCalled();
     expect(update).toHaveBeenCalled();
+
+    const outboundPayload = insert.mock.calls[0]?.[0] as any[];
+    expect(outboundPayload[0]?.metadata?.enrichment_provider).toEqual({ company: 'firecrawl', employee: 'exa' });
+    expect(outboundPayload[0]?.metadata?.enrichment_by_provider?.exa?.mode).toBe('primary');
+    expect(outboundPayload[0]?.metadata?.sendPayload?.to).toBe('lead1@example.com');
   });
 
   it('respects_dry_run', async () => {

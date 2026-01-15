@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createJob, type JobRow, type JobStatus } from './jobs';
+import { getPrimaryProvidersForWorkflow } from './enrichmentSettings';
 
 export type SimMode = 'light_roast' | 'persona_sim' | 'reply_assist';
 
@@ -33,6 +34,8 @@ export async function createSimRequest(client: SupabaseClient, request: SimReque
     throw new Error('SimRequest must include segmentId or draftIds');
   }
 
+  const primaryProvider = await getPrimaryProvidersForWorkflow(client, 'mock');
+
   const job = await createJob(client, {
     type: 'sim',
     status: 'created',
@@ -47,6 +50,7 @@ export async function createSimRequest(client: SupabaseClient, request: SimReque
       icpHypothesisId: request.icpHypothesisId ?? null,
       draftIds: request.draftIds ?? [],
       reason: request.reason ?? null,
+      enrichment_provider: primaryProvider,
     },
   });
 
@@ -80,4 +84,3 @@ async function updateSimStatus(
   );
   return updated;
 }
-

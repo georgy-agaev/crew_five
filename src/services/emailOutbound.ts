@@ -107,7 +107,7 @@ export async function sendQueuedDrafts(
         provider_message_id: result.providerId,
         status: 'sent',
         sent_at: new Date().toISOString(),
-        metadata: { sendPayload },
+        metadata: { ...(draft.metadata ?? {}), sendPayload },
       };
       outboundRecords.push(outboundRecord);
       if (options.logger) {
@@ -127,7 +127,7 @@ export async function sendQueuedDrafts(
             provider_message_id: retryResult.providerId,
             status: 'sent',
             sent_at: new Date().toISOString(),
-            metadata: { sendPayload, retry: true },
+            metadata: { ...(draft.metadata ?? {}), sendPayload, retry: true },
           };
           outboundRecords.push(retryRecord);
           if (options.logger) {

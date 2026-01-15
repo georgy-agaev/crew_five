@@ -55,11 +55,18 @@ export async function smartleadSendCommand(
       continue;
     }
     try {
-      const res = await mcp.sendEmail?.({
+      const sendPayload = {
         to: draft.contact_id,
         subject: draft.subject ?? '',
         body: draft.body ?? '',
         campaignId: draft.campaign_id,
+        metadata: draft.metadata ?? {},
+      };
+      const res = await mcp.sendEmail?.({
+        to: sendPayload.to,
+        subject: sendPayload.subject,
+        body: sendPayload.body,
+        campaignId: sendPayload.campaignId,
       });
       if (!res?.provider_message_id) {
         summary.failed += 1;
@@ -75,6 +82,7 @@ export async function smartleadSendCommand(
         idempotency_key: `${draft.id}:${res.provider_message_id}`,
         status: 'sent',
         sent_at: new Date().toISOString(),
+        metadata: { ...(draft.metadata ?? {}), sendPayload },
       });
       summary.sent += 1;
     } catch {

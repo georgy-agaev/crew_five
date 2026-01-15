@@ -41,6 +41,14 @@ architecture docs live in `public-docs/`.
 4. **Mode Parity**: CLI and Web UI expose the same controls (Strict/Graceful, Interactive Coach/Pipeline Express).
 5. **Changelog Discipline**: record notable decisions and doc updates in `CHANGELOG.md` with semantic version bumps.
 
+## Solution-First Development Rule
+
+- For non-core utilities and infrastructure code larger than ~20–30 lines, follow a strict solution-first sequence:
+  1. Prefer existing higher-level services or platform features (for example, Supabase built-ins, official SaaS integrations, or internal shared services) when they can safely satisfy the need.
+  2. If no suitable service exists, search vetted JS/TS registries such as npm or jsr for a maintained, typed library with healthy adoption (≥1k weekly downloads or equivalent), a permissive license, and acceptable bundle size in `web/`, and adopt it if it covers ≥70% of the required functionality.
+  3. Only write new custom code when no suitable service or library exists, or when the logic is clearly domain-specific (for example, GTM spine behaviour, Supabase schema semantics, the `generate_email_draft` contract, segment filter DSL, campaign/judge analytics, Smartlead-specific orchestration).
+- In pull requests, add a brief note confirming this check (for example, `Solution-first rule checked: using <service/lib>` or `Solution-first rule checked: custom domain logic`).
+
 ## Python Virtual Environment
 - Created `.venv/` using `python3.10 -m venv .venv`. Activate via `source .venv/bin/activate` before running any DSPy/GEPA scripts or Supabase helpers, then `deactivate` when finished.
 - Keep Python dependencies isolated to this env; document new requirements in the README when tooling is added.

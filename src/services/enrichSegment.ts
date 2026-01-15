@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { getFinalizedSegmentVersion } from './segments';
 import { getEnrichmentAdapter } from './enrichment/registry';
+import { upsertProviderResult } from './enrichment/store';
 import { createJob, updateJobStatus, type JobRow } from './jobs';
 
 export interface SegmentEnrichmentSummary {
@@ -70,6 +71,31 @@ export async function runSegmentEnrichmentOnce(
   const companyIds: string[] = Array.isArray(payload.member_company_ids) ? payload.member_company_ids : [];
 
   const adapter = getEnrichmentAdapter(adapterName, client);
+  const providerKey = adapterName;
+
+  const companyResearchById = new Map<string, unknown>();
+  if (companyIds.length) {
+    const { data, error } = await client
+      .from('companies')
+      .select('id, company_research')
+      .in('id', companyIds);
+    if (error) throw error;
+    for (const row of (data ?? []) as any[]) {
+      companyResearchById.set(String(row.id), row.company_research);
+    }
+  }
+
+  const employeeResearchById = new Map<string, unknown>();
+  if (contactIds.length) {
+    const { data, error } = await client
+      .from('employees')
+      .select('id, ai_research_data')
+      .in('id', contactIds);
+    if (error) throw error;
+    for (const row of (data ?? []) as any[]) {
+      employeeResearchById.set(String(row.id), row.ai_research_data);
+    }
+  }
 
   const summary: SegmentEnrichmentSummary = {
     processed: 0,
@@ -78,56 +104,96 @@ export async function runSegmentEnrichmentOnce(
     dryRun: Boolean(options.dryRun),
     jobId: job.id,
   };
+  const companyCounts = { total: companyIds.length, processed: 0, skipped: 0, failed: 0 };
+  const employeeCounts = { total: contactIds.length, processed: 0, skipped: 0, failed: 0 };
+  const companyErrors: Array<{ id: string; message: string }> = [];
+  const employeeErrors: Array<{ id: string; message: string }> = [];
+  const maxSampledErrors = 5;
 
   // Enrich companies first (best-effort; ignore failures per company).
   for (const companyId of companyIds) {
     if (!companyId) {
+      companyCounts.skipped += 1;
       summary.skipped += 1;
       continue;
     }
     if (options.dryRun) {
+      companyCounts.skipped += 1;
       summary.skipped += 1;
       continue;
     }
     try {
       const companyResearch = await adapter.fetchCompanyInsights({ company_id: companyId });
+      const merged = upsertProviderResult({
+        existing: companyResearchById.get(companyId) ?? null,
+        provider: providerKey,
+        result: companyResearch,
+      });
       await client
         .from('companies')
-        .update({ company_research: companyResearch })
+        .update({ company_research: merged })
         .eq('id', companyId);
+      companyCounts.processed += 1;
       summary.processed += 1;
-    } catch {
+    } catch (err: unknown) {
+      companyCounts.failed += 1;
       summary.failed += 1;
+      if (companyErrors.length < maxSampledErrors) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        companyErrors.push({ id: companyId, message });
+      }
     }
   }
 
   // Enrich contacts.
   for (const contactId of contactIds) {
     if (!contactId) {
+      employeeCounts.skipped += 1;
       summary.skipped += 1;
       continue;
     }
     if (options.dryRun) {
+      employeeCounts.skipped += 1;
       summary.skipped += 1;
       continue;
     }
     try {
       const employeeResearch = await adapter.fetchEmployeeInsights({ contact_id: contactId });
+      const merged = upsertProviderResult({
+        existing: employeeResearchById.get(contactId) ?? null,
+        provider: providerKey,
+        result: employeeResearch,
+      });
       await client
         .from('employees')
-        .update({ ai_research_data: employeeResearch })
+        .update({ ai_research_data: merged })
         .eq('id', contactId);
+      employeeCounts.processed += 1;
       summary.processed += 1;
-    } catch {
+    } catch (err: unknown) {
+      employeeCounts.failed += 1;
       summary.failed += 1;
+      if (employeeErrors.length < maxSampledErrors) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        employeeErrors.push({ id: contactId, message });
+      }
     }
   }
 
   await updateJobStatus(client, job.id, 'completed', {
+    provider: providerKey,
     processed: summary.processed,
     skipped: summary.skipped,
     failed: summary.failed,
     dryRun: summary.dryRun,
+    counts: {
+      companies: companyCounts,
+      employees: employeeCounts,
+    },
+    sampledErrors: {
+      companies: companyErrors,
+      employees: employeeErrors,
+    },
   });
 
   return summary;

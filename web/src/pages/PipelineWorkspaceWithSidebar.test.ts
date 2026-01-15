@@ -529,10 +529,8 @@ describe('PipelineWorkspaceWithSidebar helpers', () => {
       'c5_latest_icp_discovery',
       JSON.stringify({ runId: 'run-xyz', icpProfileId: 'icp-7', icpHypothesisId: 'hyp-9' })
     );
-    const assignSpy = vi.spyOn(window.location, 'assign');
-    openIcpDiscoveryForLatestRun();
-    expect(assignSpy).toHaveBeenCalledTimes(1);
-    const url = assignSpy.mock.calls[0][0] as string;
+    const url = openIcpDiscoveryForLatestRun();
+    expect(typeof url).toBe('string');
     expect(url).toContain('view=icp-discovery');
     expect(url).toContain('runId=run-xyz');
     expect(url).toContain('icpId=icp-7');

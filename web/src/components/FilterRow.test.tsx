@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import { FilterRow } from './FilterRow';
@@ -150,7 +151,7 @@ describe('FilterRow', () => {
     expect(html).toContain('list="field-suggestions"');
     expect(html).toContain('<datalist id="field-suggestions"');
     expect(html).toContain('value="employees.role"');
-    expect(html).toContain('value="companies.industry"');
+    expect(html).toContain('value="companies.employee_count"');
   });
 
   it('renders with correct field placeholder', () => {

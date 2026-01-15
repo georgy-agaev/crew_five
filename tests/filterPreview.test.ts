@@ -20,6 +20,7 @@ describe('filterPreview', () => {
         not: vi.fn(),
         gte: vi.fn(),
         lte: vi.fn(),
+        ilike: vi.fn(),
       };
 
       // Make all filter methods return the chain for chaining
@@ -28,6 +29,7 @@ describe('filterPreview', () => {
       chain.not.mockReturnValue(chain);
       chain.gte.mockReturnValue(chain);
       chain.lte.mockReturnValue(chain);
+      chain.ilike.mockReturnValue(chain);
 
       // The first .select() call in buildContactQuery returns the chain
       // The second .select() call (for count) returns the count result
@@ -78,6 +80,7 @@ describe('filterPreview', () => {
         not: vi.fn(),
         gte: vi.fn(),
         lte: vi.fn(),
+        ilike: vi.fn(),
       };
 
       chain.eq.mockReturnValue(chain);
@@ -85,6 +88,7 @@ describe('filterPreview', () => {
       chain.not.mockReturnValue(chain);
       chain.gte.mockReturnValue(chain);
       chain.lte.mockReturnValue(chain);
+      chain.ilike.mockReturnValue(chain);
 
       chain.select
         .mockReturnValueOnce(chain) // buildContactQuery
@@ -121,8 +125,22 @@ describe('filterPreview', () => {
       ).rejects.toThrow('filter_definition must contain at least one filter');
     });
 
-    it('should handle company field filters', async () => {
-      const chain: any = {
+    it('should handle company field filters (employee_count)', async () => {
+      const companiesChain: any = {
+        select: vi.fn(),
+      };
+
+      // Company query returns two matching companies with employee_count
+      companiesChain.select.mockReturnValue({
+        data: [
+          { id: 'company-1', employee_count: 120 },
+          { id: 'company-2', employee_count: 80 },
+          { id: 'company-3', employee_count: 30 }, // filtered out by gte 100
+        ],
+        error: null,
+      });
+
+      const employeesChain: any = {
         select: vi.fn(),
         eq: vi.fn(),
         in: vi.fn(),
@@ -131,32 +149,44 @@ describe('filterPreview', () => {
         lte: vi.fn(),
       };
 
-      chain.eq.mockReturnValue(chain);
-      chain.in.mockReturnValue(chain);
-      chain.not.mockReturnValue(chain);
-      chain.gte.mockReturnValue(chain);
-      chain.lte.mockReturnValue(chain);
+      employeesChain.eq.mockReturnValue(employeesChain);
+      employeesChain.in.mockReturnValue(employeesChain);
+      employeesChain.not.mockReturnValue(employeesChain);
+      employeesChain.gte.mockReturnValue(employeesChain);
+      employeesChain.lte.mockReturnValue(employeesChain);
 
-      chain.select
-        .mockReturnValueOnce(chain) // buildContactQuery
-        .mockReturnValueOnce({ count: 5, error: null }) // count query
-        .mockReturnValueOnce(chain) // second buildContactQuery
-        .mockReturnValueOnce({
-          // data query
-          data: [
-            { company_id: 'company-1' },
-            { company_id: 'company-1' },
-            { company_id: 'company-2' },
-            { company_id: 'company-2' },
-            { company_id: 'company-2' },
-          ],
-          error: null,
-        });
+      employeesChain.select.mockImplementation((columns: string, options?: any) => {
+        // First select in buildContactQuery (no options) should return the chain
+        // so that filters and .in(...) can be chained. The second call (no options)
+        // returns the data used to compute counts.
+        if (!options && columns.includes('full_name')) {
+          return employeesChain;
+        }
 
-      mockClient.from.mockReturnValue(chain);
+        if (!options && columns.includes('company_id')) {
+          return {
+            data: [
+              { company_id: 'company-1' },
+              { company_id: 'company-1' },
+              { company_id: 'company-2' },
+              { company_id: 'company-2' },
+              { company_id: 'company-2' },
+            ],
+            error: null,
+          };
+        }
+
+        throw new Error(`Unexpected select call: ${columns}`);
+      });
+
+      mockClient.from = vi.fn((table: string) => {
+        if (table === 'companies') return companiesChain;
+        if (table === 'employees') return employeesChain;
+        throw new Error(`Unexpected table: ${table}`);
+      });
 
       const filterDefinition = [
-        { field: 'companies.segment', operator: 'eq', value: 'Enterprise' },
+        { field: 'companies.employee_count', operator: 'gte', value: 100 },
       ];
 
       const result = await getFilterPreviewCounts(mockClient, filterDefinition);
@@ -176,6 +206,7 @@ describe('filterPreview', () => {
         not: vi.fn(),
         gte: vi.fn(),
         lte: vi.fn(),
+        ilike: vi.fn(),
       };
 
       chain.eq.mockReturnValue(chain);
@@ -183,6 +214,7 @@ describe('filterPreview', () => {
       chain.not.mockReturnValue(chain);
       chain.gte.mockReturnValue(chain);
       chain.lte.mockReturnValue(chain);
+      chain.ilike.mockReturnValue(chain);
 
       chain.select
         .mockReturnValueOnce(chain) // buildContactQuery

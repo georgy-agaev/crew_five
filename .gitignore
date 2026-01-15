@@ -39,3 +39,8 @@ supabase/.temp
 
 # Coverage and test artifacts
 coverage
+
+# Local scratch / run artifacts
+.tmp
+web/playwright-report
+web/test-results

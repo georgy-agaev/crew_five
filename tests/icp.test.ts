@@ -35,6 +35,39 @@ describe('icp service', () => {
     expect(profile.id).toBe('icp-1');
   });
 
+  it('icp_profile_create_retries_without_phase_outputs_when_column_missing', async () => {
+    const single = vi
+      .fn()
+      // First insert fails because phase_outputs column is missing
+      .mockResolvedValueOnce({
+        data: null,
+        error: new Error('column "phase_outputs" of relation "icp_profiles" does not exist'),
+      })
+      // Second insert succeeds without phase_outputs
+      .mockResolvedValueOnce({
+        data: { id: 'icp-2', name: 'Fintech ICP' },
+        error: null,
+      });
+    const select = vi.fn().mockReturnValue({ single });
+    const insert = vi.fn().mockReturnValue({ select });
+    const from = vi.fn().mockReturnValue({ insert });
+    const client = { from } as any;
+
+    const profile = await createIcpProfile(client, {
+      name: 'Fintech ICP',
+      description: 'Fintech companies, mid-market, EU/US',
+    });
+
+    // Should attempt insert twice: first with phase_outputs, then without
+    expect(insert).toHaveBeenCalledTimes(2);
+    const firstPayload = insert.mock.calls[0][0][0];
+    const secondPayload = insert.mock.calls[1][0][0];
+
+    expect(firstPayload).toHaveProperty('phase_outputs');
+    expect(secondPayload).not.toHaveProperty('phase_outputs');
+    expect(profile.id).toBe('icp-2');
+  });
+
   it('icp_hypothesis_create_links_to_profile_and_optional_segment', async () => {
     const singleHypo = vi.fn().mockResolvedValue({
       data: { id: 'hypo-1', icp_id: 'icp-1' },

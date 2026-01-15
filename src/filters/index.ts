@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 
-export type FilterOp = 'eq' | 'in' | 'not_in' | 'gte' | 'lte';
+export type FilterOp = 'eq' | 'in' | 'not_in' | 'gte' | 'lte' | 'contains';
 
 export interface FilterClause {
   field: string;
@@ -9,24 +9,40 @@ export interface FilterClause {
   value: unknown;
 }
 
-const allowedPrefixes = ['employees.', 'companies.'];
-const allowedOps: FilterOp[] = ['eq', 'in', 'not_in', 'gte', 'lte'];
+type FieldScope = 'employees' | 'companies';
+
+const allowedFields: Record<string, { scope: FieldScope; column: string }> = {
+  // Employee-level filters
+  'employees.role': { scope: 'employees', column: 'position' },
+  'employees.position': { scope: 'employees', column: 'position' },
+
+  // Company-level filters
+  'companies.segment': { scope: 'companies', column: 'segment' },
+  'companies.employee_count': { scope: 'companies', column: 'employee_count' },
+};
+
+const allowedFieldNames = Object.keys(allowedFields);
+const allowedOps: FilterOp[] = ['eq', 'in', 'not_in', 'gte', 'lte', 'contains'];
 
 function ensureFieldAllowed(field: string) {
-  const ok = allowedPrefixes.some((prefix) => field.startsWith(prefix));
-  if (!ok) {
-    throw new Error(`Unknown field: ${field}. Allowed prefixes: ${allowedPrefixes.join(', ')}`);
+  if (!allowedFields[field]) {
+    throw new Error(`Unknown field: ${field}. Allowed fields: ${allowedFieldNames.join(', ')}`);
   }
 }
 
 function mapFilterFieldToSupabaseColumn(field: string): string {
-  if (field.startsWith('employees.')) {
-    return field.slice('employees.'.length);
+  const config = allowedFields[field];
+  if (!config) {
+    ensureFieldAllowed(field);
+    // ensureFieldAllowed will throw, but return is required for type narrowing
+    return field;
   }
-  if (field.startsWith('companies.')) {
-    return `company.${field.slice('companies.'.length)}`;
+
+  if (config.scope === 'employees') {
+    return config.column;
   }
-  return field;
+  // For company scope, apply filters via embedded `company` relationship
+  return `company.${config.column}`;
 }
 
 export function parseSegmentFilters(definition: unknown): FilterClause[] {
@@ -64,6 +80,10 @@ export function parseSegmentFilters(definition: unknown): FilterClause[] {
       throw new Error(`Operator ${operator} requires a numeric value`);
     }
 
+    if (operator === 'contains' && typeof value !== 'string') {
+      throw new Error(`Operator ${operator} requires a string value`);
+    }
+
     return { field, op: operator, value };
   });
 }
@@ -82,7 +102,7 @@ export function validateFilters(
         message: error?.message ?? 'Invalid filters',
         details: {
           allowedOperators: allowedOps,
-          allowedPrefixes,
+          allowedFields: allowedFieldNames,
         },
       },
     };
@@ -114,6 +134,9 @@ export function buildContactQuery(client: SupabaseClient, filters: FilterClause[
       query = query.gte(column, filter.value as number);
     } else if (filter.op === 'lte') {
       query = query.lte(column, filter.value as number);
+    } else if (filter.op === 'contains') {
+      const pattern = `%${String(filter.value)}%`;
+      query = query.ilike(column, pattern);
     }
   }
 

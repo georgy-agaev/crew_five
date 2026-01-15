@@ -1,4 +1,8 @@
 import { Page } from '@playwright/test';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { execFile } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * E2E Test Helpers for Segment Workflows
@@ -103,4 +107,47 @@ export function hasSuccessLog(logs: string[], segmentName: string): boolean {
  */
 export function generateSegmentName(prefix: string): string {
   return `${prefix} - ${Date.now()}`;
+}
+
+/**
+ * Build Supabase client from environment for E2E assertions.
+ */
+export function buildSupabaseClientFromEnv(): SupabaseClient | null {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key, {
+    auth: { persistSession: false },
+  });
+}
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, '..', '..');
+
+/**
+ * Run the root CLI via pnpm and capture output.
+ */
+export async function runCli(
+  args: string[]
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    execFile(
+      'pnpm',
+      ['cli', ...args],
+      {
+        cwd: repoRoot,
+        env: process.env,
+      },
+      (error, stdout, stderr) => {
+        const exitCode =
+          typeof (error as any)?.code === 'number' ? ((error as any).code as number) : 0;
+        resolve({
+          exitCode,
+          stdout: stdout.toString(),
+          stderr: stderr.toString(),
+        });
+      }
+    );
+  });
 }

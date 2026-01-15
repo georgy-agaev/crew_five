@@ -1,5 +1,5 @@
-import type { ParallelEnvConfig } from '../config/providers';
-import { loadParallelEnv } from '../config/providers';
+import type { ParallelEnvConfig } from '../config/providers.js';
+import { loadParallelEnv } from '../config/providers.js';
 
 export interface ParallelClient {
   researchCompany(input: {

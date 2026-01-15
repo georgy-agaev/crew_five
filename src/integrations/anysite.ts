@@ -1,5 +1,5 @@
-import type { AnySiteEnvConfig } from '../config/providers';
-import { loadAnySiteEnv } from '../config/providers';
+import type { AnySiteEnvConfig } from '../config/providers.js';
+import { loadAnySiteEnv } from '../config/providers.js';
 
 export interface AnySiteClient {
   lookupProfile(input: {
@@ -24,4 +24,3 @@ export function buildAnySiteClientFromEnv(
 
   return client;
 }
-

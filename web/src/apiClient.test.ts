@@ -158,7 +158,15 @@ describe('web api client (live adapter)', () => {
       status: 500,
       json: async () => ({ error: 'boom' }),
     });
-    await expect(triggerDraftGenerate('c1')).rejects.toThrow('API error 500: boom');
+    let thrown: any = null;
+    try {
+      await triggerDraftGenerate('c1');
+    } catch (err: any) {
+      thrown = err;
+    }
+    expect(thrown).toBeTruthy();
+    expect(thrown.message).toBe('Server error. Please try again later.');
+    expect(thrown.apiError?.message).toBe('API error 500: boom');
   });
 
   it('fetchMeta returns readiness status', async () => {
@@ -188,8 +196,14 @@ describe('web api client (live adapter)', () => {
     expect(body.finalize).toBe(true);
   });
 
-  it('enqueueSegmentEnrichment and fetchEnrichmentStatus use enrich routes', async () => {
-    const { enqueueSegmentEnrichment, fetchEnrichmentStatus } = await loadClient();
+  it('enrich routes include single, multi, and settings', async () => {
+    const {
+      enqueueSegmentEnrichment,
+      enqueueSegmentEnrichmentMulti,
+      fetchEnrichmentStatus,
+      fetchEnrichmentSettings,
+      saveEnrichmentSettings,
+    } = await loadClient();
     (fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'queued', jobId: 'j1' }) });
     await enqueueSegmentEnrichment({ segmentId: 's1', adapter: 'mock', runNow: false });
     const enrichCall = (fetch as any).mock.calls.at(-1);
@@ -198,11 +212,52 @@ describe('web api client (live adapter)', () => {
     expect(enrichBody.segmentId).toBe('s1');
     expect(enrichBody.adapter).toBe('mock');
 
+    (fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ results: [] }) });
+    await enqueueSegmentEnrichmentMulti({ segmentId: 's1', providers: ['exa', 'parallel'], runNow: true });
+    const multiCall = (fetch as any).mock.calls.at(-1);
+    expect(multiCall[0]).toBe('/api/enrich/segment/multi');
+    const multiBody = JSON.parse(multiCall[1].body);
+    expect(multiBody.segmentId).toBe('s1');
+    expect(multiBody.providers).toEqual(['exa', 'parallel']);
+
     (fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed', jobId: 'j1' }) });
     await fetchEnrichmentStatus('s1');
     const statusUrl = (fetch as any).mock.calls.at(-1)[0] as string;
     expect(statusUrl).toContain('/api/enrich/status');
     expect(statusUrl).toContain('segmentId=s1');
+
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        version: 2,
+        defaultProviders: ['mock'],
+        primaryCompanyProvider: 'mock',
+        primaryEmployeeProvider: 'mock',
+      }),
+    });
+    await fetchEnrichmentSettings();
+    expect((fetch as any).mock.calls.at(-1)[0]).toBe('/api/settings/enrichment');
+
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        version: 2,
+        defaultProviders: ['exa', 'firecrawl'],
+        primaryCompanyProvider: 'firecrawl',
+        primaryEmployeeProvider: 'exa',
+      }),
+    });
+    await saveEnrichmentSettings({
+      defaultProviders: ['exa', 'firecrawl'],
+      primaryCompanyProvider: 'firecrawl',
+      primaryEmployeeProvider: 'exa',
+    });
+    const settingsCall = (fetch as any).mock.calls.at(-1);
+    expect(settingsCall[0]).toBe('/api/settings/enrichment');
+    const settingsBody = JSON.parse(settingsCall[1].body);
+    expect(settingsBody.defaultProviders).toEqual(['exa', 'firecrawl']);
+    expect(settingsBody.primaryCompanyProvider).toBe('firecrawl');
+    expect(settingsBody.primaryEmployeeProvider).toBe('exa');
   });
 
   it('ICP profile/hypothesis CRUD hits expected endpoints', async () => {

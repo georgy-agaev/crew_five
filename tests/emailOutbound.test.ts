@@ -12,7 +12,11 @@ describe('sendQueuedDrafts', () => {
         company_id: 'company-1',
         subject: 'Hi',
         body: 'Body',
-        metadata: { foo: 'bar' },
+        metadata: {
+          foo: 'bar',
+          enrichment_provider: { company: 'firecrawl', employee: 'exa' },
+          enrichment_by_provider: { exa: { mode: 'primary', primaryFor: ['employee'] } },
+        },
       },
       {
         id: 'd2',
@@ -21,7 +25,11 @@ describe('sendQueuedDrafts', () => {
         company_id: 'company-1',
         subject: 'Hi2',
         body: 'Body2',
-        metadata: { foo: 'baz' },
+        metadata: {
+          foo: 'baz',
+          enrichment_provider: { company: 'firecrawl', employee: 'exa' },
+          enrichment_by_provider: { firecrawl: { mode: 'primary', primaryFor: ['company'] } },
+        },
       },
     ];
 
@@ -58,6 +66,12 @@ describe('sendQueuedDrafts', () => {
     expect(summary.failed).toBe(0);
     expect(summary.skipped).toBe(1);
     expect(smtpClient.send).toHaveBeenCalledTimes(1);
+
+    const outboundPayload = insert.mock.calls[0]?.[0] as any[];
+    expect(outboundPayload[0]?.metadata?.foo).toBe('bar');
+    expect(outboundPayload[0]?.metadata?.enrichment_provider).toEqual({ company: 'firecrawl', employee: 'exa' });
+    expect(outboundPayload[0]?.metadata?.enrichment_by_provider?.exa?.mode).toBe('primary');
+    expect(outboundPayload[0]?.metadata?.sendPayload?.metadata?.foo).toBe('bar');
   });
 
   it('logs send errors, retries once when enabled, and continues', async () => {

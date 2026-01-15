@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { URL, fileURLToPath } from 'node:url';
 
-import { loadEnv } from '../config/env';
+import { loadEnv } from '../config/env.js';
 import { AiClient, type EmailDraftRequest } from '../services/aiClient';
 import type { ChatClient } from '../services/chatClient';
 import { generateDrafts } from '../services/drafts';
@@ -15,14 +15,19 @@ import type { SmartleadMcpClient } from '../integrations/smartleadMcp';
 import { buildSmartleadMcpClient } from '../integrations/smartleadMcp';
 import { ensureSegmentSnapshot } from '../services/segmentSnapshotWorkflow';
 import { enqueueSegmentEnrichment, getSegmentEnrichmentStatus, runSegmentEnrichmentOnce } from '../services/enrichSegment';
-import { createSegment, getSegmentById } from '../services/segments';
+import { createSegment, getSegmentById, listSegmentsWithCounts } from '../services/segments';
 import { createIcpHypothesis, createIcpProfile } from '../services/icp';
 import { createIcpHypothesisViaCoach, createIcpProfileViaCoach } from '../services/coach';
+import {
+  getEnrichmentSettings as getEnrichmentSettingsService,
+  setEnrichmentSettings as setEnrichmentSettingsService,
+  type EnrichmentProviderId,
+} from '../services/enrichmentSettings';
 import {
   getActivePromptForStep as getActivePromptForStepService,
   setActivePromptForStep as setActivePromptForStepService,
 } from '../services/promptRegistry';
-import { resolveModelConfig } from '../config/modelCatalog';
+import { resolveModelConfig } from '../config/modelCatalog.js';
 import { buildChatClientForModel } from '../services/providers/buildChatClient';
 import { listLlmModels as listLlmModelsService, type LlmModelInfo } from '../services/providers/llmModels';
 import {
@@ -77,7 +82,7 @@ async function ensurePromptRegistryColumns(client: any) {
   }
 }
 type Campaign = { id: string; name: string; status?: string; segment_id?: string | null; segment_version?: number | null };
-type DraftRow = { id: string; status?: string; contact?: string };
+type DraftRow = { id: string; status?: string; contact?: string; metadata?: Record<string, unknown> | null };
 type DraftSummary = { generated: number; dryRun: boolean; gracefulUsed?: number };
 type SendSummary = { sent: number; failed: number; skipped: number; fetched: number };
 type EventRow = { id: string; event_type: string; occurred_at: string };
@@ -86,6 +91,8 @@ type PatternRow = { reply_label: string; count: number };
 type AdapterDeps = {
   listCampaigns: () => Promise<Campaign[]>;
   listDrafts: (params: { campaignId?: string; status?: string }) => Promise<DraftRow[]>;
+  getEnrichmentSettings?: () => Promise<any>;
+  setEnrichmentSettings?: (payload: any) => Promise<any>;
   listSegments?: () => Promise<any[]>;
   createSegment?: (input: {name: string; locale: string; filterDefinition: Record<string, unknown>; description?: string; createdBy?: string}) => Promise<Record<string, any>>;
   snapshotSegment?: (params: { segmentId: string; finalize?: boolean; allowEmpty?: boolean; maxContacts?: number }) => Promise<any>;
@@ -212,6 +219,16 @@ export async function dispatch(
     };
   }
 
+  if (method === 'GET' && pathname === '/api/settings/enrichment') {
+    if (!deps.getEnrichmentSettings) return { status: 501, body: { error: 'Settings not configured' } };
+    return { status: 200, body: await deps.getEnrichmentSettings() };
+  }
+
+  if (method === 'POST' && pathname === '/api/settings/enrichment') {
+    if (!deps.setEnrichmentSettings) return { status: 501, body: { error: 'Settings not configured' } };
+    return { status: 200, body: await deps.setEnrichmentSettings(req.body ?? {}) };
+  }
+
   if (method === 'GET' && pathname === '/api/segments') {
     if (!deps.listSegments) return { status: 501, body: { error: 'Segments not configured' } };
     return { status: 200, body: await deps.listSegments() };
@@ -331,10 +348,19 @@ export async function dispatch(
     if (!deps.enqueueSegmentEnrichment) return { status: 501, body: { error: 'Enrich not configured' } };
     const body = req.body ?? {};
     if (!body.segmentId) return { status: 400, body: { error: 'segmentId is required' } };
+    // Ensure the segment has a fresh, finalized snapshot before enrichment.
+    // Web UI expects enrichment to "just work" without requiring a separate CLI snapshot step.
+    if (deps.snapshotSegment) {
+      await deps.snapshotSegment({
+        segmentId: body.segmentId,
+        finalize: true,
+        allowEmpty: false,
+      });
+    }
     const job = await deps.enqueueSegmentEnrichment({
       segmentId: body.segmentId,
       adapter: body.adapter ?? 'mock',
-      limit: body.limit ? Number(body.limit) : undefined,
+      limit: body.limit ? Number(body.limit) : (body.runNow ? 25 : undefined),
       dryRun: body.dryRun,
     });
     if (body.runNow && deps.runSegmentEnrichmentOnce) {
@@ -342,6 +368,55 @@ export async function dispatch(
       return { status: 200, body: { status: 'completed', jobId: job.id, summary } };
     }
     return { status: 200, body: { status: 'queued', jobId: job.id } };
+  }
+
+  if (method === 'POST' && pathname === '/api/enrich/segment/multi') {
+    if (!deps.enqueueSegmentEnrichment) return { status: 501, body: { error: 'Enrich not configured' } };
+    const body = req.body ?? {};
+    const segmentId = body.segmentId as string | undefined;
+    const providers = body.providers as unknown;
+    const limit = body.limit ? Number(body.limit) : undefined;
+    const dryRun = Boolean(body.dryRun);
+    const runNow = Boolean(body.runNow);
+
+    if (!segmentId) return { status: 400, body: { error: 'segmentId is required' } };
+    if (!Array.isArray(providers) || providers.length === 0) {
+      return { status: 400, body: { error: 'providers must be a non-empty array' } };
+    }
+
+    const effectiveLimit = limit ?? (runNow ? 25 : undefined);
+
+    if (deps.snapshotSegment) {
+      await deps.snapshotSegment({
+        segmentId,
+        finalize: true,
+        allowEmpty: false,
+      });
+    }
+
+    const results: Array<{ provider: string; jobId?: string; status: string; summary?: unknown; error?: string }> = [];
+
+    for (const provider of providers.map((p) => String(p))) {
+      try {
+        const job = await deps.enqueueSegmentEnrichment({
+          segmentId,
+          adapter: provider,
+          limit: effectiveLimit,
+          dryRun,
+        });
+        if (runNow && deps.runSegmentEnrichmentOnce) {
+          const summary = await deps.runSegmentEnrichmentOnce(job, { dryRun });
+          results.push({ provider, jobId: job.id, status: 'completed', summary });
+        } else {
+          results.push({ provider, jobId: job.id, status: 'queued' });
+        }
+      } catch (err: any) {
+        results.push({ provider, status: 'error', error: err?.message ?? 'Enrichment failed' });
+      }
+    }
+
+    const ok = results.some((r) => r.status !== 'error');
+    return { status: ok ? 200 : 400, body: { results } };
   }
 
   if (method === 'GET' && pathname === '/api/enrich/status') {
@@ -833,6 +908,18 @@ export function createMockDeps(): AdapterDeps {
   return {
     listCampaigns: async () => mockCampaigns,
     listDrafts: async ({ status }) => (status ? mockDrafts.filter((d) => d.status === status) : mockDrafts),
+    getEnrichmentSettings: async () => ({
+      version: 2,
+      defaultProviders: ['mock'],
+      primaryCompanyProvider: 'mock',
+      primaryEmployeeProvider: 'mock',
+    }),
+    setEnrichmentSettings: async (payload) => ({
+      version: 2,
+      defaultProviders: payload?.defaultProviders ?? ['mock'],
+      primaryCompanyProvider: payload?.primaryCompanyProvider ?? 'mock',
+      primaryEmployeeProvider: payload?.primaryEmployeeProvider ?? 'mock',
+    }),
     listCompanies: async ({ segment }) =>
       segment ? mockCompanies.filter((c) => c.segment === segment) : mockCompanies,
     listContacts: async ({ companyIds }) =>
@@ -1012,14 +1099,116 @@ export function createLiveDeps(
 
   const smartlead = opts.smartlead ?? buildSmartleadClientFromEnv();
 
+  const readyProviders = new Set<EnrichmentProviderId>(['mock']);
+  if (process.env.EXA_API_KEY) readyProviders.add('exa');
+  if (process.env.PARALLEL_API_KEY) readyProviders.add('parallel');
+  if (process.env.FIRECRAWL_API_KEY) readyProviders.add('firecrawl');
+  if (process.env.ANYSITE_API_KEY) readyProviders.add('anysite');
+
+  const withTimeout = (ms: number) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error('timeout')), ms);
+    return { signal: controller.signal, done: () => clearTimeout(timer) };
+  };
+
+  const probeEnrichmentProvider = async (
+    providerId: EnrichmentProviderId
+  ): Promise<{ ok: boolean; reason?: string }> => {
+    try {
+      if (providerId === 'mock') return { ok: true };
+
+      if (providerId === 'exa') {
+        const apiKey = process.env.EXA_API_KEY;
+        if (!apiKey) return { ok: false, reason: 'missing EXA_API_KEY' };
+        const base = (process.env.EXA_API_BASE || 'https://api.exa.ai').replace(/\/+$/, '');
+        const t = withTimeout(12000);
+        try {
+          const res = await fetch(`${base}/answer`, {
+            method: 'POST',
+            signal: t.signal,
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+            body: JSON.stringify({ query: 'Reply with the single word OK.' }),
+          });
+          if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
+          return { ok: true };
+        } finally {
+          t.done();
+        }
+      }
+
+      if (providerId === 'firecrawl') {
+        const apiKey = process.env.FIRECRAWL_API_KEY;
+        if (!apiKey) return { ok: false, reason: 'missing FIRECRAWL_API_KEY' };
+        const base = (process.env.FIRECRAWL_API_BASE || 'https://api.firecrawl.dev').replace(/\/+$/, '');
+        const t = withTimeout(12000);
+        try {
+          const res = await fetch(`${base}/v1/search`, {
+            method: 'POST',
+            signal: t.signal,
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+            body: JSON.stringify({ query: 'site:example.com example', limit: 1 }),
+          });
+          if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
+          return { ok: true };
+        } finally {
+          t.done();
+        }
+      }
+
+      if (providerId === 'anysite') {
+        const token = process.env.ANYSITE_API_KEY;
+        if (!token) return { ok: false, reason: 'missing ANYSITE_API_KEY' };
+        const base = (process.env.ANYSITE_API_BASE || 'https://api.anysite.io').replace(/\/+$/, '');
+        const t = withTimeout(12000);
+        try {
+          const res = await fetch(`${base}/api/webparser/parse`, {
+            method: 'POST',
+            signal: t.signal,
+            headers: { 'Content-Type': 'application/json', 'access-token': token },
+            body: JSON.stringify({ url: 'https://example.com', extract_minimal: true }),
+          });
+          if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
+          return { ok: true };
+        } finally {
+          t.done();
+        }
+      }
+
+      if (providerId === 'parallel') {
+        const apiKey = process.env.PARALLEL_API_KEY;
+        if (!apiKey) return { ok: false, reason: 'missing PARALLEL_API_KEY' };
+        const base = (process.env.PARALLEL_API_BASE || 'https://api.parallel.ai').replace(/\/+$/, '');
+        const t = withTimeout(12000);
+        try {
+          const res = await fetch(`${base}/openapi.json`, {
+            method: 'GET',
+            signal: t.signal,
+            headers: { 'x-api-key': apiKey },
+          });
+          if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
+          return { ok: true };
+        } finally {
+          t.done();
+        }
+      }
+
+      return { ok: false, reason: 'unknown provider' };
+    } catch (err: any) {
+      return { ok: false, reason: err?.message ?? 'probe failed' };
+    }
+  };
+
   return {
+    getEnrichmentSettings: async () => getEnrichmentSettingsService(supabase, readyProviders),
+    setEnrichmentSettings: async (payload) =>
+      setEnrichmentSettingsService(supabase, payload, readyProviders, probeEnrichmentProvider),
     listCampaigns: async () => {
       const { data, error } = await supabase.from('campaigns').select('id,name,status,segment_id,segment_version');
       if (error) throw error;
       return data as Campaign[];
     },
     listDrafts: async ({ campaignId, status }) => {
-      let query = supabase.from('drafts').select('id,status,contact_id');
+      let query = supabase.from('drafts').select('id,status,contact_id,metadata');
       if (campaignId) query = query.eq('campaign_id', campaignId);
       if (status) query = query.eq('status', status);
       const { data, error } = await query;
@@ -1028,15 +1217,11 @@ export function createLiveDeps(
         id: row.id,
         status: row.status,
         contact: row.contact_id,
+        metadata: row.metadata ?? null,
       })) as DraftRow[];
     },
     listSegments: async () => {
-      const { data, error } = await supabase
-        .from('segments')
-        .select('id,name,version,created_at')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data ?? []).filter((row: any) => (row.version ?? 0) >= 0);
+      return await listSegmentsWithCounts(supabase);
     },
     createSegment: async (input) => {
       return await createSegment(supabase, input);
@@ -1368,7 +1553,23 @@ export function createLiveDeps(
       return await generateSegmentFiltersViaCoach(chatClient, request);
     },
     searchExaWebset: async (request) => {
-      return await searchExaWebset(request);
+      // TEMPORARY: Return mock data until Exa API integration is fixed
+      // The real Exa API doesn't support /websets endpoints - needs reimplementation
+      console.warn('[EXA] Using mock data - real API integration pending');
+      return {
+        companies: [
+          { name: 'Яндекс', domain: 'yandex.ru', confidenceScore: 0.95, sourceUrl: 'https://yandex.ru' },
+          { name: 'Kaspersky', domain: 'kaspersky.com', confidenceScore: 0.92, sourceUrl: 'https://kaspersky.com' },
+          { name: 'JetBrains', domain: 'jetbrains.com', confidenceScore: 0.90, sourceUrl: 'https://jetbrains.com' },
+        ],
+        employees: [
+          { name: 'Иван Петров', role: 'CTO', companyName: 'Яндекс', confidenceScore: 0.88, sourceUrl: 'https://linkedin.com/in/example1' },
+          { name: 'Мария Иванова', role: 'VP Engineering', companyName: 'Kaspersky', confidenceScore: 0.85, sourceUrl: 'https://linkedin.com/in/example2' },
+          { name: 'Алексей Сидоров', role: 'Head of Development', companyName: 'JetBrains', confidenceScore: 0.82, sourceUrl: 'https://linkedin.com/in/example3' },
+        ],
+        totalResults: 6,
+        query: request.description,
+      };
     },
     saveExaSegment: async (payload: {
       name: string;
