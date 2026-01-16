@@ -20,10 +20,15 @@ export interface DraftSummary {
 }
 
 export interface SendSummary {
-  sent: number;
-  failed: number;
-  skipped: number;
-  fetched: number;
+  dryRun: boolean;
+  campaignId: string;
+  smartleadCampaignId: string;
+  leadsPrepared: number;
+  leadsPushed: number;
+  sequencesPrepared: number;
+  sequencesSynced: number;
+  skippedContactsNoEmail: number;
+  timestamp?: string;
 }
 
 export interface EventRow {
@@ -289,11 +294,13 @@ export async function triggerDraftGenerate(
 }
 
 export async function triggerSmartleadSend(
-  opts: { dryRun?: boolean; batchSize?: number } = {}
+  opts: { campaignId: string; smartleadCampaignId: string; dryRun?: boolean; batchSize?: number } 
 ): Promise<SendSummary> {
   const body = {
     dryRun: opts.dryRun ?? true,
     batchSize: opts.batchSize ?? 10,
+    campaignId: opts.campaignId,
+    smartleadCampaignId: opts.smartleadCampaignId,
   };
   return fetchJson<SendSummary>('/smartlead/send', {
     method: 'POST',
@@ -372,12 +379,13 @@ export async function fetchContacts(opts: { companyIds?: string[]; limit?: numbe
 }
 
 export async function triggerSmartleadPreview(
-  payload: { batchSize?: number; leadIds?: string[]; dryRun?: boolean } = {}
+  payload: { campaignId: string; smartleadCampaignId: string; batchSize?: number; dryRun?: boolean }
 ): Promise<any> {
   const body = {
     batchSize: payload.batchSize ?? 10,
-    leadIds: payload.leadIds ?? [],
     dryRun: payload.dryRun ?? true,
+    campaignId: payload.campaignId,
+    smartleadCampaignId: payload.smartleadCampaignId,
   };
   return fetchJson('/smartlead/send', {
     method: 'POST',

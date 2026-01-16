@@ -515,8 +515,12 @@ export function createProgram(deps: CliDependencies) {
 
   program
     .command('smartlead:send')
+    .requiredOption('--campaign-id <campaignId>', 'Internal campaign UUID (Supabase campaigns.id)')
+    .requiredOption('--smartlead-campaign-id <smartleadCampaignId>', 'Smartlead campaign ID (remote)')
     .option('--dry-run', 'Skip remote send, print summary')
     .option('--batch-size <batchSize>', 'Max drafts to send', '50')
+    .option('--step <step>', 'Smartlead sequence step number', '1')
+    .option('--variant-label <variantLabel>', 'Smartlead sequence variant label', 'A')
     .option('--telemetry', 'Emit telemetry event')
     .option('--trace-file <path>', 'Enable tracing and write traces to file')
     .option('--error-format <format>', 'Error output format: text|json', 'text')
@@ -530,12 +534,17 @@ export function createProgram(deps: CliDependencies) {
         const summary = await smartleadSendCommand(client, deps.supabaseClient, {
           dryRun: Boolean(options.dryRun),
           batchSize: options.batchSize ? Number(options.batchSize) : undefined,
-          dedupe: true,
+          campaignId: options.campaignId,
+          smartleadCampaignId: options.smartleadCampaignId,
+          step: options.step ? Number(options.step) : undefined,
+          variantLabel: options.variantLabel,
         });
         console.log(JSON.stringify(summary));
         emitTelemetry('smartlead:send', {
           dryRun: Boolean(options.dryRun),
           batchSize: options.batchSize ? Number(options.batchSize) : undefined,
+          campaignId: options.campaignId,
+          smartleadCampaignId: options.smartleadCampaignId,
           telemetryEnabled: Boolean(options.telemetry),
         });
       })

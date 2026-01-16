@@ -805,19 +805,66 @@ describe('createProgram', () => {
   });
 
   it('wires smartlead:send', async () => {
-    const listDrafts = [{ id: 'd1', campaign_id: 'c1', contact_id: 'lead@example.com', company_id: 'co', subject: 's', body: 'b', metadata: {} }];
-    const select = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue({ data: listDrafts, error: null }) }) });
-    const update = vi.fn().mockReturnValue({ in: vi.fn().mockResolvedValue({ error: null }), eq: vi.fn().mockResolvedValue({ error: null }) });
-    const insert = vi.fn().mockResolvedValue({ error: null });
+    const addLeadsToCampaign = vi.fn().mockResolvedValue({ message: 'ok' });
+    const saveCampaignSequences = vi.fn().mockResolvedValue({ ok: true });
+
     const supabaseClient = {
       from: (table: string) => {
-        if (table === 'drafts') return { select, update };
-        if (table === 'email_outbound') return { insert };
-        return { insert, update };
+        if (table === 'campaigns') {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: async () => ({
+                  data: { id: 'camp-1', segment_id: 'seg-1', metadata: {} },
+                  error: null,
+                }),
+              }),
+            }),
+            update: () => ({
+              eq: async () => ({ error: null }),
+            }),
+          };
+        }
+        if (table === 'segment_members') {
+          return {
+            select: () => ({
+              eq: () => ({
+                limit: async () => ({
+                  data: [{ contact_id: 'e1' }],
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'employees') {
+          return {
+            select: () => ({
+              in: async () => ({
+                data: [{ id: 'e1', full_name: 'Alice A', work_email: 'lead@example.com', company_name: 'Acme' }],
+                error: null,
+              }),
+            }),
+          };
+        }
+        if (table === 'drafts') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  limit: async () => ({
+                    data: [{ subject: 's', body: 'b' }],
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        throw new Error(`Unexpected table: ${table}`);
       },
     } as any;
-    const sendEmail = vi.fn().mockResolvedValue({ provider_message_id: 'm1' });
-    const client = { sendEmail } as any;
+    const client = { addLeadsToCampaign, saveCampaignSequences } as any;
 
     const program = createProgram({
       supabaseClient,
@@ -825,10 +872,20 @@ describe('createProgram', () => {
       smartleadClient: client,
     });
 
-    await program.parseAsync(['node', 'gtm', 'smartlead:send', '--batch-size', '10']);
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'smartlead:send',
+      '--batch-size',
+      '10',
+      '--campaign-id',
+      'camp-1',
+      '--smartlead-campaign-id',
+      'sl-1',
+    ]);
 
-    expect(sendEmail).toHaveBeenCalled();
-    expect(insert).toHaveBeenCalled();
+    expect(addLeadsToCampaign).toHaveBeenCalled();
+    expect(saveCampaignSequences).toHaveBeenCalled();
   });
 
   it('smartlead:send emits JSON error when error-format=json and env missing', async () => {
@@ -854,6 +911,10 @@ describe('createProgram', () => {
       'node',
       'gtm',
       'smartlead:send',
+      '--campaign-id',
+      'camp-1',
+      '--smartlead-campaign-id',
+      'sl-1',
       '--error-format',
       'json',
     ]);
@@ -861,7 +922,7 @@ describe('createProgram', () => {
     expect(errorSpy).toHaveBeenCalled();
     const payload = JSON.parse((errorSpy.mock.calls[0] as any)[0] as string);
     expect(payload.ok).toBe(false);
-    expect(payload.error?.message).toMatch(/SMARTLEAD_MCP_URL and SMARTLEAD_MCP_TOKEN/);
+    expect(payload.error?.message).toMatch(/SMARTLEAD_(MCP_URL|API_BASE)/);
 
     errorSpy.mockRestore();
     process.exitCode = originalExitCode;

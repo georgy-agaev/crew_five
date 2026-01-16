@@ -5,12 +5,25 @@ import { buildMeta, createLiveDeps, dispatch } from './server';
 
 const campaigns = [{ id: 'c1', name: 'One', status: 'draft' }];
 
+function stubSendSmartlead() {
+  return vi.fn(async (payload: any) => ({
+    dryRun: Boolean(payload?.dryRun),
+    campaignId: String(payload?.campaignId ?? 'camp'),
+    smartleadCampaignId: String(payload?.smartleadCampaignId ?? 'sl'),
+    leadsPrepared: 0,
+    leadsPushed: 0,
+    sequencesPrepared: 0,
+    sequencesSynced: 0,
+    skippedContactsNoEmail: 0,
+  }));
+}
+
 describe('web adapter server', () => {
   const deps = {
     listCampaigns: vi.fn(async () => campaigns),
     listDrafts: vi.fn(async () => []),
     generateDrafts: vi.fn(async () => ({ generated: 0, dryRun: true })),
-    sendSmartlead: vi.fn(async () => ({ sent: 0, failed: 0, skipped: 0, fetched: 0 })),
+    sendSmartlead: stubSendSmartlead(),
     listEvents: vi.fn(async () => []),
     listReplyPatterns: vi.fn(async () => []),
   };
@@ -756,7 +769,7 @@ describe('web adapter server', () => {
     const listEvents = vi.fn(async ({ since, limit }) => [{ id: 'e1', event_type: since ?? 'evt', occurred_at: 't' }]);
     const listReplyPatterns = vi.fn(async ({ topN }) => [{ reply_label: 'r', count: topN ?? 1 }]);
     const resEvents = await dispatch(
-      { listCampaigns: vi.fn(), listDrafts: vi.fn(), generateDrafts: vi.fn(), sendSmartlead: vi.fn(), listEvents, listReplyPatterns },
+      { listCampaigns: vi.fn(), listDrafts: vi.fn(), generateDrafts: vi.fn(), sendSmartlead: stubSendSmartlead(), listEvents, listReplyPatterns },
       { method: 'GET', pathname: '/api/events', searchParams: new URLSearchParams({ since: '2025', limit: '5' }) },
       buildMeta({ mode: 'live' })
     );
@@ -764,7 +777,7 @@ describe('web adapter server', () => {
     expect((resEvents.body as any[])[0].event_type).toBe('2025');
 
     const resPatterns = await dispatch(
-      { listCampaigns: vi.fn(), listDrafts: vi.fn(), generateDrafts: vi.fn(), sendSmartlead: vi.fn(), listEvents, listReplyPatterns },
+      { listCampaigns: vi.fn(), listDrafts: vi.fn(), generateDrafts: vi.fn(), sendSmartlead: stubSendSmartlead(), listEvents, listReplyPatterns },
       { method: 'GET', pathname: '/api/reply-patterns', searchParams: new URLSearchParams({ topN: '2' }) },
       buildMeta({ mode: 'live' })
     );
@@ -814,11 +827,14 @@ describe('web adapter server', () => {
 
   it('smartlead send defaults to dry-run', async () => {
     const sendSmartlead = vi.fn(async (payload) => ({
-      sent: 0,
-      failed: 0,
-      skipped: payload.leadIds?.length ?? 0,
-      fetched: payload.leadIds?.length ?? 0,
       dryRun: payload.dryRun,
+      campaignId: payload.campaignId,
+      smartleadCampaignId: payload.smartleadCampaignId,
+      leadsPrepared: 0,
+      leadsPushed: 0,
+      sequencesPrepared: 0,
+      sequencesSynced: 0,
+      skippedContactsNoEmail: 0,
     }));
     const res = await dispatch(
       {
@@ -831,11 +847,20 @@ describe('web adapter server', () => {
         listCompanies: vi.fn(),
         listContacts: vi.fn(),
       } as any,
-      { method: 'POST', pathname: '/api/smartlead/send', body: { batchSize: 20, leadIds: ['a', 'b'] } },
+      {
+        method: 'POST',
+        pathname: '/api/smartlead/send',
+        body: { batchSize: 20, campaignId: 'camp-1', smartleadCampaignId: 'sl-1' },
+      },
       buildMeta({ mode: 'live' })
     );
-    expect(sendSmartlead).toHaveBeenCalledWith({ batchSize: 20, dryRun: true, leadIds: ['a', 'b'] });
-    expect((res.body as any).skipped).toBe(2);
+    expect(sendSmartlead).toHaveBeenCalledWith({
+      batchSize: 20,
+      dryRun: true,
+      campaignId: 'camp-1',
+      smartleadCampaignId: 'sl-1',
+    });
+    expect((res.body as any).dryRun).toBe(true);
   });
 
   it('lists smartlead campaigns via client', async () => {
@@ -907,7 +932,7 @@ describe('web adapter server', () => {
   it('meta route reports readiness', async () => {
     const meta = buildMeta({ mode: 'live' });
     const res = await dispatch(
-      { listCampaigns: vi.fn(), listDrafts: vi.fn(), generateDrafts: vi.fn(), sendSmartlead: vi.fn(), listEvents: vi.fn(), listReplyPatterns: vi.fn() },
+      { listCampaigns: vi.fn(), listDrafts: vi.fn(), generateDrafts: vi.fn(), sendSmartlead: stubSendSmartlead(), listEvents: vi.fn(), listReplyPatterns: vi.fn() },
       { method: 'GET', pathname: '/api/meta' },
       meta
     );

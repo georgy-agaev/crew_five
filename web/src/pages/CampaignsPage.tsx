@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { fetchCampaigns, triggerDraftGenerate, triggerSmartleadSend, type Campaign } from '../apiClient';
+import { fetchCampaigns, triggerDraftGenerate, type Campaign } from '../apiClient';
 import { Alert } from '../components/Alert';
 import { loadSettings } from '../hooks/useSettingsStore';
 
@@ -17,8 +17,6 @@ export function CampaignsPage() {
   const [error, setError] = useState<string | null>(null);
   const [dryRun, setDryRun] = useState(true);
   const [limit, setLimit] = useState(10);
-  const [sendDryRun, setSendDryRun] = useState(true);
-  const [sendBatchSize, setSendBatchSize] = useState(10);
   const [summary, setSummary] = useState<string | null>(null);
   const [dataQualityMode, setDataQualityMode] = useState<'strict' | 'graceful'>('strict');
   const [interactionMode, setInteractionMode] = useState<'express' | 'coach'>('express');
@@ -51,22 +49,6 @@ export function CampaignsPage() {
       );
     } catch (err: any) {
       setError(err?.message ?? 'Failed to generate drafts');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const runSend = async () => {
-    setSummary(null);
-    setError(null);
-    setLoading(true);
-    try {
-      const result = await triggerSmartleadSend({ dryRun: sendDryRun, batchSize: sendBatchSize });
-      setSummary(
-        `Send: fetched=${result.fetched} sent=${result.sent} failed=${result.failed} skipped=${result.skipped}`
-      );
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to send');
     } finally {
       setLoading(false);
     }
@@ -143,26 +125,6 @@ export function CampaignsPage() {
             </label>
           </div>
         </fieldset>
-      </div>
-
-      <div style={{ marginTop: 24 }}>
-        <h3>Smartlead Send</h3>
-        <label>
-          Dry-run
-          <input type="checkbox" checked={sendDryRun} onChange={(e) => setSendDryRun(e.target.checked)} />
-        </label>
-        <label style={{ marginLeft: 12 }}>
-          Batch size
-          <input
-            type="number"
-            value={sendBatchSize}
-            onChange={(e) => setSendBatchSize(Number(e.target.value))}
-            style={{ width: 64 }}
-          />
-        </label>
-        <div style={{ marginTop: 8 }}>
-          <button onClick={runSend}>Send via Smartlead (mock)</button>
-        </div>
       </div>
 
       {summary && (

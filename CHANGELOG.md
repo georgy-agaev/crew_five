@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.89] - 2026-01-15
+### Changed
+- Smartlead “send” now prepares campaigns via the direct Smartlead API: pushes leads from `segment_members` and syncs the first sequence step from Supabase drafts (no one-off MCP sendEmail).
+- `POST /api/smartlead/send` now requires `{ campaignId, smartleadCampaignId }` and returns a prepare summary (`leadsPrepared`, `sequencesSynced`, etc.).
+### Added
+- New tests covering Smartlead prepare (`smartleadSendCommand`) and the web adapter endpoint contract.
+
 ## [0.1.88] - 2026-01-15
 ### Added
 - Firecrawl enrichment now runs deterministically via `search → scrape` using `companies.website`, storing prompt-safe `summary + sources` (no raw markdown blobs).

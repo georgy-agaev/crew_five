@@ -84,7 +84,17 @@ async function ensurePromptRegistryColumns(client: any) {
 type Campaign = { id: string; name: string; status?: string; segment_id?: string | null; segment_version?: number | null };
 type DraftRow = { id: string; status?: string; contact?: string; metadata?: Record<string, unknown> | null };
 type DraftSummary = { generated: number; dryRun: boolean; gracefulUsed?: number };
-type SendSummary = { sent: number; failed: number; skipped: number; fetched: number };
+type SendSummary = {
+  dryRun: boolean;
+  campaignId: string;
+  smartleadCampaignId: string;
+  leadsPrepared: number;
+  leadsPushed: number;
+  sequencesPrepared: number;
+  sequencesSynced: number;
+  skippedContactsNoEmail: number;
+  timestamp?: string;
+};
 type EventRow = { id: string; event_type: string; occurred_at: string };
 type PatternRow = { reply_label: string; count: number };
 
@@ -121,7 +131,14 @@ type AdapterDeps = {
     model?: string;
   }) => Promise<DraftSummary>;
   listLlmModels?: (provider: string) => Promise<LlmModelInfo[]>;
-  sendSmartlead: (payload: { dryRun?: boolean; batchSize?: number; leadIds?: string[] }) => Promise<SendSummary>;
+  sendSmartlead: (payload: {
+    dryRun?: boolean;
+    batchSize?: number;
+    campaignId: string;
+    smartleadCampaignId: string;
+    step?: number;
+    variantLabel?: string;
+  }) => Promise<SendSummary>;
   listEvents: (params: { since?: string; limit?: number }) => Promise<EventRow[]>;
   listReplyPatterns: (params: { since?: string; topN?: number }) => Promise<PatternRow[]>;
   analyticsSummary?: (params: { groupBy?: string; since?: string }) => Promise<any>;
@@ -432,8 +449,18 @@ export async function dispatch(
 
   if (method === 'POST' && pathname === '/api/smartlead/send') {
     const body = req.body ?? {};
-    const leadIds = Array.isArray(body.leadIds) ? body.leadIds.slice(0, 500) : [];
-    const payload = { ...body, dryRun: body.dryRun ?? true, leadIds };
+    const campaignId = body.campaignId as string | undefined;
+    const smartleadCampaignId = body.smartleadCampaignId as string | undefined;
+    if (!campaignId) return { status: 400, body: { error: 'campaignId is required' } };
+    if (!smartleadCampaignId) return { status: 400, body: { error: 'smartleadCampaignId is required' } };
+    const payload = {
+      dryRun: body.dryRun ?? true,
+      batchSize: body.batchSize,
+      campaignId,
+      smartleadCampaignId,
+      step: body.step,
+      variantLabel: body.variantLabel,
+    };
     try {
       return { status: 200, body: await deps.sendSmartlead(payload) };
     } catch (err: unknown) {
@@ -976,13 +1003,18 @@ export function createMockDeps(): AdapterDeps {
       dryRun: Boolean(dryRun),
       gracefulUsed: 0,
     }),
-    sendSmartlead: async ({ dryRun, leadIds }) => {
-      const fetched = leadIds?.length ?? mockDrafts.length;
+    sendSmartlead: async ({ dryRun, campaignId, smartleadCampaignId, batchSize }) => {
+      const leadsPrepared = batchSize ?? 0;
       return {
-        sent: dryRun ? 0 : 1,
-        failed: 0,
-        skipped: dryRun ? fetched : 0,
-        fetched,
+        dryRun: Boolean(dryRun),
+        campaignId,
+        smartleadCampaignId,
+        leadsPrepared,
+        leadsPushed: dryRun ? 0 : leadsPrepared,
+        sequencesPrepared: 1,
+        sequencesSynced: dryRun ? 0 : 1,
+        skippedContactsNoEmail: 0,
+        timestamp: new Date().toISOString(),
       };
     },
     listEvents: async () => [],
@@ -1314,16 +1346,15 @@ export function createLiveDeps(
         model: modelConfig?.model ?? model,
       } as any);
     },
-    sendSmartlead: async ({ dryRun, batchSize, leadIds }) => {
-      if (dryRun) {
-        const fetched = leadIds?.length ?? 0;
-        return { sent: 0, failed: 0, skipped: fetched, fetched };
-      }
-      const summary = await smartleadSendCommand(smartlead, supabase, {
+    sendSmartlead: async ({ dryRun, batchSize, campaignId, smartleadCampaignId, step, variantLabel }) => {
+      return smartleadSendCommand(smartlead, supabase, {
         dryRun,
         batchSize,
+        campaignId,
+        smartleadCampaignId,
+        step,
+        variantLabel,
       });
-      return { ...summary, fetched: summary.fetched ?? 0 };
     },
     listEvents: async ({ since, limit }) => {
       let query = supabase.from('email_events').select('id,event_type,occurred_at').order('occurred_at', {

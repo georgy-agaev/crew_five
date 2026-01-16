@@ -60,13 +60,18 @@ describe('web api client (live adapter)', () => {
     expect(body.explicitCoachPromptId).toBe('draft_intro_v1');
   });
 
-  it('triggerSmartleadSend passes batch size and dry-run', async () => {
+  it('triggerSmartleadSend passes ids, batch size and dry-run', async () => {
     const { triggerSmartleadSend } = await loadClient();
-    (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ sent: 0, skipped: 1, failed: 0, fetched: 5 }) });
-    await triggerSmartleadSend({ batchSize: 5, dryRun: true });
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({ dryRun: true, campaignId: 'camp-1', smartleadCampaignId: 'sl-1' }),
+    });
+    await triggerSmartleadSend({ campaignId: 'camp-1', smartleadCampaignId: 'sl-1', batchSize: 5, dryRun: true });
     const body = JSON.parse((fetch as any).mock.calls[0][1].body);
     expect(body.batchSize).toBe(5);
     expect(body.dryRun).toBe(true);
+    expect(body.campaignId).toBe('camp-1');
+    expect(body.smartleadCampaignId).toBe('sl-1');
   });
 
   it('fetchEvents uses since/limit', async () => {
@@ -115,13 +120,14 @@ describe('web api client (live adapter)', () => {
     expect(url).toContain('companyIds=c1%2Cc2');
   });
 
-  it('triggerSmartleadPreview defaults dry-run', async () => {
+  it('triggerSmartleadPreview defaults dry-run and includes ids', async () => {
     const { triggerSmartleadPreview } = await loadClient();
     (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ dryRun: true }) });
-    await triggerSmartleadPreview({ batchSize: 5, leadIds: ['a'] });
+    await triggerSmartleadPreview({ campaignId: 'camp-1', smartleadCampaignId: 'sl-1', batchSize: 5 });
     const body = JSON.parse((fetch as any).mock.calls[0][1].body);
     expect(body.dryRun).toBe(true);
-    expect(body.leadIds).toEqual(['a']);
+    expect(body.campaignId).toBe('camp-1');
+    expect(body.smartleadCampaignId).toBe('sl-1');
   });
 
   it('fetchSmartleadCampaigns hits smartlead campaigns endpoint', async () => {

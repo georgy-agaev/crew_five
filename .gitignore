@@ -3,8 +3,7 @@ prompts/*
 !prompts/.gitkeep
 !prompts/template.md
 
-# Internal-only docs and agent configs (keep local, not pushed)
-docs/
+# Internal-only agent configs (keep local, not pushed)
 AGENTS.md
 CLAUDE.md
 .github/agents/

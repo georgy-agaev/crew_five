@@ -2290,6 +2290,10 @@ type PipelineWorkspaceProps = {
       setAiError('Smartlead environment is not configured.');
       return;
     }
+    if (!selectedCampaignId) {
+      setAiError('Select a campaign before previewing Smartlead.');
+      return;
+    }
     if (!selectedSmartleadCampaignId) {
       setAiError('Select a Smartlead campaign before previewing send.');
       return;
@@ -2300,13 +2304,15 @@ type PipelineWorkspaceProps = {
       const res = await triggerSmartleadPreview({
         dryRun: true,
         batchSize: 10,
+        campaignId: selectedCampaignId,
+        smartleadCampaignId: selectedSmartleadCampaignId,
       });
       setSendSummary(
         formatSendSummary(
           {
-            fetched: (res as any)?.fetched,
-            sent: (res as any)?.sent,
-            skipped: (res as any)?.skipped,
+            fetched: (res as any)?.leadsPrepared ?? 0,
+            sent: (res as any)?.leadsPushed ?? 0,
+            skipped: (res as any)?.skippedContactsNoEmail ?? 0,
           },
           0
         )

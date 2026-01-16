@@ -14,18 +14,33 @@ type SendPageProps = {
 export function SendPage({ smartleadReady = true }: SendPageProps) {
   const [dryRun, setDryRun] = useState(true);
   const [batchSize, setBatchSize] = useState(10);
+  const [campaignId, setCampaignId] = useState('');
+  const [smartleadCampaignId, setSmartleadCampaignId] = useState('');
   const [summary, setSummary] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasApproved, setHasApproved] = useState(false);
 
   const runSend = async () => {
+    if (!campaignId.trim()) {
+      setError('campaignId is required');
+      return;
+    }
+    if (!smartleadCampaignId.trim()) {
+      setError('smartleadCampaignId is required');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const res = await triggerSmartleadSend({ dryRun, batchSize });
+      const res = await triggerSmartleadSend({
+        dryRun,
+        batchSize,
+        campaignId: campaignId.trim(),
+        smartleadCampaignId: smartleadCampaignId.trim(),
+      });
       setSummary(
-        `Send: fetched=${res.fetched} sent=${res.sent} failed=${res.failed} skipped=${res.skipped} dryRun=${dryRun}`
+        `Smartlead prepare: leadsPrepared=${res.leadsPrepared} leadsPushed=${res.leadsPushed} sequencesSynced=${res.sequencesSynced} dryRun=${dryRun}`
       );
     } catch (err: any) {
       setError(err?.message ?? 'Failed to send');
@@ -38,6 +53,28 @@ export function SendPage({ smartleadReady = true }: SendPageProps) {
     <section>
       <h2>Send via Smartlead (Mock)</h2>
       <div>
+        <label>
+          Internal campaignId
+          <input
+            type="text"
+            value={campaignId}
+            onChange={(e) => setCampaignId(e.target.value)}
+            style={{ width: 380, marginLeft: 8 }}
+          />
+        </label>
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <label>
+          Smartlead campaignId
+          <input
+            type="text"
+            value={smartleadCampaignId}
+            onChange={(e) => setSmartleadCampaignId(e.target.value)}
+            style={{ width: 380, marginLeft: 8 }}
+          />
+        </label>
+      </div>
+      <div style={{ marginTop: 8 }}>
         <label>
           Dry-run
           <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
