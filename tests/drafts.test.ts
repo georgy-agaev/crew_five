@@ -10,7 +10,7 @@ describe('generateDrafts', () => {
     vi.restoreAllMocks();
   });
 
-  it('fetches campaign context, calls AI client, and inserts drafts', async () => {
+  it('builds requests from segment member snapshot and inserts drafts', async () => {
     const single = vi.fn().mockResolvedValue({
       data: {
         id: 'camp',
@@ -31,18 +31,8 @@ describe('generateDrafts', () => {
             contact_id: 'contact-1',
             company_id: 'company-1',
             snapshot: {
-              request: {
-                email_type: 'intro',
-                language: 'en',
-                pattern_mode: 'standard',
-                brief: {
-                  prospect: { full_name: 'Jane Doe', role: 'CTO', company_name: 'Acme' },
-                  company: {},
-                  context: {},
-                  offer: { product_name: 'Tool', one_liner: 'Desc', key_benefits: ['a'] },
-                  constraints: {},
-                },
-              },
+              contact: { full_name: 'Jane Doe', work_email: 'jane@acme.test', position: 'CTO' },
+              company: { id: 'company-1', company_name: 'Acme' },
             },
           },
         ],
@@ -68,6 +58,27 @@ describe('generateDrafts', () => {
     const from = vi.fn((table: string) => {
       if (table === 'campaigns') {
         return { select: () => ({ eq }) } as any;
+      }
+      if (table === 'segments') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }),
+            }),
+          }),
+        } as any;
+      }
+      if (table === 'icp_profiles') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: { id: 'p1', name: 'Tool', description: 'Desc', company_criteria: {}, persona_criteria: {}, phase_outputs: {} },
+                error: null,
+              }),
+            }),
+          }),
+        } as any;
       }
       if (table === 'segment_members') {
         return {
@@ -106,6 +117,7 @@ describe('generateDrafts', () => {
       variant: 'A',
       provider: 'openai',
       model: 'gpt-4o-mini',
+      icpProfileId: 'p1',
     });
 
     expect(eq).toHaveBeenCalledWith('id', 'camp');
@@ -133,13 +145,19 @@ describe('generateDrafts', () => {
     });
     const eq = vi.fn().mockReturnValue({ single });
     const membersMatch = vi.fn().mockReturnValue({
-      limit: vi.fn().mockResolvedValue({ data: [{ contact_id: 'c', company_id: 'co', snapshot: { request: {} } }], error: null }),
+      limit: vi.fn().mockResolvedValue({
+        data: [{ contact_id: 'c', company_id: 'co', snapshot: { contact: { full_name: 'Jane', position: 'CTO' }, company: { company_name: 'Acme' } } }],
+        error: null,
+      }),
     });
     const supabase = {
       from: (table: string) => {
         if (table === 'campaigns') return { select: () => ({ eq }) };
+        if (table === 'segments')
+          return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }) }) }) };
         if (table === 'segment_members') return { select: () => ({ match: membersMatch }) };
         if (table === 'app_settings') return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) };
+        if (table === 'icp_profiles') return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) };
         if (table === 'companies') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
         if (table === 'employees') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
         if (table === 'drafts') return { insert: vi.fn() };
@@ -173,7 +191,7 @@ describe('generateDrafts', () => {
     const eq = vi.fn().mockReturnValue({ single });
     const membersMatch = vi.fn().mockReturnValue({
       limit: vi.fn().mockResolvedValue({
-        data: [{ contact_id: 'c', company_id: 'co', snapshot: { request: {} } }],
+        data: [{ contact_id: 'c', company_id: 'co', snapshot: { contact: { full_name: 'Jane', position: 'CTO' }, company: { company_name: 'Acme' } } }],
         error: null,
       }),
     });
@@ -181,8 +199,11 @@ describe('generateDrafts', () => {
     const supabase = {
       from: (table: string) => {
         if (table === 'campaigns') return { select: () => ({ eq }) };
+        if (table === 'segments')
+          return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }) }) }) };
         if (table === 'segment_members') return { select: () => ({ match: membersMatch }) };
         if (table === 'app_settings') return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) };
+        if (table === 'icp_profiles') return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) };
         if (table === 'companies') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
         if (table === 'employees') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
         if (table === 'drafts') return { insert };
@@ -262,6 +283,24 @@ describe('generateDrafts', () => {
     const from = vi.fn((table: string) => {
       if (table === 'campaigns') {
         return { select: () => ({ eq }) } as any;
+      }
+      if (table === 'segments') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }),
+            }),
+          }),
+        } as any;
+      }
+      if (table === 'icp_profiles') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          }),
+        } as any;
       }
       if (table === 'segment_members') {
         return {
@@ -370,6 +409,24 @@ describe('generateDrafts', () => {
       if (table === 'campaigns') {
         return { select: () => ({ eq }) } as any;
       }
+      if (table === 'segments') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }),
+            }),
+          }),
+        } as any;
+      }
+      if (table === 'icp_profiles') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          }),
+        } as any;
+      }
       if (table === 'segment_members') {
         return {
           select: () => ({ match: membersMatch }),
@@ -455,6 +512,24 @@ describe('generateDrafts', () => {
 
     const from = vi.fn((table: string) => {
       if (table === 'campaigns') return { select: () => ({ eq }) } as any;
+      if (table === 'segments') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }),
+            }),
+          }),
+        } as any;
+      }
+      if (table === 'icp_profiles') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          }),
+        } as any;
+      }
       if (table === 'segment_members') return { select: () => ({ match: membersMatch }) } as any;
       if (table === 'app_settings') {
         return {

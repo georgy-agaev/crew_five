@@ -110,6 +110,24 @@ describe('coach service', () => {
 
     const from = vi.fn((table: string) => {
       if (table === 'campaigns') return { select: () => ({ eq: campaignEq }) };
+      if (table === 'segments') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }),
+            }),
+          }),
+        } as any;
+      }
+      if (table === 'icp_profiles') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          }),
+        } as any;
+      }
       if (table === 'segment_members') return { select: () => ({ match: membersMatch }) };
       if (table === 'app_settings') return { select: appSettingsSelect };
       if (table === 'companies') return { select: companiesSelect };

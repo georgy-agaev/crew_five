@@ -30,7 +30,64 @@ interface SegmentMemberRow {
   contact_id: string;
   company_id: string;
   snapshot: {
+    contact?: {
+      full_name?: string;
+      work_email?: string;
+      position?: string;
+    };
+    company?: Record<string, unknown> | null;
     request?: EmailDraftRequest;
+  };
+}
+
+function coerceLanguage(value: unknown): string {
+  if (typeof value !== 'string') return 'en';
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return 'en';
+  // Accept common locales and let the model handle the specifics.
+  if (['en', 'ru'].includes(normalized)) return normalized;
+  return normalized;
+}
+
+function buildRequestFromSnapshot(params: {
+  snapshot: SegmentMemberRow['snapshot'];
+  language: string;
+  patternMode: EmailDraftRequest['pattern_mode'];
+  offer: EmailDraftRequest['brief']['offer'];
+  context: Record<string, unknown>;
+}): EmailDraftRequest | null {
+  if (params.snapshot?.request) {
+    return params.snapshot.request;
+  }
+
+  const contact = params.snapshot?.contact ?? {};
+  const company = params.snapshot?.company ?? null;
+
+  const fullName = typeof contact.full_name === 'string' && contact.full_name.trim() ? contact.full_name.trim() : 'there';
+  const role = typeof contact.position === 'string' && contact.position.trim() ? contact.position.trim() : 'prospect';
+  const companyNameRaw =
+    company && typeof (company as any).company_name === 'string' ? String((company as any).company_name) : '';
+  const companyName = companyNameRaw.trim() ? companyNameRaw.trim() : 'your company';
+
+  const email =
+    typeof contact.work_email === 'string' && contact.work_email.includes('@') ? contact.work_email : undefined;
+
+  return {
+    email_type: 'intro',
+    language: params.language,
+    pattern_mode: params.patternMode,
+    brief: {
+      prospect: {
+        full_name: fullName,
+        role,
+        company_name: companyName,
+        email,
+      },
+      company: company ?? {},
+      context: params.context,
+      offer: params.offer,
+      constraints: {},
+    },
   };
 }
 
@@ -129,7 +186,7 @@ export async function generateDrafts(
     .match({ segment_id: campaign.segment_id, segment_version: campaign.segment_version })
     .limit(options.limit ?? 100);
 
-  if (membersRes.error || !membersRes.data) {
+  if (membersRes.error || !membersRes.data || membersRes.data.length === 0) {
     throw membersRes.error ?? new Error('No segment members found');
   }
 
@@ -147,6 +204,15 @@ export async function generateDrafts(
     ensureGracefulToggle(false);
   }
 
+  const segmentLocaleRes = await client
+    .from('segments')
+    .select('locale')
+    .eq('id', campaign.segment_id)
+    .maybeSingle();
+  if (segmentLocaleRes.error) throw segmentLocaleRes.error;
+  const resolvedLanguage = coerceLanguage((campaign as any).language ?? segmentLocaleRes.data?.locale ?? 'en');
+  const resolvedPatternMode = ((campaign as any).pattern_mode ?? 'standard') as EmailDraftRequest['pattern_mode'];
+
   let resolvedCoachPromptId: string | undefined = options.explicitCoachPromptId;
   if (!resolvedCoachPromptId && options.coachPromptStep) {
     resolvedCoachPromptId = await resolvePromptForStep(client, {
@@ -154,6 +220,37 @@ export async function generateDrafts(
       explicitId: undefined,
     });
   }
+
+  const profileRes = options.icpProfileId
+    ? await client
+        .from('icp_profiles')
+        .select('id,name,description,company_criteria,persona_criteria,phase_outputs')
+        .eq('id', options.icpProfileId)
+        .maybeSingle()
+    : null;
+  if (profileRes?.error) throw profileRes.error;
+
+  const profile = profileRes?.data ?? null;
+  const phases = (profile as any)?.phase_outputs ?? {};
+  const phase1 = phases?.phase1 ?? {};
+  const valueProp =
+    (typeof phase1.valueProp === 'string' && phase1.valueProp.trim()) ||
+    ((profile as any)?.description as string | undefined) ||
+    'Quick intro';
+
+  const productName =
+    (typeof (profile as any)?.name === 'string' && (profile as any).name.trim()) ? (profile as any).name.trim() : 'Our product';
+
+  const offer: EmailDraftRequest['brief']['offer'] = {
+    product_name: productName,
+    one_liner: String(valueProp),
+    key_benefits: [],
+  };
+
+  const context: Record<string, unknown> = {
+    icp_profile_id: options.icpProfileId ?? null,
+    icp_hypothesis_id: options.icpHypothesisId ?? null,
+  };
 
   const primaryProvider = await getPrimaryProvidersForWorkflow(client, 'mock');
   const memberRows = membersRes.data as SegmentMemberRow[];
@@ -179,7 +276,15 @@ export async function generateDrafts(
   }
 
   for (const member of memberRows) {
-    if (!member.snapshot?.request) {
+    const request = buildRequestFromSnapshot({
+      snapshot: member.snapshot,
+      language: resolvedLanguage,
+      patternMode: resolvedPatternMode,
+      offer,
+      context,
+    });
+    if (!request) {
+      summary.skipped += 1;
       continue;
     }
 
@@ -189,7 +294,7 @@ export async function generateDrafts(
     }
 
     const enriched = applyHybridEnrichmentToRequest({
-      request: member.snapshot.request,
+      request,
       primaryProviders: primaryProvider,
       companyResearch: companyResearchById.get(member.company_id) ?? null,
       employeeResearch: employeeResearchById.get(member.contact_id) ?? null,
@@ -200,7 +305,7 @@ export async function generateDrafts(
 
     if (options.graceful || options.previewGraceful) {
       const tpl = getFallbackTemplate('general', 'en') ?? 'Fallback Body';
-      const needsFallback = !member.snapshot.request?.brief;
+      const needsFallback = !request?.brief;
       if (needsFallback) {
         summary.gracefulUsed += 1;
         if (options.previewGraceful) {

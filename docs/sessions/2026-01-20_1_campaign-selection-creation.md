@@ -18,6 +18,9 @@ Drafts → Smartlead prepare.
 - Updated Pipeline Draft step to support **Live** draft generation:
   - Added a “Draft execution” toggle (`Dry-run` vs `Live (save drafts)`).
   - Dry-run no longer unlocks the Send step (prevents proceeding without persisted drafts).
+- Fixed draft generation to work with current `segment_members.snapshot` shape:
+  - `src/services/drafts.ts` now builds `EmailDraftRequest` from `snapshot.contact` + `snapshot.company` when `snapshot.request` is missing.
+  - This resolves “generated=0, dryRun=false” cases where drafts were never inserted.
 - Fixed Web unit test discovery to exclude Playwright specs:
   - `web/vite.config.ts` now limits Vitest to `src/**/*.test.*` and excludes `e2e/**`.
 - Updated endpoint catalog: `docs/web_ui_endpoints.md`.

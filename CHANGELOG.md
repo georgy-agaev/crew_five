@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.93] - 2026-01-20
+### Fixed
+- Draft generation now builds `EmailDraftRequest` from `segment_members.snapshot.contact/company` when `snapshot.request` is absent, so Live draft generation inserts rows into `drafts` as expected.
+
 ## [0.1.92] - 2026-01-20
 ### Added
 - Pipeline Draft step now exposes a `Dry-run` vs `Live (save drafts)` toggle for draft generation.
