@@ -1,5 +1,5 @@
-import type { ChatClient, ChatMessage } from '../chatClient';
-import { normalizeAnthropicBaseUrl } from './baseUrls';
+import type { ChatClient, ChatMessage } from '../chatClient.js';
+import { normalizeAnthropicBaseUrl } from './baseUrls.js';
 
 export interface AnthropicChatClientConfig {
   apiKey: string;

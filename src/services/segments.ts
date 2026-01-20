@@ -1,8 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { FilterClause } from '../filters';
-import { buildContactQuery } from '../filters';
-import { getFilterPreviewCounts } from './filterPreview';
+import type { FilterClause } from '../filters/index.js';
+import { buildContactQuery } from '../filters/index.js';
+import { getFilterPreviewCounts } from './filterPreview.js';
 
 export interface ContactSnapshotRow {
   contact_id: string;

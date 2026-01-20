@@ -4,49 +4,49 @@ import http from 'node:http';
 import { URL, fileURLToPath } from 'node:url';
 
 import { loadEnv } from '../config/env.js';
-import { AiClient, type EmailDraftRequest } from '../services/aiClient';
-import type { ChatClient } from '../services/chatClient';
-import { generateDrafts } from '../services/drafts';
-import { getReplyPatterns } from '../services/emailEvents';
-import { initSupabaseClient } from '../services/supabaseClient';
-import { smartleadSendCommand } from '../commands/smartleadSend';
-import { getFilterPreviewCounts } from '../services/filterPreview';
-import type { SmartleadMcpClient } from '../integrations/smartleadMcp';
-import { buildSmartleadMcpClient } from '../integrations/smartleadMcp';
-import { ensureSegmentSnapshot } from '../services/segmentSnapshotWorkflow';
-import { enqueueSegmentEnrichment, getSegmentEnrichmentStatus, runSegmentEnrichmentOnce } from '../services/enrichSegment';
-import { createSegment, getSegmentById, listSegmentsWithCounts } from '../services/segments';
-import { createIcpHypothesis, createIcpProfile } from '../services/icp';
-import { createIcpHypothesisViaCoach, createIcpProfileViaCoach } from '../services/coach';
-import { createCampaign as createCampaignService } from '../services/campaigns';
+import { AiClient, type EmailDraftRequest } from '../services/aiClient.js';
+import type { ChatClient } from '../services/chatClient.js';
+import { generateDrafts } from '../services/drafts.js';
+import { getReplyPatterns } from '../services/emailEvents.js';
+import { initSupabaseClient } from '../services/supabaseClient.js';
+import { smartleadSendCommand } from '../commands/smartleadSend.js';
+import { getFilterPreviewCounts } from '../services/filterPreview.js';
+import type { SmartleadMcpClient } from '../integrations/smartleadMcp.js';
+import { buildSmartleadMcpClient } from '../integrations/smartleadMcp.js';
+import { ensureSegmentSnapshot } from '../services/segmentSnapshotWorkflow.js';
+import { enqueueSegmentEnrichment, getSegmentEnrichmentStatus, runSegmentEnrichmentOnce } from '../services/enrichSegment.js';
+import { createSegment, getSegmentById, listSegmentsWithCounts } from '../services/segments.js';
+import { createIcpHypothesis, createIcpProfile } from '../services/icp.js';
+import { createIcpHypothesisViaCoach, createIcpProfileViaCoach } from '../services/coach.js';
+import { createCampaign as createCampaignService } from '../services/campaigns.js';
 import {
   getEnrichmentSettings as getEnrichmentSettingsService,
   setEnrichmentSettings as setEnrichmentSettingsService,
   type EnrichmentProviderId,
-} from '../services/enrichmentSettings';
+} from '../services/enrichmentSettings.js';
 import {
   getActivePromptForStep as getActivePromptForStepService,
   setActivePromptForStep as setActivePromptForStepService,
-} from '../services/promptRegistry';
+} from '../services/promptRegistry.js';
 import { resolveModelConfig } from '../config/modelCatalog.js';
-import { buildChatClientForModel } from '../services/providers/buildChatClient';
-import { listLlmModels as listLlmModelsService, type LlmModelInfo } from '../services/providers/llmModels';
+import { buildChatClientForModel } from '../services/providers/buildChatClient.js';
+import { listLlmModels as listLlmModelsService, type LlmModelInfo } from '../services/providers/llmModels.js';
 import {
   getAnalyticsByIcpAndHypothesis,
   getAnalyticsByPatternAndUserEdit,
   getAnalyticsBySegmentAndRole,
   getSimJobSummaryForAnalytics,
   suggestPromptPatternAdjustments,
-} from '../services/analytics';
-import { completeSimAsNotImplemented, createSimRequest } from '../services/sim';
-import { buildExaClientFromEnv } from '../integrations/exa';
+} from '../services/analytics.js';
+import { completeSimAsNotImplemented, createSimRequest } from '../services/sim.js';
+import { buildExaClientFromEnv } from '../integrations/exa.js';
 import {
   listIcpDiscoveryCandidates,
   promoteIcpDiscoveryCandidatesToSegment,
   runIcpDiscoveryWithExa,
-} from '../services/icpDiscovery';
-import { generateSegmentFiltersViaCoach } from '../services/icpCoach';
-import { searchExaWebset } from '../services/exaWebset';
+} from '../services/icpDiscovery.js';
+import { generateSegmentFiltersViaCoach } from '../services/icpCoach.js';
+import { searchExaWebset } from '../services/exaWebset.js';
 
 const promptRegistryColumnSupport = {
   checked: false,

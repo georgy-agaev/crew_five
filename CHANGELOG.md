@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.94] - 2026-01-20
+### Added
+- Added helper scripts: `pnpm start:web` (tsx) and `pnpm start:web:dist` (Node on `dist/web/server.js`).
+### Fixed
+- Draft generation now skips contacts without an email and scans deeper than the requested limit to fulfill the
+  requested draft count when possible.
+- Built web adapter now runs under Node ESM (`node dist/web/server.js`) by using explicit `.js` specifiers and
+  avoiding directory imports in the adapter dependency graph.
+
 ## [0.1.93] - 2026-01-20
 ### Fixed
 - Draft generation now builds `EmailDraftRequest` from `segment_members.snapshot.contact/company` when `snapshot.request` is absent, so Live draft generation inserts rows into `drafts` as expected.

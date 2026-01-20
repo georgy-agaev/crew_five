@@ -1,4 +1,4 @@
-import { normalizeAnthropicBaseUrl, normalizeOpenAiBaseUrl } from './baseUrls';
+import { normalizeAnthropicBaseUrl, normalizeOpenAiBaseUrl } from './baseUrls.js';
 
 export type SupportedLlmProvider = 'openai' | 'anthropic';
 

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { getAppSetting, setAppSetting } from './appSettings';
+import { getAppSetting, setAppSetting } from './appSettings.js';
 
 export type EnrichmentProviderId = 'mock' | 'exa' | 'parallel' | 'firecrawl' | 'anysite';
 

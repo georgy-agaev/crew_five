@@ -1,12 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { AiClient, EmailDraftRequest } from './aiClient';
-import { applyGracefulFallback, ensureGracefulToggle, getFallbackTemplate } from './fallbackTemplates';
-import { applyVariantToDraft } from './experiments';
-import { resolvePromptForStep } from './promptRegistry';
-import { getPrimaryProvidersForWorkflow } from './enrichmentSettings';
-import { getProviderResult } from './enrichment/store';
-import { buildHybridEnrichmentByProvider } from './enrichment/hybridContext';
+import type { AiClient, EmailDraftRequest } from './aiClient.js';
+import { applyGracefulFallback, ensureGracefulToggle, getFallbackTemplate } from './fallbackTemplates.js';
+import { applyVariantToDraft } from './experiments.js';
+import { resolvePromptForStep } from './promptRegistry.js';
+import { getPrimaryProvidersForWorkflow } from './enrichmentSettings.js';
+import { getProviderResult } from './enrichment/store.js';
+import { buildHybridEnrichmentByProvider } from './enrichment/hybridContext.js';
 
 interface GenerateDraftsOptions {
   campaignId: string;
@@ -38,6 +38,20 @@ interface SegmentMemberRow {
     company?: Record<string, unknown> | null;
     request?: EmailDraftRequest;
   };
+}
+
+function normalizeEmail(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!trimmed.includes('@')) return null;
+  return trimmed;
+}
+
+function resolveMemberEmail(snapshot: SegmentMemberRow['snapshot']): string | null {
+  const fromRequest = snapshot?.request?.brief?.prospect?.email;
+  const fromSnapshot = snapshot?.contact?.work_email;
+  return normalizeEmail(fromRequest) ?? normalizeEmail(fromSnapshot);
 }
 
 function coerceLanguage(value: unknown): string {
@@ -179,12 +193,14 @@ export async function generateDrafts(
   }
 
   const campaign = campaignRes.data;
+  const draftLimit = Math.max(0, options.limit ?? 100);
+  const memberFetchLimit = Math.min(Math.max(draftLimit * 25, 250), 2000);
 
   const membersRes = await client
     .from('segment_members')
     .select('contact_id, company_id, snapshot')
     .match({ segment_id: campaign.segment_id, segment_version: campaign.segment_version })
-    .limit(options.limit ?? 100);
+    .limit(memberFetchLimit);
 
   if (membersRes.error || !membersRes.data || membersRes.data.length === 0) {
     throw membersRes.error ?? new Error('No segment members found');
@@ -194,6 +210,7 @@ export async function generateDrafts(
   const summary = {
     generated: 0,
     skipped: 0,
+    skippedNoEmail: 0,
     failed: 0,
     dryRun: Boolean(options.dryRun),
     gracefulUsed: 0,
@@ -275,23 +292,51 @@ export async function generateDrafts(
     }
   }
 
+  let eligibleContactsConsidered = 0;
   for (const member of memberRows) {
-    const request = buildRequestFromSnapshot({
+    if (draftLimit > 0 && eligibleContactsConsidered >= draftLimit) {
+      break;
+    }
+
+    const memberEmail = resolveMemberEmail(member.snapshot);
+    if (!memberEmail) {
+      summary.skippedNoEmail += 1;
+      continue;
+    }
+
+    const requestBase = buildRequestFromSnapshot({
       snapshot: member.snapshot,
       language: resolvedLanguage,
       patternMode: resolvedPatternMode,
       offer,
       context,
     });
-    if (!request) {
+    if (!requestBase) {
       summary.skipped += 1;
       continue;
     }
 
+    const request: EmailDraftRequest =
+      requestBase?.brief?.prospect?.email
+        ? requestBase
+        : {
+            ...requestBase,
+            brief: {
+              ...requestBase.brief,
+              prospect: {
+                ...requestBase.brief.prospect,
+                email: memberEmail,
+              },
+            },
+          };
+
     if (options.dryRun) {
       summary.skipped += 1;
+      eligibleContactsConsidered += 1;
       continue;
     }
+
+    eligibleContactsConsidered += 1;
 
     const enriched = applyHybridEnrichmentToRequest({
       request,

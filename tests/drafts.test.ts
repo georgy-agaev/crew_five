@@ -10,6 +10,119 @@ describe('generateDrafts', () => {
     vi.restoreAllMocks();
   });
 
+  it('skips contacts without email and keeps scanning to fulfill the draft limit', async () => {
+    const single = vi.fn().mockResolvedValue({
+      data: {
+        id: 'camp',
+        segment_id: 'seg',
+        segment_version: 1,
+        language: 'en',
+        pattern_mode: 'standard',
+      },
+      error: null,
+    });
+
+    const eq = vi.fn().mockReturnValue({ single });
+
+    const segmentRows = [
+      {
+        contact_id: 'contact-no-email',
+        company_id: 'company-1',
+        snapshot: {
+          contact: { full_name: 'No Email', work_email: '', position: 'CTO' },
+          company: { id: 'company-1', company_name: 'Acme' },
+        },
+      },
+      {
+        contact_id: 'contact-with-email',
+        company_id: 'company-1',
+        snapshot: {
+          contact: { full_name: 'Jane Doe', work_email: 'jane@acme.test', position: 'CTO' },
+          company: { id: 'company-1', company_name: 'Acme' },
+        },
+      },
+    ];
+    const membersLimit = vi.fn(async (limit: number) => ({
+      data: segmentRows.slice(0, limit),
+      error: null,
+    }));
+
+    const membersMatch = vi.fn().mockReturnValue({ limit: membersLimit });
+
+    const insertSelect = vi.fn().mockResolvedValue({ data: [{ id: 'draft-1' }], error: null });
+    const insert = vi.fn().mockReturnValue({ select: insertSelect });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'campaigns') {
+        return { select: () => ({ eq }) } as any;
+      }
+      if (table === 'segments') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }),
+            }),
+          }),
+        } as any;
+      }
+      if (table === 'icp_profiles') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          }),
+        } as any;
+      }
+      if (table === 'segment_members') {
+        return {
+          select: () => ({ match: membersMatch }),
+        } as any;
+      }
+      if (table === 'app_settings')
+        return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) } as any;
+      if (table === 'companies') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      if (table === 'employees') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      if (table === 'drafts') {
+        return { insert } as any;
+      }
+      throw new Error(`Unexpected table ${table}`);
+    });
+
+    const supabase = { from } as any;
+
+    const aiResponse: EmailDraftResponse = {
+      subject: 'Hello',
+      body: 'Body',
+      metadata: {
+        model: 'mock',
+        language: 'en',
+        pattern_mode: 'standard',
+        email_type: 'intro',
+        coach_prompt_id: 'intro_v1',
+      },
+    };
+    const chatClient: ChatClient = {
+      complete: vi.fn().mockResolvedValue(JSON.stringify(aiResponse)),
+    };
+    const aiClient = new AiClient(chatClient);
+
+    const summary = await generateDrafts(supabase, aiClient, {
+      campaignId: 'camp',
+      limit: 1,
+    });
+
+    expect(membersMatch).toHaveBeenCalledWith({ segment_id: 'seg', segment_version: 1 });
+    expect(membersLimit).toHaveBeenCalled();
+    expect(insert).toHaveBeenCalled();
+    expect(chatClient.complete).toHaveBeenCalledTimes(1);
+    expect(summary.generated).toBe(1);
+
+    const insertedPayload = insert.mock.calls[0]?.[0] as any[];
+    expect(insertedPayload).toHaveLength(1);
+    expect(insertedPayload[0].contact_id).toBe('contact-with-email');
+  });
+
   it('builds requests from segment member snapshot and inserts drafts', async () => {
     const single = vi.fn().mockResolvedValue({
       data: {
@@ -146,7 +259,13 @@ describe('generateDrafts', () => {
     const eq = vi.fn().mockReturnValue({ single });
     const membersMatch = vi.fn().mockReturnValue({
       limit: vi.fn().mockResolvedValue({
-        data: [{ contact_id: 'c', company_id: 'co', snapshot: { contact: { full_name: 'Jane', position: 'CTO' }, company: { company_name: 'Acme' } } }],
+        data: [
+          {
+            contact_id: 'c',
+            company_id: 'co',
+            snapshot: { contact: { full_name: 'Jane', work_email: 'jane@acme.test', position: 'CTO' }, company: { company_name: 'Acme' } },
+          },
+        ],
         error: null,
       }),
     });
@@ -191,7 +310,16 @@ describe('generateDrafts', () => {
     const eq = vi.fn().mockReturnValue({ single });
     const membersMatch = vi.fn().mockReturnValue({
       limit: vi.fn().mockResolvedValue({
-        data: [{ contact_id: 'c', company_id: 'co', snapshot: { contact: { full_name: 'Jane', position: 'CTO' }, company: { company_name: 'Acme' } } }],
+        data: [
+          {
+            contact_id: 'c',
+            company_id: 'co',
+            snapshot: {
+              contact: { full_name: 'Jane', work_email: 'jane@acme.test', position: 'CTO' },
+              company: { company_name: 'Acme' },
+            },
+          },
+        ],
         error: null,
       }),
     });
@@ -251,7 +379,7 @@ describe('generateDrafts', () => {
                 language: 'en',
                 pattern_mode: 'standard',
                 brief: {
-                  prospect: { full_name: 'Jane Doe', role: 'CTO', company_name: 'Acme' },
+                  prospect: { full_name: 'Jane Doe', role: 'CTO', company_name: 'Acme', email: 'jane@acme.test' },
                   company: {},
                   context: {},
                   offer: { product_name: 'Tool', one_liner: 'Desc', key_benefits: ['a'] },
@@ -376,7 +504,7 @@ describe('generateDrafts', () => {
                 language: 'en',
                 pattern_mode: 'standard',
                 brief: {
-                  prospect: { full_name: 'Jane Doe', role: 'CTO', company_name: 'Acme' },
+                  prospect: { full_name: 'Jane Doe', role: 'CTO', company_name: 'Acme', email: 'jane@acme.test' },
                   company: {},
                   context: {},
                   offer: { product_name: 'Tool', one_liner: 'Desc', key_benefits: ['a'] },
@@ -493,7 +621,7 @@ describe('generateDrafts', () => {
                 language: 'en',
                 pattern_mode: 'standard',
                 brief: {
-                  prospect: { full_name: 'Jane Doe', role: 'CTO', company_name: 'Acme' },
+                  prospect: { full_name: 'Jane Doe', role: 'CTO', company_name: 'Acme', email: 'jane@acme.test' },
                   company: {},
                   context: {},
                   offer: { product_name: 'Tool', one_liner: 'Desc', key_benefits: ['a'] },

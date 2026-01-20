@@ -1,9 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { buildExaResearchClientFromEnv, type ExaResearchClient } from '../../integrations/exa';
-import { buildParallelClientFromEnv, type ParallelClient } from '../../integrations/parallel';
-import { buildFirecrawlClientFromEnv, type FirecrawlClient } from '../../integrations/firecrawl';
-import { buildAnySiteClientFromEnv, type AnySiteClient } from '../../integrations/anysite';
+import { buildExaResearchClientFromEnv, type ExaResearchClient } from '../../integrations/exa.js';
+import { buildParallelClientFromEnv, type ParallelClient } from '../../integrations/parallel.js';
+import { buildFirecrawlClientFromEnv, type FirecrawlClient } from '../../integrations/firecrawl.js';
+import { buildAnySiteClientFromEnv, type AnySiteClient } from '../../integrations/anysite.js';
 
 function normalizeWebsiteUrl(website: unknown): string | null {
   const raw = typeof website === 'string' ? website.trim() : '';

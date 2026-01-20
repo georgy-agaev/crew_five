@@ -1,9 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { getFinalizedSegmentVersion } from './segments';
-import { getEnrichmentAdapter } from './enrichment/registry';
-import { upsertProviderResult } from './enrichment/store';
-import { createJob, updateJobStatus, type JobRow } from './jobs';
+import { getFinalizedSegmentVersion } from './segments.js';
+import { getEnrichmentAdapter } from './enrichment/registry.js';
+import { upsertProviderResult } from './enrichment/store.js';
+import { createJob, updateJobStatus, type JobRow } from './jobs.js';
 
 export interface SegmentEnrichmentSummary {
   processed: number;

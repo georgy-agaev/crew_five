@@ -1,6 +1,6 @@
-import type { ChatClient } from '../chatClient';
-import { OpenAiChatClient } from './OpenAiChatClient';
-import { AnthropicChatClient } from './AnthropicChatClient';
+import type { ChatClient } from '../chatClient.js';
+import { OpenAiChatClient } from './OpenAiChatClient.js';
+import { AnthropicChatClient } from './AnthropicChatClient.js';
 
 export interface ChatClientModelConfig {
   provider: 'openai' | 'anthropic' | 'gemini';
@@ -35,4 +35,3 @@ export function buildChatClientForModel(config: ChatClientModelConfig): ChatClie
 
   throw new Error(`Unsupported chat provider for LLM client: ${config.provider}`);
 }
-

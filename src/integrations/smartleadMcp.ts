@@ -1,6 +1,6 @@
 /* eslint-disable security-node/detect-unhandled-async-errors */
 import { createHash } from 'crypto';
-import { emitTrace, finishTrace, isTracingEnabled, startTrace } from '../services/tracing';
+import { emitTrace, finishTrace, isTracingEnabled, startTrace } from '../services/tracing.js';
 
 export const DEFAULT_RETRY_AFTER_CAP_MS = 5000;
 

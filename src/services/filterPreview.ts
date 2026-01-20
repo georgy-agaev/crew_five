@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { parseSegmentFilters, buildContactQuery } from '../filters';
-import type { FilterClause } from '../filters';
+import { parseSegmentFilters, buildContactQuery } from '../filters/index.js';
+import type { FilterClause } from '../filters/index.js';
 
 export interface FilterPreviewResult {
   companyCount: number;

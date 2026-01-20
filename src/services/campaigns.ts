@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { CampaignStatus, getAllowedTransitions } from '../status';
+import { CampaignStatus, getAllowedTransitions } from '../status.js';
 
 export interface CampaignInput {
   name: string;

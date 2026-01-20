@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { ExaClient } from '../integrations/exa';
-import { createJob, updateJobStatus } from './jobs';
+import type { ExaClient } from '../integrations/exa.js';
+import { createJob, updateJobStatus } from './jobs.js';
 
 export interface RunIcpDiscoveryInput {
   icpProfileId: string;

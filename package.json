@@ -7,6 +7,8 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest",
     "cli": "tsx src/cli.ts",
+    "start:web": "tsx src/web/server.ts",
+    "start:web:dist": "node dist/web/server.js",
     "lint": "eslint . --ext .ts",
     "scan:ast-grep": "ast-grep --config ast-grep.yml scan .",
     "scan:secrets": "gitleaks detect --source . --redact",

@@ -79,7 +79,7 @@ describe('coach service', () => {
                 language: 'en',
                 pattern_mode: 'standard',
                 brief: {
-                  prospect: { full_name: 'Jane Doe', role: 'CTO', company_name: 'Acme' },
+                  prospect: { full_name: 'Jane Doe', role: 'CTO', company_name: 'Acme', email: 'jane@acme.test' },
                   company: {},
                   context: {},
                   offer: { product_name: 'Tool', one_liner: 'Desc', key_benefits: ['a'] },

@@ -1,5 +1,5 @@
-import type { ChatClient, ChatMessage } from '../chatClient';
-import { normalizeOpenAiBaseUrl } from './baseUrls';
+import type { ChatClient, ChatMessage } from '../chatClient.js';
+import { normalizeOpenAiBaseUrl } from './baseUrls.js';
 
 export interface OpenAiChatClientConfig {
   apiKey: string;

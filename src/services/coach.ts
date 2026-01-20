@@ -1,18 +1,18 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { AiClient } from './aiClient';
-import type { ChatClient } from './chatClient';
-import { createIcpHypothesis, createIcpProfile } from './icp';
-import { generateDrafts } from './drafts';
+import type { AiClient } from './aiClient.js';
+import type { ChatClient } from './chatClient.js';
+import { createIcpHypothesis, createIcpProfile } from './icp.js';
+import { generateDrafts } from './drafts.js';
 import type {
   IcpCoachHypothesisInput,
   IcpCoachHypothesisPayload,
   IcpCoachProfileInput,
   IcpCoachProfilePayload,
   IcpCoachProfilePhases,
-} from './icpCoach';
-import { runIcpCoachHypothesisLlm, runIcpCoachProfileLlm } from './icpCoach';
-import { createJob, updateJobStatus } from './jobs';
+} from './icpCoach.js';
+import { runIcpCoachHypothesisLlm, runIcpCoachProfileLlm } from './icpCoach.js';
+import { createJob, updateJobStatus } from './jobs.js';
 
 export interface IcpBrief {
   name: string;

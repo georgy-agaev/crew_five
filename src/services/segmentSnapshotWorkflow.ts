@@ -1,8 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { hashFilters, parseSegmentFilters } from '../filters';
-import { fetchContactsForSegment, getSegmentById, setSegmentVersion } from './segments';
-import { createSegmentSnapshot } from './segmentSnapshot';
+import { hashFilters, parseSegmentFilters } from '../filters/index.js';
+import { fetchContactsForSegment, getSegmentById, setSegmentVersion } from './segments.js';
+import { createSegmentSnapshot } from './segmentSnapshot.js';
 
 export interface SnapshotOptions {
   segmentId: string;

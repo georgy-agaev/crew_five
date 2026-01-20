@@ -1,4 +1,4 @@
-import { getProviderResult, isEnrichmentStoreV1 } from './store';
+import { getProviderResult, isEnrichmentStoreV1 } from './store.js';
 
 export type ProviderPayloadSummary = {
   type: 'null' | 'string' | 'number' | 'boolean' | 'array' | 'object' | 'unknown';
@@ -232,4 +232,3 @@ export function buildHybridEnrichmentByProvider(params: {
 
   return out;
 }
-

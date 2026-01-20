@@ -8,6 +8,7 @@ on for destructive actions.
 2) Start the adapter from repo root (choose one):
    - Live Supabase + Smartlead API: `SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... SMARTLEAD_API_BASE=... SMARTLEAD_API_KEY=... pnpm tsx src/web/server.ts`
    - Mock/in-memory data: `WEB_ADAPTER_MODE=mock pnpm tsx src/web/server.ts`
+   - Built dist (Node ESM): `pnpm build && WEB_ADAPTER_MODE=mock pnpm start:web:dist`
    The adapter listens on `http://localhost:8787/api` by default (`PORT` overrides). Live mode needs the
    Supabase + Smartlead API env vars; Smartlead send stays stubbed.
 3) Start the Vite dev server (web): `VITE_API_BASE=http://localhost:8787/api pnpm --dir web dev`.

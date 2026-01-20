@@ -1,5 +1,5 @@
-import type { ChatClient, ChatMessage } from './chatClient';
-import { emitTrace, finishTrace, isTracingEnabled, startTrace } from './tracing';
+import type { ChatClient, ChatMessage } from './chatClient.js';
+import { emitTrace, finishTrace, isTracingEnabled, startTrace } from './tracing.js';
 
 export type EmailType = 'intro' | 'bump';
 export type PatternMode =

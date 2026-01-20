@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { createJob, type JobRow, type JobStatus } from './jobs';
-import { getPrimaryProvidersForWorkflow } from './enrichmentSettings';
+import { createJob, type JobRow, type JobStatus } from './jobs.js';
+import { getPrimaryProvidersForWorkflow } from './enrichmentSettings.js';
 
 export type SimMode = 'light_roast' | 'persona_sim' | 'reply_assist';
 
