@@ -34,6 +34,7 @@ import {
   hasPersistedDiscoveryRun,
   resolveCoachRunMode,
   applyCoachResultToState,
+  buildDraftGenerateOptions,
 } from './PipelineWorkspaceWithSidebar';
 
 const memorySessionStorage = (() => {
@@ -74,6 +75,24 @@ describe('PipelineWorkspaceWithSidebar helpers', () => {
     expect(summary).toBe(
       'Drafts ready: generated=42, dryRun=true, modes=strict/express'
     );
+  });
+
+  it('builds draft generate options with dryRun flag', () => {
+    const opts = buildDraftGenerateOptions({
+      dryRun: false,
+      limit: 10,
+      dataQualityMode: 'strict',
+      interactionMode: 'express',
+      icpProfileId: 'p1',
+      icpHypothesisId: 'h1',
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      explicitCoachPromptId: 'draft_intro_v1',
+    });
+    expect(opts.dryRun).toBe(false);
+    expect(opts.limit).toBe(10);
+    expect(opts.dataQualityMode).toBe('strict');
+    expect(opts.interactionMode).toBe('express');
   });
 
   it('formats send summary without truncation', () => {

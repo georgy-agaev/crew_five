@@ -15,6 +15,9 @@ Drafts → Smartlead prepare.
 - Updated Pipeline Draft step to support creating a campaign inline:
   - Finalizes/snapshots the currently selected segment to obtain `segmentVersion`.
   - Creates and auto-selects the new campaign so “Generate drafts” can proceed.
+- Updated Pipeline Draft step to support **Live** draft generation:
+  - Added a “Draft execution” toggle (`Dry-run` vs `Live (save drafts)`).
+  - Dry-run no longer unlocks the Send step (prevents proceeding without persisted drafts).
 - Fixed Web unit test discovery to exclude Playwright specs:
   - `web/vite.config.ts` now limits Vitest to `src/**/*.test.*` and excludes `e2e/**`.
 - Updated endpoint catalog: `docs/web_ui_endpoints.md`.
@@ -29,4 +32,3 @@ Drafts → Smartlead prepare.
 - Confirm draft generation works end-to-end for a freshly created campaign (Draft step → drafts persisted).
 - Add a dedicated “Create campaign” entry point outside Pipeline Draft (optional, UX polish).
 - Add a small e2e smoke test that creates a campaign then generates drafts (Playwright).
-

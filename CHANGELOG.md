@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.92] - 2026-01-20
+### Added
+- Pipeline Draft step now exposes a `Dry-run` vs `Live (save drafts)` toggle for draft generation.
+### Changed
+- Draft dry-run no longer unlocks the Send step (prevents Smartlead prepare without persisted drafts).
+
 ## [0.1.91] - 2026-01-20
 ### Added
 - Campaign creation is now available from the Pipeline Draft step:

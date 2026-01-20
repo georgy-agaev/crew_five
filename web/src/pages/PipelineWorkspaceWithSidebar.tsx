@@ -49,6 +49,32 @@ export function formatDraftSummary(params: {
   return `Drafts ready: generated=${params.generated}, dryRun=${params.dryRun}, modes=${params.dataQualityMode}/${params.interactionMode}`;
 }
 
+export function buildDraftGenerateOptions(params: {
+  dryRun: boolean;
+  limit: number;
+  dataQualityMode: 'strict' | 'graceful';
+  interactionMode: 'express' | 'coach';
+  icpProfileId?: string;
+  icpHypothesisId?: string;
+  coachPromptStep?: string;
+  explicitCoachPromptId?: string;
+  provider?: string;
+  model?: string;
+}) {
+  return {
+    dryRun: params.dryRun,
+    limit: params.limit,
+    dataQualityMode: params.dataQualityMode,
+    interactionMode: params.interactionMode,
+    icpProfileId: params.icpProfileId,
+    icpHypothesisId: params.icpHypothesisId,
+    coachPromptStep: params.coachPromptStep,
+    explicitCoachPromptId: params.explicitCoachPromptId,
+    provider: params.provider,
+    model: params.model,
+  };
+}
+
 export function formatAnalyticsGroupKey(
   groupBy: 'icp' | 'segment' | 'pattern',
   row: Record<string, any>
@@ -604,6 +630,7 @@ type PipelineWorkspaceProps = {
   const [campaignCreateBusy, setCampaignCreateBusy] = useState(false);
   const [campaignCreateError, setCampaignCreateError] = useState<string | null>(null);
   const [draftLimit, setDraftLimit] = useState<number>(50);
+  const [draftDryRun, setDraftDryRun] = useState<boolean>(true);
   const [dataQualityMode, setDataQualityMode] = useState<'strict' | 'graceful'>('strict');
   const [interactionMode, setInteractionMode] = useState<'express' | 'coach'>('express');
   const [draftSummary, setDraftSummary] = useState<string | null>(null);
@@ -2296,17 +2323,20 @@ type PipelineWorkspaceProps = {
       const settings = loadSettings();
       const draftModel = settings.providers.draft;
       const explicitPromptId = taskPrompts.emailDraft || undefined;
-      const res = await triggerDraftGenerate(selectedCampaignId, {
-        dryRun: true,
-        limit: draftLimit,
-        dataQualityMode,
-        interactionMode,
-        icpProfileId: completed.icp?.id ?? undefined,
-        icpHypothesisId: completed.hypothesis?.id ?? undefined,
-        provider: draftModel.provider,
-        model: draftModel.model,
-        explicitCoachPromptId: explicitPromptId,
-      });
+      const res = await triggerDraftGenerate(
+        selectedCampaignId,
+        buildDraftGenerateOptions({
+          dryRun: draftDryRun,
+          limit: draftLimit,
+          dataQualityMode,
+          interactionMode,
+          icpProfileId: completed.icp?.id ?? undefined,
+          icpHypothesisId: completed.hypothesis?.id ?? undefined,
+          provider: draftModel.provider,
+          model: draftModel.model,
+          explicitCoachPromptId: explicitPromptId,
+        })
+      );
       setDraftSummary(
         formatDraftSummary({
           generated: res.generated,
@@ -2315,11 +2345,13 @@ type PipelineWorkspaceProps = {
           interactionMode,
         })
       );
-      setCompleted((prev) => ({
-        ...prev,
-        draft: { ...res, campaignId: selectedCampaignId },
-      }));
-      setCurrentStep('send');
+      if (!draftDryRun) {
+        setCompleted((prev) => ({
+          ...prev,
+          draft: { ...res, campaignId: selectedCampaignId },
+        }));
+        setCurrentStep('send');
+      }
     } catch (err: any) {
       setAiError(err?.message ?? 'Failed to generate drafts');
     } finally {
@@ -3288,6 +3320,58 @@ type PipelineWorkspaceProps = {
                           Coach
                         </button>
                       </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: colors.textMuted,
+                        marginBottom: '8px',
+                      }}
+                    >
+                      Draft execution
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setDraftDryRun(true)}
+                        style={{
+                          flex: 1,
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          border: `1px solid ${draftDryRun ? colors.orange : colors.border}`,
+                          background: draftDryRun ? colors.orangeLight : colors.card,
+                          color: draftDryRun ? colors.orange : colors.textMuted,
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Dry-run
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDraftDryRun(false)}
+                        style={{
+                          flex: 1,
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          border: `1px solid ${!draftDryRun ? colors.orange : colors.border}`,
+                          background: !draftDryRun ? colors.orangeLight : colors.card,
+                          color: !draftDryRun ? colors.orange : colors.textMuted,
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Live (save drafts)
+                      </button>
+                    </div>
+                    <div style={{ marginTop: '6px', fontSize: '12px', color: colors.textMuted }}>
+                      Dry-run returns counts only. Live mode writes drafts to Supabase.
                     </div>
                   </div>
 
