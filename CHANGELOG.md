@@ -2,17 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.91] - 2026-01-20
+### Added
+- Campaign creation is now available from the Pipeline Draft step:
+  - `POST /api/campaigns` creates a Supabase campaign bound to a segment snapshot (`segment_id`, `segment_version`).
+  - Web UI now supports inline campaign creation and auto-selects it for draft generation.
+### Fixed
+- Web unit tests no longer try to execute Playwright specs: `web/vite.config.ts` excludes `web/e2e/**` from Vitest.
+
+## [0.1.90] - 2026-01-19
+### Changed
+- Pipeline workspace Send step now runs “Prepare Smartlead” from the UI (supports dry-run + batch size) instead of preview-only messaging.
+- `formatSendSummary` now reflects “Smartlead prepare” semantics.
+
 ## [0.1.89] - 2026-01-15
 ### Changed
 - Smartlead “send” now prepares campaigns via the direct Smartlead API: pushes leads from `segment_members` and syncs the first sequence step from Supabase drafts (no one-off MCP sendEmail).
 - `POST /api/smartlead/send` now requires `{ campaignId, smartleadCampaignId }` and returns a prepare summary (`leadsPrepared`, `sequencesSynced`, etc.).
 ### Added
 - New tests covering Smartlead prepare (`smartleadSendCommand`) and the web adapter endpoint contract.
-
-## [0.1.90] - 2026-01-19
-### Changed
-- Pipeline workspace Send step now runs “Prepare Smartlead” from the UI (supports dry-run + batch size) instead of preview-only messaging.
-- `formatSendSummary` now reflects “Smartlead prepare” semantics.
 
 ## [0.1.88] - 2026-01-15
 ### Added

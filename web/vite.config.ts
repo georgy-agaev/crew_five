@@ -7,6 +7,8 @@ export default defineConfig({
   plugins: [react()],
   test: {
     ...configDefaults,
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    exclude: [...configDefaults.exclude, 'e2e/**'],
     environment: 'jsdom',
     globals: true,
   },

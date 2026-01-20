@@ -18,6 +18,7 @@ import { enqueueSegmentEnrichment, getSegmentEnrichmentStatus, runSegmentEnrichm
 import { createSegment, getSegmentById, listSegmentsWithCounts } from '../services/segments';
 import { createIcpHypothesis, createIcpProfile } from '../services/icp';
 import { createIcpHypothesisViaCoach, createIcpProfileViaCoach } from '../services/coach';
+import { createCampaign as createCampaignService } from '../services/campaigns';
 import {
   getEnrichmentSettings as getEnrichmentSettingsService,
   setEnrichmentSettings as setEnrichmentSettingsService,
@@ -100,6 +101,7 @@ type PatternRow = { reply_label: string; count: number };
 
 type AdapterDeps = {
   listCampaigns: () => Promise<Campaign[]>;
+  createCampaign?: (input: { name: string; segmentId: string; segmentVersion: number; createdBy?: string }) => Promise<any>;
   listDrafts: (params: { campaignId?: string; status?: string }) => Promise<DraftRow[]>;
   getEnrichmentSettings?: () => Promise<any>;
   setEnrichmentSettings?: (payload: any) => Promise<any>;
@@ -224,6 +226,32 @@ export async function dispatch(
 
   if (method === 'GET' && pathname === '/api/campaigns') {
     return { status: 200, body: await deps.listCampaigns() };
+  }
+
+  if (method === 'POST' && pathname === '/api/campaigns') {
+    if (!deps.createCampaign) return { status: 501, body: { error: 'Campaign creation not configured' } };
+    const body = req.body ?? {};
+    if (!body.name) return { status: 400, body: { error: 'name is required' } };
+    if (!body.segmentId) return { status: 400, body: { error: 'segmentId is required' } };
+    if (body.segmentVersion === undefined || body.segmentVersion === null) {
+      return { status: 400, body: { error: 'segmentVersion is required' } };
+    }
+    if (typeof body.segmentVersion !== 'number' || Number.isNaN(body.segmentVersion)) {
+      return { status: 400, body: { error: 'segmentVersion must be a number' } };
+    }
+
+    try {
+      const created = await deps.createCampaign({
+        name: body.name,
+        segmentId: body.segmentId,
+        segmentVersion: body.segmentVersion,
+        createdBy: body.createdBy,
+      });
+      return { status: 201, body: created };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Campaign creation failed';
+      return { status: 500, body: { error: message } };
+    }
   }
 
   if (method === 'GET' && pathname === '/api/drafts') {
@@ -934,6 +962,17 @@ export function createMockDeps(): AdapterDeps {
 
   return {
     listCampaigns: async () => mockCampaigns,
+    createCampaign: async ({ name, segmentId, segmentVersion }) => {
+      const created: Campaign = {
+        id: `camp-${randomUUID().substring(0, 8)}`,
+        name,
+        status: 'draft',
+        segment_id: segmentId,
+        segment_version: segmentVersion,
+      };
+      mockCampaigns.push(created);
+      return created;
+    },
     listDrafts: async ({ status }) => (status ? mockDrafts.filter((d) => d.status === status) : mockDrafts),
     getEnrichmentSettings: async () => ({
       version: 2,
@@ -1239,6 +1278,13 @@ export function createLiveDeps(
       if (error) throw error;
       return data as Campaign[];
     },
+    createCampaign: async ({ name, segmentId, segmentVersion, createdBy }) =>
+      createCampaignService(supabase, {
+        name,
+        segmentId,
+        segmentVersion,
+        createdBy,
+      }),
     listDrafts: async ({ campaignId, status }) => {
       let query = supabase.from('drafts').select('id,status,contact_id,metadata');
       if (campaignId) query = query.eq('campaign_id', campaignId);

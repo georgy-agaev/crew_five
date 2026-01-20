@@ -251,6 +251,17 @@ export async function fetchCampaigns(): Promise<Campaign[]> {
   return fetchJson<Campaign[]>('/campaigns');
 }
 
+export async function createCampaign(payload: {
+  name: string;
+  segmentId: string;
+  segmentVersion: number;
+}): Promise<Campaign> {
+  return fetchJson<Campaign>('/campaigns', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function fetchDrafts(campaignId?: string, status?: string): Promise<DraftRow[]> {
   const params = new URLSearchParams();
   if (campaignId) params.set('campaignId', campaignId);

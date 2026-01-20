@@ -1,6 +1,6 @@
 # Web UI Endpoint Map
 
-> Version: v0.7 (2026-01-15)
+> Version: v0.8 (2026-01-20)
 >
 > This document catalogues the HTTP endpoints exposed by the web adapter
 > (`src/web/server.ts`) and shows how the React Web UI (`web/src`) uses them.
@@ -25,6 +25,10 @@
   - Returns: list of campaigns (`id`, `name`, `status`, `segment_id`,
     `segment_version`).
   - Used by: `fetchCampaigns` in `web/src/apiClient.ts`.
+- `POST /api/campaigns`
+  - Body: `{ name, segmentId, segmentVersion, createdBy? }`.
+  - Returns: created campaign row (includes `id`, `name`, `segment_id`, `segment_version`).
+  - Used by: `createCampaign` in `web/src/apiClient.ts` (Pipeline Draft step inline creation).
 - `GET /api/drafts`
   - Query params:
     - `campaignId` (optional) – filter drafts by campaign.

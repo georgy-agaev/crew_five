@@ -7,6 +7,7 @@ import {
   fetchIcpHypotheses,
   fetchSegments,
   fetchCampaigns,
+  createCampaign,
   fetchSmartleadCampaigns,
   triggerDraftGenerate,
   triggerSmartleadSend,
@@ -30,6 +31,7 @@ import {
   type PromptStep,
   fetchLlmModels,
   createSegmentAPI,
+  snapshotSegment,
   saveExaSegmentAPI,
 } from '../apiClient';
 import { SegmentBuilder } from '../components/SegmentBuilder';
@@ -598,6 +600,9 @@ type PipelineWorkspaceProps = {
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
+  const [newCampaignName, setNewCampaignName] = useState<string>('');
+  const [campaignCreateBusy, setCampaignCreateBusy] = useState(false);
+  const [campaignCreateError, setCampaignCreateError] = useState<string | null>(null);
   const [draftLimit, setDraftLimit] = useState<number>(50);
   const [dataQualityMode, setDataQualityMode] = useState<'strict' | 'graceful'>('strict');
   const [interactionMode, setInteractionMode] = useState<'express' | 'coach'>('express');
@@ -1823,6 +1828,41 @@ type PipelineWorkspaceProps = {
       cancelled = true;
     };
   }, [selectedSmartleadCampaignId, smartleadReady]);
+
+  const handleCreateCampaign = async () => {
+    const name = newCampaignName.trim();
+    if (!name) {
+      setCampaignCreateError('Campaign name is required');
+      return;
+    }
+    if (!completed.segment?.id) {
+      setCampaignCreateError('Select a segment first');
+      return;
+    }
+    setCampaignCreateBusy(true);
+    setCampaignCreateError(null);
+    try {
+      const snapshot = await snapshotSegment({ segmentId: completed.segment.id, finalize: true });
+      const segmentVersion =
+        typeof snapshot?.version === 'number'
+          ? snapshot.version
+          : typeof completed.segment?.version === 'number'
+          ? completed.segment.version
+          : 1;
+      const created = await createCampaign({
+        name,
+        segmentId: completed.segment.id,
+        segmentVersion,
+      });
+      setCampaigns((prev) => [created, ...prev]);
+      setSelectedCampaignId(created.id);
+      setNewCampaignName('');
+    } catch (err: any) {
+      setCampaignCreateError(err?.message ?? 'Failed to create campaign');
+    } finally {
+      setCampaignCreateBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (currentPage !== 'promptRegistry') return;
@@ -3056,6 +3096,51 @@ type PipelineWorkspaceProps = {
                         </option>
                       ))}
                     </select>
+
+                    <div style={{ marginTop: '10px', display: 'grid', gap: '8px' }}>
+                      <input
+                        value={newCampaignName}
+                        onChange={(e) => setNewCampaignName(e.target.value)}
+                        placeholder="New campaign name"
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: `1px solid ${colors.border}`,
+                          background: colors.card,
+                          fontSize: '14px',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleCreateCampaign().catch(() => null)}
+                        disabled={campaignCreateBusy || !completed.segment?.id}
+                        style={{
+                          background: colors.orange,
+                          color: '#FFF',
+                          border: 'none',
+                          borderRadius: '8px',
+                          padding: '10px 16px',
+                          fontSize: '14px',
+                          fontWeight: 600,
+                          cursor:
+                            campaignCreateBusy || !completed.segment?.id ? 'not-allowed' : 'pointer',
+                          opacity: campaignCreateBusy || !completed.segment?.id ? 0.7 : 1,
+                        }}
+                      >
+                        {campaignCreateBusy ? 'Creating…' : 'Create campaign'}
+                      </button>
+                      {campaignCreateError && (
+                        <div style={{ fontSize: '12px', color: colors.danger }}>
+                          {campaignCreateError}
+                        </div>
+                      )}
+                      {!campaignCreateError && campaigns.length === 0 && (
+                        <div style={{ fontSize: '12px', color: colors.textMuted }}>
+                          No campaigns found yet — create your first campaign to generate drafts.
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div style={{ display: 'flex', gap: '12px' }}>

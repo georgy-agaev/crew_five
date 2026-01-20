@@ -19,6 +19,19 @@ describe('web api client (live adapter)', () => {
     expect(data[0].id).toBe('c1');
   });
 
+  it('createCampaign posts name + segment fields', async () => {
+    const { createCampaign } = await loadClient();
+    (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ id: 'c1' }) });
+    await createCampaign({ name: 'New', segmentId: 'seg-1', segmentVersion: 2 });
+    const call = (fetch as any).mock.calls[0];
+    expect(call[0]).toBe('/api/campaigns');
+    expect(call[1].method).toBe('POST');
+    const body = JSON.parse(call[1].body);
+    expect(body.name).toBe('New');
+    expect(body.segmentId).toBe('seg-1');
+    expect(body.segmentVersion).toBe(2);
+  });
+
   it('triggerDraftGenerate sends dry-run by default', async () => {
     const { triggerDraftGenerate } = await loadClient();
     (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ generated: 0, dryRun: true }) });
