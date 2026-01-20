@@ -78,13 +78,13 @@ describe('PipelineWorkspaceWithSidebar helpers', () => {
 
   it('formats send summary without truncation', () => {
     const summary = formatSendSummary({ fetched: 10, sent: 8, skipped: 2 }, 0);
-    expect(summary).toBe('Smartlead preview: fetched=10, sent=8, skipped=2');
+    expect(summary).toBe('Smartlead prepare: fetched=10, sent=8, skipped=2');
   });
 
   it('formats send summary with truncation note when truncated > 0', () => {
     const summary = formatSendSummary({ fetched: 20, sent: 15, skipped: 5 }, 7);
     expect(summary).toBe(
-      'Smartlead preview: fetched=20, sent=15, skipped=5 (truncated preview by 7)'
+      'Smartlead prepare: fetched=20, sent=15, skipped=5 (truncated preview by 7)'
     );
   });
 

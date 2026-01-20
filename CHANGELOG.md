@@ -9,6 +9,11 @@ All notable changes to this project will be documented in this file.
 ### Added
 - New tests covering Smartlead prepare (`smartleadSendCommand`) and the web adapter endpoint contract.
 
+## [0.1.90] - 2026-01-19
+### Changed
+- Pipeline workspace Send step now runs “Prepare Smartlead” from the UI (supports dry-run + batch size) instead of preview-only messaging.
+- `formatSendSummary` now reflects “Smartlead prepare” semantics.
+
 ## [0.1.88] - 2026-01-15
 ### Added
 - Firecrawl enrichment now runs deterministically via `search → scrape` using `companies.website`, storing prompt-safe `summary + sources` (no raw markdown blobs).

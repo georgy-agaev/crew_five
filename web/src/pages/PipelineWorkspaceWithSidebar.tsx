@@ -9,7 +9,7 @@ import {
   fetchCampaigns,
   fetchSmartleadCampaigns,
   triggerDraftGenerate,
-  triggerSmartleadPreview,
+  triggerSmartleadSend,
   enqueueSegmentEnrichment,
   enqueueSegmentEnrichmentMulti,
   fetchEnrichmentStatus,
@@ -64,7 +64,7 @@ export function formatSendSummary(
   result: { fetched?: number; sent?: number; skipped?: number },
   truncated?: number
 ) {
-  const base = `Smartlead preview: fetched=${result.fetched ?? 0}, sent=${result.sent ?? 0}, skipped=${result.skipped ?? 0}`;
+  const base = `Smartlead prepare: fetched=${result.fetched ?? 0}, sent=${result.sent ?? 0}, skipped=${result.skipped ?? 0}`;
   return truncated && truncated > 0 ? `${base} (truncated preview by ${truncated})` : base;
 }
 
@@ -607,6 +607,8 @@ type PipelineWorkspaceProps = {
   const [sendSummary, setSendSummary] = useState<string | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const [sendLoading, setSendLoading] = useState(false);
+  const [sendDryRun, setSendDryRun] = useState(true);
+  const [sendBatchSize, setSendBatchSize] = useState<number>(25);
   const [promptEntries, setPromptEntries] = useState<PromptEntry[]>([]);
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   const [taskPrompts, setTaskPrompts] = useState<TaskPromptsState>(() => {
@@ -2285,40 +2287,40 @@ type PipelineWorkspaceProps = {
     }
   };
 
-  const handleSendPreview = async () => {
+  const handlePrepareSmartlead = async () => {
     if (!smartleadReady) {
       setAiError('Smartlead environment is not configured.');
       return;
     }
     if (!selectedCampaignId) {
-      setAiError('Select a campaign before previewing Smartlead.');
+      setAiError('Select a campaign before preparing Smartlead.');
       return;
     }
     if (!selectedSmartleadCampaignId) {
-      setAiError('Select a Smartlead campaign before previewing send.');
+      setAiError('Select a Smartlead campaign before preparing.');
       return;
     }
     setSendLoading(true);
     setAiError(null);
     try {
-      const res = await triggerSmartleadPreview({
-        dryRun: true,
-        batchSize: 10,
+      const res = await triggerSmartleadSend({
+        dryRun: sendDryRun,
+        batchSize: sendBatchSize,
         campaignId: selectedCampaignId,
         smartleadCampaignId: selectedSmartleadCampaignId,
       });
       setSendSummary(
         formatSendSummary(
           {
-            fetched: (res as any)?.leadsPrepared ?? 0,
-            sent: (res as any)?.leadsPushed ?? 0,
-            skipped: (res as any)?.skippedContactsNoEmail ?? 0,
+            fetched: res?.leadsPrepared ?? 0,
+            sent: res?.leadsPushed ?? 0,
+            skipped: res?.skippedContactsNoEmail ?? 0,
           },
           0
-        )
+        ) + ` · sequencesSynced=${res?.sequencesSynced ?? 0} · dryRun=${Boolean(res?.dryRun)}`
       );
     } catch (err: any) {
-      setAiError(err?.message ?? 'Failed to preview Smartlead send');
+      setAiError(err?.message ?? 'Failed to prepare Smartlead');
     } finally {
       setSendLoading(false);
     }
@@ -3335,7 +3337,7 @@ type PipelineWorkspaceProps = {
                     color: colors.text,
                   }}
                 >
-                  Smartlead preview
+                  Smartlead prepare
                 </h3>
 
                 <div style={{ display: 'grid', gap: '12px' }}>
@@ -3371,10 +3373,38 @@ type PipelineWorkspaceProps = {
                     </select>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                  <div style={{ display: 'grid', gap: '10px', marginTop: '8px' }}>
+                    <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <label style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '12px', color: colors.textMuted }}>
+                        <input
+                          type="checkbox"
+                          checked={sendDryRun}
+                          onChange={(e) => setSendDryRun(e.target.checked)}
+                        />
+                        Dry-run (no Smartlead changes)
+                      </label>
+                      <label style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '12px', color: colors.textMuted }}>
+                        Batch size
+                        <input
+                          type="number"
+                          min={1}
+                          max={500}
+                          value={sendBatchSize}
+                          onChange={(e) => setSendBatchSize(Math.max(1, Math.min(500, Number(e.target.value) || 1)))}
+                          style={{
+                            width: '88px',
+                            padding: '6px 8px',
+                            borderRadius: '8px',
+                            border: `1px solid ${colors.border}`,
+                            background: colors.card,
+                            fontSize: '12px',
+                          }}
+                        />
+                      </label>
+                    </div>
                     <button
-                      onClick={() => handleSendPreview().catch(() => null)}
-                      disabled={sendLoading || !smartleadReady || !selectedSmartleadCampaignId}
+                      onClick={() => handlePrepareSmartlead().catch(() => null)}
+                      disabled={sendLoading || !smartleadReady || !selectedSmartleadCampaignId || !selectedCampaignId}
                       style={{
                         background: colors.orange,
                         color: '#FFF',
@@ -3384,17 +3414,17 @@ type PipelineWorkspaceProps = {
                         fontSize: '14px',
                         fontWeight: 600,
                         cursor:
-                          sendLoading || !smartleadReady || !selectedSmartleadCampaignId
+                          sendLoading || !smartleadReady || !selectedSmartleadCampaignId || !selectedCampaignId
                             ? 'not-allowed'
                             : 'pointer',
                         opacity:
-                          sendLoading || !smartleadReady || !selectedSmartleadCampaignId
+                          sendLoading || !smartleadReady || !selectedSmartleadCampaignId || !selectedCampaignId
                             ? 0.7
                             : 1,
                         transition: 'all 0.2s ease',
                       }}
                     >
-                      {sendLoading ? 'Previewing…' : 'Preview in Smartlead'}
+                      {sendLoading ? 'Preparing…' : 'Prepare Smartlead'}
                     </button>
                   </div>
 
@@ -3433,9 +3463,9 @@ type PipelineWorkspaceProps = {
                     Safety guardrail
                   </div>
                   <div style={{ fontSize: '12px', color: colors.textMuted, lineHeight: '1.6' }}>
-                    This workspace uses a preview-only send path. Smartlead receive a capped batch
-                    for inspection, and no live send is triggered from the UI yet. Use the CLI or
-                    Smartlead dashboard when you are ready for full production sends.
+                    This step pushes leads from the selected campaign’s segment snapshot to
+                    Smartlead and syncs the first email sequence step from the first generated
+                    draft. Smartlead will send once the campaign is active in Smartlead.
                   </div>
                   {sendSummary && (
                     <div
