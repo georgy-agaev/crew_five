@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.96] - 2026-01-21
+### Fixed
+- Draft generation now reports insert errors back to the caller (summary includes `failed` + `error` message).
+- Pipeline Draft step now shows `failed`/`skippedNoEmail` in the summary and blocks advancing to Send unless drafts were saved.
+
+## [0.1.95] - 2026-01-21
+### Fixed
+- Draft generation now fills required draft fields (`email_type`, `language`, `pattern_mode`) from the request when
+  the LLM response metadata is incomplete, preventing insert failures that left `drafts` empty in Live mode.
+
 ## [0.1.94] - 2026-01-20
 ### Added
 - Added helper scripts: `pnpm start:web` (tsx) and `pnpm start:web:dist` (Node on `dist/web/server.js`).

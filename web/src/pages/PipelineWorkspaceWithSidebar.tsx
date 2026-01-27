@@ -42,11 +42,21 @@ import { getWorkspaceColors } from '../theme';
 
 export function formatDraftSummary(params: {
   generated: number;
+  failed?: number;
+  skippedNoEmail?: number;
   dryRun: boolean;
   dataQualityMode: 'strict' | 'graceful';
   interactionMode: 'express' | 'coach';
 }) {
-  return `Drafts ready: generated=${params.generated}, dryRun=${params.dryRun}, modes=${params.dataQualityMode}/${params.interactionMode}`;
+  const failed = params.failed ?? 0;
+  const skippedNoEmail = params.skippedNoEmail ?? 0;
+  return `Drafts ready: generated=${params.generated}, failed=${failed}, skippedNoEmail=${skippedNoEmail}, dryRun=${params.dryRun}, modes=${params.dataQualityMode}/${params.interactionMode}`;
+}
+
+export function hasLiveDraftsReady(summary: { dryRun: boolean; generated: number; failed?: number }) {
+  if (summary.dryRun) return false;
+  if (summary.generated <= 0) return false;
+  return (summary.failed ?? 0) === 0;
 }
 
 export function buildDraftGenerateOptions(params: {
@@ -2340,12 +2350,30 @@ type PipelineWorkspaceProps = {
       setDraftSummary(
         formatDraftSummary({
           generated: res.generated,
+          failed: res.failed ?? 0,
+          skippedNoEmail: res.skippedNoEmail ?? 0,
           dryRun: res.dryRun,
           dataQualityMode,
           interactionMode,
         })
       );
       if (!draftDryRun) {
+        if (!hasLiveDraftsReady({ dryRun: res.dryRun, generated: res.generated, failed: res.failed })) {
+          const failed = res.failed ?? 0;
+          const skippedNoEmail = res.skippedNoEmail ?? 0;
+          if (failed > 0) {
+            setAiError(
+              `Draft generation failed for ${failed} contact(s).${res.error ? ` ${res.error}` : ''}`
+            );
+          } else if (skippedNoEmail > 0) {
+            setAiError(
+              `No drafts generated because ${skippedNoEmail} contact(s) have no email.`
+            );
+          } else {
+            setAiError('No drafts were generated. Check segment members and campaign binding.');
+          }
+          return;
+        }
         setCompleted((prev) => ({
           ...prev,
           draft: { ...res, campaignId: selectedCampaignId },

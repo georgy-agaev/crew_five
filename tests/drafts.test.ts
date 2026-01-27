@@ -251,6 +251,81 @@ describe('generateDrafts', () => {
     expect(draftRow.metadata?.enrichment_by_provider).toBe(null);
   });
 
+  it('returns failed counts and error message when draft insert fails', async () => {
+    const single = vi.fn().mockResolvedValue({
+      data: {
+        id: 'camp',
+        segment_id: 'seg',
+        segment_version: 1,
+        language: 'en',
+        pattern_mode: 'standard',
+      },
+      error: null,
+    });
+
+    const eq = vi.fn().mockReturnValue({ single });
+    const membersMatch = vi.fn().mockReturnValue({
+      limit: vi.fn().mockResolvedValue({
+        data: [
+          {
+            contact_id: 'contact-1',
+            company_id: 'company-1',
+            snapshot: {
+              contact: { full_name: 'Jane Doe', work_email: 'jane@acme.test', position: 'CTO' },
+              company: { id: 'company-1', company_name: 'Acme' },
+            },
+          },
+        ],
+        error: null,
+      }),
+    });
+
+    const insert = vi.fn().mockReturnValue({
+      select: vi.fn().mockResolvedValue({ data: null, error: { message: 'insert failed' } }),
+    });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'campaigns') return { select: () => ({ eq }) } as any;
+      if (table === 'segments')
+        return {
+          select: () => ({
+            eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }) }),
+          }),
+        } as any;
+      if (table === 'icp_profiles')
+        return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) } as any;
+      if (table === 'segment_members') return { select: () => ({ match: membersMatch }) } as any;
+      if (table === 'app_settings')
+        return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) } as any;
+      if (table === 'companies') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      if (table === 'employees') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      if (table === 'drafts') return { insert } as any;
+      throw new Error(`Unexpected table ${table}`);
+    });
+
+    const aiResponse: EmailDraftResponse = {
+      subject: 'Hello',
+      body: 'Body',
+      metadata: {
+        model: 'mock',
+        language: 'en',
+        pattern_mode: 'standard',
+        email_type: 'intro',
+        coach_prompt_id: 'intro_v1',
+      },
+    };
+    const chatClient: ChatClient = {
+      complete: vi.fn().mockResolvedValue(JSON.stringify(aiResponse)),
+    };
+    const aiClient = new AiClient(chatClient);
+
+    const summary = await generateDrafts({ from } as any, aiClient, { campaignId: 'camp', limit: 1, dryRun: false });
+
+    expect(summary.generated).toBe(1);
+    expect(summary.failed).toBe(1);
+    expect((summary as any).error).toContain('insert failed');
+  });
+
   it('supports dry-run without inserts', async () => {
     const single = vi.fn().mockResolvedValue({
       data: { id: 'camp', segment_id: 'seg', segment_version: 1 },
@@ -303,6 +378,67 @@ describe('generateDrafts', () => {
     const summary = await generateDrafts(supabase, aiClient, { campaignId: 'camp', dryRun: true });
     expect(summary.generated).toBe(0);
     expect(summary.skipped).toBeGreaterThanOrEqual(0);
+  });
+
+  it('falls back to request metadata when AI response metadata is incomplete', async () => {
+    const single = vi.fn().mockResolvedValue({
+      data: { id: 'camp', segment_id: 'seg', segment_version: 1, language: 'en', pattern_mode: 'standard' },
+      error: null,
+    });
+    const eq = vi.fn().mockReturnValue({ single });
+    const membersMatch = vi.fn().mockReturnValue({
+      limit: vi.fn().mockResolvedValue({
+        data: [
+          {
+            contact_id: 'contact-1',
+            company_id: 'company-1',
+            snapshot: {
+              contact: { full_name: 'Jane Doe', work_email: 'jane@acme.test', position: 'CTO' },
+              company: { id: 'company-1', company_name: 'Acme' },
+            },
+          },
+        ],
+        error: null,
+      }),
+    });
+
+    const insertSelect = vi.fn().mockResolvedValue({ data: [{ id: 'draft-1' }], error: null });
+    const insert = vi.fn().mockReturnValue({ select: insertSelect });
+
+    const supabase = {
+      from: (table: string) => {
+        if (table === 'campaigns') return { select: () => ({ eq }) };
+        if (table === 'segments')
+          return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }) }) }) };
+        if (table === 'segment_members') return { select: () => ({ match: membersMatch }) };
+        if (table === 'app_settings') return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) };
+        if (table === 'icp_profiles') return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) };
+        if (table === 'companies') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
+        if (table === 'employees') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
+        if (table === 'drafts') return { insert };
+        throw new Error('unexpected');
+      },
+    } as any;
+
+    const chatClient: ChatClient = {
+      complete: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          subject: 'Hello',
+          body: 'Body',
+          metadata: {},
+        })
+      ),
+    };
+    const aiClient = new AiClient(chatClient);
+
+    const summary = await generateDrafts(supabase, aiClient, { campaignId: 'camp', variant: 'A' });
+    expect(summary.generated).toBe(1);
+
+    const insertedPayload = insert.mock.calls[0]?.[0] as any[];
+    expect(insertedPayload).toHaveLength(1);
+    expect(insertedPayload[0].email_type).toBe('intro');
+    expect(insertedPayload[0].language).toBe('en');
+    expect(insertedPayload[0].pattern_mode).toBe('standard');
   });
 
   it('fail-fast aborts on insert error', async () => {

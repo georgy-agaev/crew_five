@@ -35,6 +35,7 @@ import {
   resolveCoachRunMode,
   applyCoachResultToState,
   buildDraftGenerateOptions,
+  hasLiveDraftsReady,
 } from './PipelineWorkspaceWithSidebar';
 
 const memorySessionStorage = (() => {
@@ -68,12 +69,14 @@ describe('PipelineWorkspaceWithSidebar helpers', () => {
   it('formats draft summary with modes and dryRun flag', () => {
     const summary = formatDraftSummary({
       generated: 42,
+      failed: 0,
+      skippedNoEmail: 0,
       dryRun: true,
       dataQualityMode: 'strict',
       interactionMode: 'express',
     });
     expect(summary).toBe(
-      'Drafts ready: generated=42, dryRun=true, modes=strict/express'
+      'Drafts ready: generated=42, failed=0, skippedNoEmail=0, dryRun=true, modes=strict/express'
     );
   });
 
@@ -93,6 +96,13 @@ describe('PipelineWorkspaceWithSidebar helpers', () => {
     expect(opts.limit).toBe(10);
     expect(opts.dataQualityMode).toBe('strict');
     expect(opts.interactionMode).toBe('express');
+  });
+
+  it('hasLiveDraftsReady requires live mode with generated drafts and no failures', () => {
+    expect(hasLiveDraftsReady({ dryRun: true, generated: 1, failed: 0 })).toBe(false);
+    expect(hasLiveDraftsReady({ dryRun: false, generated: 0, failed: 0 })).toBe(false);
+    expect(hasLiveDraftsReady({ dryRun: false, generated: 1, failed: 1 })).toBe(false);
+    expect(hasLiveDraftsReady({ dryRun: false, generated: 1, failed: 0 })).toBe(true);
   });
 
   it('formats send summary without truncation', () => {

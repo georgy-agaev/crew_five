@@ -17,6 +17,10 @@ export interface DraftSummary {
   generated: number;
   dryRun: boolean;
   gracefulUsed?: number;
+  failed?: number;
+  skipped?: number;
+  skippedNoEmail?: number;
+  error?: string;
 }
 
 export interface SendSummary {

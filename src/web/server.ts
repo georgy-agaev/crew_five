@@ -84,7 +84,15 @@ async function ensurePromptRegistryColumns(client: any) {
 }
 type Campaign = { id: string; name: string; status?: string; segment_id?: string | null; segment_version?: number | null };
 type DraftRow = { id: string; status?: string; contact?: string; metadata?: Record<string, unknown> | null };
-type DraftSummary = { generated: number; dryRun: boolean; gracefulUsed?: number };
+type DraftSummary = {
+  generated: number;
+  dryRun: boolean;
+  gracefulUsed?: number;
+  failed?: number;
+  skipped?: number;
+  skippedNoEmail?: number;
+  error?: string;
+};
 type SendSummary = {
   dryRun: boolean;
   campaignId: string;

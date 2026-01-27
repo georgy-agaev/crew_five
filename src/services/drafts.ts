@@ -22,8 +22,8 @@ interface GenerateDraftsOptions {
   icpHypothesisId?: string;
   provider?: string;
   model?: string;
-   coachPromptStep?: string;
-   explicitCoachPromptId?: string;
+  coachPromptStep?: string;
+  explicitCoachPromptId?: string;
 }
 
 interface SegmentMemberRow {
@@ -215,6 +215,7 @@ export async function generateDrafts(
     dryRun: Boolean(options.dryRun),
     gracefulUsed: 0,
     previewGraceful: Boolean(options.previewGraceful),
+    error: undefined as string | undefined,
   };
 
   if (options.graceful && !getFallbackTemplate('general', 'en')) {
@@ -363,10 +364,20 @@ export async function generateDrafts(
       }
     }
 
+    const metadataBase: Record<string, unknown> = { ...(response.metadata as any) };
+    if (typeof metadataBase.email_type !== 'string') metadataBase.email_type = request.email_type;
+    if (typeof metadataBase.language !== 'string') metadataBase.language = request.language;
+    if (typeof metadataBase.pattern_mode !== 'string' && typeof request.pattern_mode === 'string') {
+      metadataBase.pattern_mode = request.pattern_mode;
+    }
+    if (typeof metadataBase.model !== 'string') metadataBase.model = options.model ?? 'unknown';
+
     const metadataWithVariant =
-      applyVariantToDraft({ metadata: response.metadata }, options.variant ?? '').metadata ?? {};
+      applyVariantToDraft({ metadata: metadataBase }, options.variant ?? '').metadata ?? {};
     if (resolvedCoachPromptId) {
       (metadataWithVariant as any).coach_prompt_id = resolvedCoachPromptId;
+    } else if (typeof (metadataWithVariant as any).coach_prompt_id !== 'string') {
+      (metadataWithVariant as any).coach_prompt_id = 'unknown';
     }
     const draftPattern = buildDraftPattern(metadataWithVariant);
     const existingProvider = (metadataWithVariant as any).provider;
@@ -376,9 +387,9 @@ export async function generateDrafts(
       campaign_id: options.campaignId,
       contact_id: member.contact_id,
       company_id: member.company_id,
-      email_type: response.metadata.email_type,
-      language: response.metadata.language,
-      pattern_mode: response.metadata.pattern_mode,
+      email_type: (metadataWithVariant as any).email_type ?? request.email_type,
+      language: (metadataWithVariant as any).language ?? request.language,
+      pattern_mode: (metadataWithVariant as any).pattern_mode ?? request.pattern_mode,
       subject,
       body,
       metadata: {
@@ -408,6 +419,7 @@ export async function generateDrafts(
       throw insertRes.error;
     }
     summary.failed += draftsPayload.length;
+    summary.error = insertRes.error.message ?? 'Failed to insert drafts';
     return summary;
   }
 
