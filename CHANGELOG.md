@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.97] - 2026-01-27
+### Changed
+- Updated `docs/Database_Description.md` to reflect the current Supabase `public` schema (tables, columns,
+  constraints, indexes, and RLS state).
+
 ## [0.1.96] - 2026-01-21
 ### Fixed
 - Draft generation now reports insert errors back to the caller (summary includes `failed` + `error` message).
