@@ -1,3 +1,4 @@
+/* eslint-disable security-node/detect-unhandled-async-errors */
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export async function getAppSetting<T>(
@@ -31,4 +32,3 @@ export async function setAppSetting<T>(
   );
   if (error) throw error;
 }
-

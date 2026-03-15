@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getFilterPreviewCounts } from '../src/services/filterPreview';
-import type { SupabaseClient } from '@supabase/supabase-js';
 
 describe('filterPreview', () => {
   let mockClient: any;

@@ -51,7 +51,8 @@ describe('POST /api/filters/preview endpoint', () => {
       sendSmartlead: async () => ({ sent: 0, failed: 0, skipped: 0, fetched: 0 }),
       listEvents: async () => [],
       listReplyPatterns: async () => [],
-      getFilterPreview: async (filterDefinition: unknown) => {
+      getFilterPreview: async (_filterDefinition: unknown) => {
+        void _filterDefinition;
         // Mock implementation returns sample counts
         return { companyCount: 5, employeeCount: 12, totalCount: 17 };
       },
@@ -107,7 +108,8 @@ describe('POST /api/filters/preview endpoint', () => {
       sendSmartlead: async () => ({ sent: 0, failed: 0, skipped: 0, fetched: 0 }),
       listEvents: async () => [],
       listReplyPatterns: async () => [],
-      getFilterPreview: async (filterDefinition: unknown) => {
+      getFilterPreview: async (_filterDefinition: unknown) => {
+        void _filterDefinition;
         // Empty filters should return all counts
         return { companyCount: 100, employeeCount: 500, totalCount: 500 };
       },

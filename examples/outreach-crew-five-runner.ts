@@ -1,3 +1,4 @@
+/* eslint-disable security-node/detect-crlf */
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 

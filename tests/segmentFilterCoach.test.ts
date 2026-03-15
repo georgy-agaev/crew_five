@@ -11,6 +11,7 @@ class MockChatClient implements ChatClient {
   }
 
   async complete(messages: ChatMessage[]): Promise<string> {
+    void messages;
     if (!this.mockResponse) {
       throw new Error('Mock response not configured');
     }

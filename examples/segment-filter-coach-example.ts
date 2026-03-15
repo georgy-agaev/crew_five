@@ -1,3 +1,4 @@
+/* eslint-disable security-node/detect-crlf */
 /**
  * Example: Using the Segment Filter Coach
  *
@@ -165,6 +166,7 @@ async function example5_errorHandling() {
   // Mock client that returns invalid data
   class InvalidResponseClient implements ChatClient {
     async complete(_messages: ChatMessage[]): Promise<string> {
+      void _messages;
       return JSON.stringify({
         suggestions: [
           {

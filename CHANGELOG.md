@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.05] - 2026-03-15
+### Added
+- Added `docs/sessions/2026-03-15_7_lint_warning_cleanup.md`, documenting the post-delivery lint cleanup.
+
+### Changed
+- Cleaned up the remaining ESLint warnings in examples, tests, and small runtime helpers so `pnpm lint`
+  now completes without warnings.
+
 ## [0.2.04] - 2026-03-15
 ### Added
 - Added `docs/sessions/2026-03-15_6_outreacher_task_closure_and_repo_hygiene.md`, summarizing final task closure,

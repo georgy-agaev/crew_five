@@ -46,7 +46,6 @@ import {
   runIcpDiscoveryWithExa,
 } from '../services/icpDiscovery.js';
 import { generateSegmentFiltersViaCoach } from '../services/icpCoach.js';
-import { searchExaWebset } from '../services/exaWebset.js';
 
 const promptRegistryColumnSupport = {
   checked: false,
@@ -1823,7 +1822,7 @@ export function createLiveDeps(
         snapshot: object;
       }> = [];
 
-      for (const [_email, { employeeId, companyId }] of employeeMap.entries()) {
+      for (const { employeeId, companyId } of employeeMap.values()) {
         segmentMembers.push({
           segment_id: segmentId,
           segment_version: segmentVersion,

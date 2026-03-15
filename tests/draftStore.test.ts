@@ -78,7 +78,6 @@ describe('draftStore', () => {
       ],
       error: null,
     });
-    const order = vi.fn().mockReturnValue({ limit });
     const statusEq = vi.fn().mockReturnValue({ limit });
     const campaignEq = vi.fn().mockReturnValue({
       order: vi.fn().mockReturnValue({ eq: statusEq, limit }),

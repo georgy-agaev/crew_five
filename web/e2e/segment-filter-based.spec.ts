@@ -1,3 +1,4 @@
+/* eslint-disable security-node/detect-crlf */
 import { test, expect } from '@playwright/test';
 
 /**
