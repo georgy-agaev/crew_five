@@ -498,6 +498,203 @@ describe('createProgram', () => {
     process.exitCode = originalExitCode;
   });
 
+  it('wires draft:save and prints inserted rows', async () => {
+    const insertSelect = vi.fn().mockResolvedValue({
+      data: [{ id: 'draft-1', campaign_id: 'camp-1', contact_id: 'contact-1', company_id: 'company-1' }],
+      error: null,
+    });
+    const insert = vi.fn().mockReturnValue({ select: insertSelect });
+    const from = vi.fn((table: string) => {
+      if (table === 'drafts') return { insert };
+      throw new Error(`Unexpected table ${table}`);
+    });
+    const supabaseClient = { from } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'draft:save',
+      '--payload',
+      JSON.stringify({
+        campaignId: 'camp-1',
+        contactId: 'contact-1',
+        companyId: 'company-1',
+        subject: 'Hello',
+        body: 'World',
+      }),
+    ]);
+
+    expect(insert).toHaveBeenCalledWith([
+      expect.objectContaining({
+        campaign_id: 'camp-1',
+        contact_id: 'contact-1',
+        company_id: 'company-1',
+        email_type: 'intro',
+        language: 'en',
+      }),
+    ]);
+    const payload = JSON.parse((logSpy.mock.calls[0] as any[])[0] as string);
+    expect(payload[0].id).toBe('draft-1');
+    logSpy.mockRestore();
+  });
+
+  it('wires draft:load with campaign and status filters', async () => {
+    const limit = vi.fn().mockResolvedValue({
+      data: [{ id: 'draft-1', campaign_id: 'camp-1', status: 'approved' }],
+      error: null,
+    });
+    const statusEq = vi.fn().mockReturnValue({ limit });
+    const campaignEq = vi.fn().mockReturnValue({
+      order: vi.fn().mockReturnValue({ eq: statusEq }),
+    });
+    const select = vi.fn().mockReturnValue({ eq: campaignEq });
+    const from = vi.fn((table: string) => {
+      if (table === 'drafts') return { select };
+      throw new Error(`Unexpected table ${table}`);
+    });
+    const supabaseClient = { from } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'draft:load',
+      '--campaign-id',
+      'camp-1',
+      '--status',
+      'approved',
+      '--limit',
+      '5',
+    ]);
+
+    expect(from).toHaveBeenCalledWith('drafts');
+    expect(select).toHaveBeenCalledWith('*');
+    expect(campaignEq).toHaveBeenCalledWith('campaign_id', 'camp-1');
+    expect(statusEq).toHaveBeenCalledWith('status', 'approved');
+    const payload = JSON.parse((logSpy.mock.calls[0] as any[])[0] as string);
+    expect(payload[0].status).toBe('approved');
+    logSpy.mockRestore();
+  });
+
+  it('wires draft:load with recipient context when requested', async () => {
+    const limit = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'draft-1',
+          campaign_id: 'camp-1',
+          status: 'approved',
+          contact: {
+            id: 'contact-1',
+            work_email: '',
+            generic_email: 'info@example.com',
+          },
+          company: {
+            id: 'company-1',
+            company_name: 'Example Co',
+          },
+        },
+      ],
+      error: null,
+    });
+    const statusEq = vi.fn().mockReturnValue({ limit });
+    const campaignEq = vi.fn().mockReturnValue({
+      order: vi.fn().mockReturnValue({ eq: statusEq, limit }),
+    });
+    const select = vi.fn().mockReturnValue({ eq: campaignEq });
+    const from = vi.fn((table: string) => {
+      if (table === 'drafts') return { select };
+      throw new Error(`Unexpected table ${table}`);
+    });
+    const supabaseClient = { from } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'draft:load',
+      '--campaign-id',
+      'camp-1',
+      '--status',
+      'approved',
+      '--limit',
+      '5',
+      '--include-recipient-context',
+    ]);
+
+    expect(select).toHaveBeenCalledWith(expect.stringContaining('generic_email'));
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload[0].recipient_email_source).toBe('generic');
+    logSpy.mockRestore();
+  });
+
+  it('wires draft:update-status and merges metadata', async () => {
+    const singleCurrent = vi.fn().mockResolvedValue({
+      data: { metadata: { source: 'agent' } },
+      error: null,
+    });
+    const currentEq = vi.fn().mockReturnValue({ single: singleCurrent });
+    const currentSelect = vi.fn().mockReturnValue({ eq: currentEq });
+
+    const singleUpdated = vi.fn().mockResolvedValue({
+      data: { id: 'draft-1', status: 'approved', reviewer: 'qa-user', metadata: { source: 'agent', note: 'ok' } },
+      error: null,
+    });
+    const updateEq = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({ single: singleUpdated }),
+    });
+    const update = vi.fn().mockReturnValue({ eq: updateEq });
+
+    const from = vi.fn((table: string) => {
+      if (table !== 'drafts') throw new Error(`Unexpected table ${table}`);
+      return {
+        select: currentSelect,
+        update,
+      };
+    });
+    const supabaseClient = { from } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'draft:update-status',
+      '--draft-id',
+      'draft-1',
+      '--status',
+      'approved',
+      '--reviewer',
+      'qa-user',
+      '--metadata',
+      '{"note":"ok"}',
+    ]);
+
+    expect(update).toHaveBeenCalledWith({
+      status: 'approved',
+      reviewer: 'qa-user',
+      metadata: { source: 'agent', note: 'ok' },
+    });
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.status).toBe('approved');
+    logSpy.mockRestore();
+  });
+
   it('campaign:status emits JSON error when error-format=json', async () => {
     const singleSelect = vi.fn().mockResolvedValue({ data: { status: 'draft' }, error: null });
     const eqSelect = vi.fn().mockReturnValue({ single: singleSelect });
@@ -580,6 +777,81 @@ describe('createProgram', () => {
     ]);
 
     // No error thrown means command is wired; smtpClient is stubbed internally.
+  });
+
+  it('wires the email:record-outbound command', async () => {
+    const outboundLimit = vi.fn().mockResolvedValue({ data: [], error: null });
+    const outboundEqMessage = vi.fn().mockReturnValue({ limit: outboundLimit });
+    const outboundEqProvider = vi.fn().mockReturnValue({ eq: outboundEqMessage });
+    const outboundSelectExisting = vi.fn().mockReturnValue({ eq: outboundEqProvider });
+
+    const draftSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: 'draft-1',
+        campaign_id: 'camp-1',
+        contact_id: 'contact-1',
+        company_id: 'company-1',
+        pattern_mode: 'direct',
+        metadata: {},
+        contact: { id: 'contact-1', work_email: '', generic_email: 'info@example.com' },
+      },
+      error: null,
+    });
+    const draftEq = vi.fn().mockReturnValue({ single: draftSingle });
+    const draftSelect = vi.fn().mockReturnValue({ eq: draftEq });
+
+    const insertedSingle = vi.fn().mockResolvedValue({
+      data: { id: 'out-1', status: 'sent' },
+      error: null,
+    });
+    const insertedSelect = vi.fn().mockReturnValue({ single: insertedSingle });
+    const insert = vi.fn().mockReturnValue({ select: insertedSelect });
+
+    const updatedDraftSingle = vi.fn().mockResolvedValue({
+      data: { id: 'draft-1', status: 'sent' },
+      error: null,
+    });
+    const updatedDraftSelect = vi.fn().mockReturnValue({ single: updatedDraftSingle });
+    const updatedDraftEq = vi.fn().mockReturnValue({ select: updatedDraftSelect });
+    const update = vi.fn().mockReturnValue({ eq: updatedDraftEq });
+
+    const supabaseClient = {
+      from: (table: string) => {
+        if (table === 'email_outbound') {
+          return { select: outboundSelectExisting, insert };
+        }
+        if (table === 'drafts') {
+          return { select: draftSelect, update };
+        }
+        throw new Error(`Unexpected table ${table}`);
+      },
+    } as any;
+
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'email:record-outbound',
+      '--payload',
+      JSON.stringify({
+        draftId: 'draft-1',
+        provider: 'imap_mcp',
+        providerMessageId: '<msg-1@example.com>',
+        senderIdentity: 'sales-1@example.com',
+        status: 'sent',
+      }),
+    ]);
+
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.outbound.id).toBe('out-1');
+    expect(update).toHaveBeenCalledWith({ status: 'sent' });
+    logSpy.mockRestore();
   });
 
   it('wires the campaign:status command', async () => {
@@ -1084,9 +1356,11 @@ describe('createProgram', () => {
   it('wires enrich command', async () => {
     const members = [{ contact_id: 'lead@example.com', company_id: 'co1' }];
     const segmentMembersSelect = vi.fn((_columns?: any, _opts?: any) => ({
-      match: vi.fn().mockResolvedValue({ data: [], error: null, count: 1 }),
+      match: vi.fn().mockResolvedValue({ data: [{ id: 'member-1' }], error: null, count: 1 }),
       eq: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
+          data: members,
+          error: null,
           limit: vi.fn().mockResolvedValue({ data: members, error: null }),
         }),
       }),
@@ -1096,6 +1370,8 @@ describe('createProgram', () => {
         single: vi.fn().mockResolvedValue({ data: { id: 'seg-1', version: 1 }, error: null }),
       }),
     });
+    const companyIn = vi.fn().mockResolvedValue({ data: [{ id: 'co1', company_research: null }], error: null });
+    const employeeIn = vi.fn().mockResolvedValue({ data: [{ id: 'lead@example.com', ai_research_data: null }], error: null });
     const jobInsert = vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         single: vi.fn().mockResolvedValue({
@@ -1124,8 +1400,17 @@ describe('createProgram', () => {
       if (table === 'jobs') {
         return { insert: jobInsert };
       }
-      if (table === 'companies' || table === 'employees') {
-        return { update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }) };
+      if (table === 'companies') {
+        return {
+          select: vi.fn().mockReturnValue({ in: companyIn }),
+          update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }),
+        };
+      }
+      if (table === 'employees') {
+        return {
+          select: vi.fn().mockReturnValue({ in: employeeIn }),
+          update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }),
+        };
       }
       return { select: vi.fn(), insert: vi.fn() };
     };
@@ -1141,6 +1426,123 @@ describe('createProgram', () => {
     await program.parseAsync(['node', 'gtm', 'enrich:run', '--segment-id', 'seg-1', '--limit', '5']);
 
     expect(segmentMembersSelect).toHaveBeenCalled();
+    expect(companyIn).toHaveBeenCalled();
+    expect(employeeIn).toHaveBeenCalled();
+  });
+
+  it('wires campaign:list with icp profile filter', async () => {
+    const segmentsEq = vi.fn().mockResolvedValue({
+      data: [{ id: 'seg-1' }],
+      error: null,
+    });
+    const segmentsSelect = vi.fn().mockReturnValue({ eq: segmentsEq });
+
+    const campaignsIn = vi.fn().mockResolvedValue({
+      data: [{ id: 'camp-1', segment_id: 'seg-1', status: 'draft' }],
+      error: null,
+    });
+    const campaignsOrder = vi.fn().mockReturnValue({ in: campaignsIn });
+    const campaignsSelect = vi.fn().mockReturnValue({ order: campaignsOrder });
+
+    const supabaseClient = {
+      from: vi.fn((table: string) => {
+        if (table === 'segments') return { select: segmentsSelect };
+        if (table === 'campaigns') return { select: campaignsSelect };
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    } as any;
+
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:list',
+      '--icp-profile-id',
+      'icp-1',
+      '--error-format',
+      'json',
+    ]);
+
+    const payload = JSON.parse((logSpy.mock.calls[0] as any[])[0] as string);
+    expect(segmentsEq).toHaveBeenCalledWith('icp_profile_id', 'icp-1');
+    expect(campaignsIn).toHaveBeenCalledWith('segment_id', ['seg-1']);
+    expect(payload[0].id).toBe('camp-1');
+    logSpy.mockRestore();
+  });
+
+  it('enrich_run_dry_run_returns_preview_with_company_limit_and_refresh_policy', async () => {
+    const segmentMembersSelect = vi.fn().mockReturnValue({
+      match: vi.fn().mockResolvedValue({ data: [{ id: 'member-1' }], error: null, count: 2 }),
+      eq: vi.fn().mockReturnValue({
+        eq: vi.fn().mockResolvedValue({
+          data: [
+            { contact_id: 'c1', company_id: 'co1' },
+            { contact_id: 'c2', company_id: 'co2' },
+          ],
+          error: null,
+        }),
+      }),
+    });
+    const segmentSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({ data: { id: 'seg-1', version: 2 }, error: null }),
+      }),
+    });
+    const companyIn = vi.fn().mockResolvedValue({
+      data: [
+        { id: 'co1', company_research: { version: 1, providers: { exa: {} }, lastUpdatedAt: new Date().toISOString() } },
+        { id: 'co2', company_research: null },
+      ],
+      error: null,
+    });
+    const employeeIn = vi.fn().mockResolvedValue({
+      data: [
+        { id: 'c1', ai_research_data: { version: 1, providers: { exa: {} }, lastUpdatedAt: new Date().toISOString() } },
+        { id: 'c2', ai_research_data: null },
+      ],
+      error: null,
+    });
+
+    const from = (table: string) => {
+      if (table === 'segment_members') return { select: segmentMembersSelect };
+      if (table === 'segments') return { select: segmentSelect };
+      if (table === 'companies') return { select: vi.fn().mockReturnValue({ in: companyIn }) };
+      if (table === 'employees') return { select: vi.fn().mockReturnValue({ in: employeeIn }) };
+      throw new Error(`Unexpected table ${table}`);
+    };
+    const supabaseClient = { from } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'enrich:run',
+      '--segment-id',
+      'seg-1',
+      '--provider',
+      'exa,firecrawl',
+      '--limit',
+      '1',
+      '--max-age-days',
+      '90',
+      '--dry-run',
+    ]);
+
+    const payload = JSON.parse((logSpy.mock.calls[0] as any[])[0] as string);
+    expect(payload.status).toBe('preview');
+    expect(payload.providers).toEqual(['exa', 'firecrawl']);
+    expect(payload.refreshPolicy).toEqual({ maxAgeDays: 90, forceRefresh: false });
+    expect(payload.counts.plannedCompanyCount).toBe(1);
+    logSpy.mockRestore();
   });
 
   it('enrich_run_emits_json_error_for_unknown_provider', async () => {
@@ -1175,15 +1577,16 @@ describe('createProgram', () => {
   });
 
   it('wires icp:create and prints profile id', async () => {
-    const from = vi.fn().mockReturnValue({
-      insert: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
-            data: { id: 'icp-1' },
-            error: null,
-          }),
+    const insert = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: { id: 'icp-1' },
+          error: null,
         }),
       }),
+    });
+    const from = vi.fn().mockReturnValue({
+      insert,
     });
     const supabaseClient = { from } as any;
     const program = createProgram({
@@ -1199,11 +1602,19 @@ describe('createProgram', () => {
       'icp:create',
       '--name',
       'Fintech ICP',
+      '--offering-domain',
+      'voicexpert.ru',
       '--company-criteria',
       '{"industry":"fintech"}',
     ]);
 
     expect(from).toHaveBeenCalledWith('icp_profiles');
+    expect(insert).toHaveBeenCalledWith([
+      expect.objectContaining({
+        name: 'Fintech ICP',
+        offering_domain: 'voicexpert.ru',
+      }),
+    ]);
     expect(logSpy).toHaveBeenCalledWith(JSON.stringify({ id: 'icp-1' }));
     logSpy.mockRestore();
   });
@@ -1259,7 +1670,7 @@ describe('createProgram', () => {
 
   it('wires icp:list command and prints profiles', async () => {
     const selectProfiles = vi.fn().mockResolvedValue({
-      data: [{ id: 'icp-1', name: 'ICP One' }],
+      data: [{ id: 'icp-1', name: 'ICP One', offering_domain: 'voicexpert.ru' }],
       error: null,
     });
     const from = vi.fn().mockReturnValue({ select: selectProfiles });
@@ -1271,23 +1682,73 @@ describe('createProgram', () => {
     });
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    await program.parseAsync(['node', 'gtm', 'icp:list', '--columns', 'id,name']);
+    await program.parseAsync(['node', 'gtm', 'icp:list']);
 
     expect(from).toHaveBeenCalledWith('icp_profiles');
+    expect(selectProfiles).toHaveBeenCalledWith('id, name, description, offering_domain');
     const payload = JSON.parse((logSpy.mock.calls[0] as any[])[0] as string);
     expect(payload[0].id).toBe('icp-1');
+    expect(payload[0].offering_domain).toBe('voicexpert.ru');
     logSpy.mockRestore();
   });
 
-  it('wires icp:hypothesis:list with filters', async () => {
-    const eq = vi.fn().mockReturnValue({
-      eq: vi.fn().mockResolvedValue({
-        data: [{ id: 'hyp-1', icp_profile_id: 'icp-1' }],
-        error: null,
-      }),
+  it('handles icp:hypothesis:list errors without throwing from parseAsync', async () => {
+    const selectHyp = vi.fn().mockResolvedValue({
+      data: null,
+      error: new Error('hypothesis list failed'),
     });
-    const selectHyp = vi.fn().mockReturnValue({ eq });
-    const from = vi.fn().mockReturnValue({ select: selectHyp });
+    const from = vi.fn((table: string) => {
+      if (table === 'icp_hypotheses') return { select: selectHyp };
+      throw new Error(`Unexpected table ${table}`);
+    });
+    const supabaseClient = { from } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+    });
+
+    const originalExitCode = process.exitCode;
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await program.parseAsync(['node', 'gtm', 'icp:hypothesis:list']);
+
+    expect(errorSpy).toHaveBeenCalled();
+
+    errorSpy.mockRestore();
+    process.exitCode = originalExitCode;
+  });
+
+  it('wires icp:hypothesis:list with filters', async () => {
+    const hypothesisEqById = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'hyp-1',
+          icp_id: 'icp-1',
+          status: 'active',
+          hypothesis_label: 'Mid-market',
+          search_config: {},
+          created_at: '2026-03-13T10:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+    const hypothesisEqByProfile = vi.fn().mockReturnValue({ eq: hypothesisEqById });
+    const selectHyp = vi.fn().mockReturnValue({ eq: hypothesisEqByProfile });
+    const segmentMaybeSingle = vi.fn().mockResolvedValue({
+      data: { id: 'seg-1', icp_hypothesis_id: 'hyp-1' },
+      error: null,
+    });
+    const segmentEq = vi.fn().mockReturnValue({ maybeSingle: segmentMaybeSingle });
+    const segmentIn = vi.fn().mockResolvedValue({
+      data: [{ id: 'seg-1', icp_hypothesis_id: 'hyp-1' }],
+      error: null,
+    });
+    const segmentSelect = vi.fn().mockReturnValue({ eq: segmentEq, in: segmentIn });
+    const from = vi.fn((table: string) => {
+      if (table === 'icp_hypotheses') return { select: selectHyp };
+      if (table === 'segments') return { select: segmentSelect };
+      throw new Error(`Unexpected table ${table}`);
+    });
     const supabaseClient = { from } as any;
     const program = createProgram({
       supabaseClient,
@@ -1305,35 +1766,58 @@ describe('createProgram', () => {
       '--segment-id',
       'seg-1',
       '--columns',
-      'id,icp_profile_id',
+      'id,icp_profile_id,segment_id',
     ]);
 
     expect(from).toHaveBeenCalledWith('icp_hypotheses');
     const payload = JSON.parse((logSpy.mock.calls[0] as any[])[0] as string);
     expect(payload[0].id).toBe('hyp-1');
+    expect(payload[0].icp_profile_id).toBe('icp-1');
+    expect(payload[0].segment_id).toBe('seg-1');
     logSpy.mockRestore();
   });
 
   it('cli_icp_coach_profile_calls_orchestrator_and_prints_json', async () => {
-    const from = vi.fn().mockReturnValue({
-      insert: vi.fn().mockReturnValue({
+    const profilesInsert = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: { id: 'icp-1', name: 'ICP' },
+          error: null,
+        }),
+      }),
+    });
+    const jobsInsert = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: { id: 'job-1', type: 'icp', status: 'created', result: {} },
+          error: null,
+        }),
+      }),
+    });
+    const jobsUpdate = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
         select: vi.fn().mockReturnValue({
           single: vi.fn().mockResolvedValue({
-            data: { id: 'icp-1', name: 'ICP' },
+            data: { id: 'job-1', status: 'completed', result: {} },
             error: null,
           }),
         }),
       }),
-      update: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: { id: 'job-1', status: 'completed', result: {} },
-              error: null,
-            }),
-          }),
-        }),
-      }),
+    });
+    const from = vi.fn((table: string) => {
+      if (table === 'icp_profiles') {
+        return { insert: profilesInsert };
+      }
+      if (table === 'jobs') {
+        return {
+          insert: jobsInsert,
+          update: jobsUpdate,
+        };
+      }
+      return {
+        insert: vi.fn(),
+        update: vi.fn(),
+      };
     });
     const supabaseClient = { from } as any;
     const chatClient = {
@@ -1353,9 +1837,22 @@ describe('createProgram', () => {
     });
 
     const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true as any);
-    await program.parseAsync(['node', 'gtm', 'icp:coach:profile', '--name', 'ICP']);
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'icp:coach:profile',
+      '--name',
+      'ICP',
+      '--offering-domain',
+      'voicexpert.ru',
+    ]);
 
     expect(stdoutSpy).toHaveBeenCalledTimes(1);
+    expect(profilesInsert).toHaveBeenCalledWith([
+      expect.objectContaining({
+        offering_domain: 'voicexpert.ru',
+      }),
+    ]);
     const printed = (stdoutSpy.mock.calls[0] as any[])[0] as string;
     const parsed = JSON.parse(printed);
     expect(parsed).toHaveProperty('jobId');
@@ -1473,6 +1970,75 @@ describe('createProgram', () => {
     expect(printed).toMatch(/suggestions/);
 
     logSpy.mockRestore();
+  });
+
+  it('analytics:summary emits JSON error when error-format=json', async () => {
+    const selectAnalytics = vi.fn().mockRejectedValue(new Error('analytics failed'));
+    const gte = vi.fn().mockReturnValue({ select: selectAnalytics });
+    const from = vi.fn((table: string) => {
+      if (table === 'analytics_events_flat') return { select: selectAnalytics, gte };
+      return { select: vi.fn() };
+    });
+    const supabaseClient = { from } as any;
+
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      smartleadClient: {} as any,
+    });
+
+    const originalExitCode = process.exitCode;
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'analytics:summary',
+      '--group-by',
+      'pattern',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(errorSpy).toHaveBeenCalled();
+    const payload = JSON.parse((errorSpy.mock.calls[0] as any[])[0] as string);
+    expect(payload.ok).toBe(false);
+    expect(payload.error?.message).toMatch(/analytics failed/i);
+
+    errorSpy.mockRestore();
+    process.exitCode = originalExitCode;
+  });
+
+  it('analytics:optimize emits JSON error when error-format=json', async () => {
+    const selectAnalytics = vi.fn().mockRejectedValue(new Error('optimize failed'));
+    const gte = vi.fn().mockReturnValue({ select: selectAnalytics });
+    const from = vi.fn((table: string) => {
+      if (table === 'analytics_events_flat') return { select: selectAnalytics, gte };
+      if (table === 'jobs') {
+        return { select: vi.fn() };
+      }
+      return { select: vi.fn() };
+    });
+    const supabaseClient = { from } as any;
+
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      smartleadClient: {} as any,
+    });
+
+    const originalExitCode = process.exitCode;
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await program.parseAsync(['node', 'gtm', 'analytics:optimize', '--error-format', 'json']);
+
+    expect(errorSpy).toHaveBeenCalled();
+    const payload = JSON.parse((errorSpy.mock.calls[0] as any[])[0] as string);
+    expect(payload.ok).toBe(false);
+    expect(payload.error?.message).toMatch(/optimize failed/i);
+
+    errorSpy.mockRestore();
+    process.exitCode = originalExitCode;
   });
 
   it('wires judge:drafts with dry-run', async () => {

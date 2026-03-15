@@ -9,6 +9,7 @@ export interface IcpCoachProfileInput {
   description?: string;
   websiteUrl?: string;
   valueProp?: string;
+  offeringDomain?: string;
   /**
    * Optional identifier of the coach prompt variant used for this run.
    * This is carried through jobs/analytics; the LLM scaffold remains fixed.
@@ -143,6 +144,7 @@ function buildProfileMessages(prompt: string, input: IcpCoachProfileInput): Chat
     input.description ? `Description: ${input.description}` : null,
     input.websiteUrl ? `Website URL: ${input.websiteUrl}` : null,
     input.valueProp ? `Value proposition: ${input.valueProp}` : null,
+    input.offeringDomain ? `Offering domain: ${input.offeringDomain}` : null,
   ].filter(Boolean) as string[];
 
   const user: ChatMessage = {

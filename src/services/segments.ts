@@ -92,14 +92,32 @@ export async function setSegmentVersion(
   return data.version ?? version;
 }
 
-export async function listSegmentsWithCounts(client: SupabaseClient): Promise<any[]> {
+interface ListSegmentsOptions {
+  icpProfileId?: string;
+  icpHypothesisId?: string;
+}
+
+export async function listSegmentsWithCounts(
+  client: SupabaseClient,
+  options: ListSegmentsOptions = {}
+): Promise<any[]> {
   const { data, error } = await client
     .from('segments')
     .select('id,name,version,created_at,filter_definition,icp_profile_id,icp_hypothesis_id')
     .order('created_at', { ascending: false });
   if (error) throw error;
 
-  const rows = (data ?? []).filter((row: any) => (row.version ?? 0) >= 0);
+  const rows = (data ?? [])
+    .filter((row: any) => (row.version ?? 0) >= 0)
+    .filter((row: any) => {
+      if (options.icpProfileId && row.icp_profile_id !== options.icpProfileId) {
+        return false;
+      }
+      if (options.icpHypothesisId && row.icp_hypothesis_id !== options.icpHypothesisId) {
+        return false;
+      }
+      return true;
+    });
 
   const withCounts = await Promise.all(
     rows.map(async (row: any) => {

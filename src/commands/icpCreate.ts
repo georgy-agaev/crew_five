@@ -8,6 +8,7 @@ interface IcpCreateOptions {
   description?: string;
   companyCriteria?: string;
   personaCriteria?: string;
+  offeringDomain?: string;
   createdBy?: string;
 }
 
@@ -20,6 +21,7 @@ export async function icpCreateCommand(client: SupabaseClient, options: IcpCreat
     description: options.description,
     companyCriteria,
     personaCriteria,
+    offeringDomain: options.offeringDomain,
     createdBy: options.createdBy,
   });
 

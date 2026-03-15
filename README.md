@@ -57,22 +57,39 @@ architecture docs live in `public-docs/`.
 - Read `public-docs/GETTING_STARTED.md` for install and configuration details.
 - Review `public-docs/ARCHITECTURE_OVERVIEW.md` for the GTM spine and module layout.
 - Explore `public-docs/EXTENSIBILITY_AND_CONNECTORS.md` to understand how to plug in new providers.
+- For a shared-base `Outreach -> crew_five` setup, see `docs/Outreach_crew_five_cli_contract.md`.
+- For the full operating model of `Outreacher + crew_five + imap_mcp` (send loop, inbox polling, follow-up scheduling, reply classification, pattern analytics), see `docs/Outreacher_operating_model.md`.
+- Ready-to-adapt agent runners live in `examples/outreach-crew-five-runner.ts` and `examples/outreach_crew_five_runner.py`; see `docs/Outreach_agent_runner_examples.md`.
+- For `Outreacher -> imap_mcp -> crew_five` send orchestration, use `draft:load --include-recipient-context`, then `email:record-outbound`, then `event:ingest`; the detailed contract lives in `docs/Outreach_crew_five_cli_contract.md`.
 - Use the CLI to manage the spine tables end to end:
   - Install deps: `pnpm install`
 - Run tests: `pnpm test`
+  - Segment list: `pnpm cli segment:list [--icp-profile-id <id>] [--icp-hypothesis-id <id>] [--error-format json]`
 - Segment creation: `pnpm cli segment:create --name "Fintech" --locale en --filter '{"field":"employees.role","operator":"eq","value":"CTO"}'`
   - Segment snapshot: `pnpm cli segment:snapshot --segment-id <id> [--segment-version 2] [--allow-empty] [--max-contacts 5000] [--force-version]`
+  - Campaign list: `pnpm cli campaign:list [--status <status>] [--segment-id <id>] [--icp-profile-id <id>] [--error-format json]`
   - Campaign creation: `pnpm cli campaign:create --name "Q1 Push" --segment-id <id> --segment-version 1 --snapshot-mode refresh [--allow-empty] [--max-contacts 5000] [--force-version] [--dry-run]`
   - Campaign update: `pnpm cli campaign:update --campaign-id <id> [--prompt-pack-id <id>] [--schedule <json>] [--throttle <json>]`
   - Validate filters (no DB): `pnpm cli filters:validate --filter '[{"field":"employees.role","operator":"eq","value":"CTO"}]' [--format json|text|terse]`
   - Email send scaffold: `pnpm cli email:send --provider smtp --sender-identity noreply@example.com [--throttle-per-minute 50] [--summary-format json|text] [--dry-run] [--log-json] [--fail-on-error] [--batch-id <id>]`
+  - Record an outbound send performed by an external orchestrator (for example, `imap_mcp`):
+    `pnpm cli email:record-outbound --payload '<json>' [--error-format json]`
   - Event ingest stub: `pnpm cli event:ingest --payload '{"provider":"stub","event_type":"delivered","provider_event_id":"123"}' [--dry-run] [--error-format json]`
   - Draft generation: `pnpm cli draft:generate --campaign-id <id> [--dry-run] [--fail-fast] [--limit 100] [--icp-profile-id <id>] [--icp-hypothesis-id <id>] [--variant <label>] [--graceful] [--preview-graceful] [--force-version]`
+  - Draft save/load/review:
+    - `pnpm cli draft:save --payload '<json-or-json-array>' [--error-format json]`
+    - `pnpm cli draft:load --campaign-id <id> [--status generated|approved|rejected|sent] [--limit <n>] [--include-recipient-context] [--error-format json]`
+    - `pnpm cli draft:update-status --draft-id <id> --status generated|approved|rejected|sent [--reviewer <id>] [--metadata <json>] [--error-format json]`
   - Campaign status change: `pnpm cli campaign:status --campaign-id <id> --status <nextStatus> [--error-format json]`
-  - Enrichment: `pnpm cli enrich:run --segment-id <id> [--adapter mock] [--provider exa|parallel|firecrawl|anysite] [--limit <n>] [--run-now] [--legacy-sync] [--dry-run]`
+  - Enrichment: `pnpm cli enrich:run --segment-id <id> [--adapter mock] [--provider exa|parallel|firecrawl|anysite|exa,firecrawl] [--limit <n>] [--max-age-days 90] [--force-refresh] [--run-now] [--legacy-sync] [--dry-run]`
+  - Analytics:
+    - `pnpm cli analytics:summary --group-by icp|segment|pattern [--since <iso>] [--error-format json]`
+    - `pnpm cli analytics:optimize [--since <iso>] [--error-format json]`
   - ICP utilities:  
-    - `pnpm cli icp:list [--columns id,name,description]`  
-    - `pnpm cli icp:hypothesis:list [--icp-profile-id <id>] [--segment-id <id>] [--columns id,icp_profile_id,segment_id,status]`
+    - `pnpm cli icp:list [--columns id,name,description,offering_domain] [--error-format json]`  
+    - `pnpm cli icp:create --name "<name>" [--offering-domain voicexpert.ru]`
+    - `pnpm cli icp:coach:profile --name "<name>" [--offering-domain voicexpert.ru] [--error-format json]`
+    - `pnpm cli icp:hypothesis:list [--icp-profile-id <id>] [--segment-id <id>] [--columns id,icp_profile_id,segment_id,status] [--error-format json]`
   - Provider/model selection:
     - Web UI: set defaults in Settings (assistant/icp/hypothesis/draft). The Prompts tab Task Configuration uses live provider `/models` output (via `/api/llm/models`) to populate Model dropdowns; if the provider is unreachable, the UI falls back to the curated catalog and shows an error.
     - CLI: override via `--provider`/`--model` on `draft:generate` (openai|anthropic|gemini, catalog-validated). Use `pnpm cli llm:models --provider openai|anthropic` to list live models for debugging.
@@ -81,6 +98,12 @@ architecture docs live in `public-docs/`.
   - Any custom `*_API_BASE` value includes the correct `/v1` segment or matches your proxy's `/models` routing.
   - You can reproduce the error by calling `pnpm cli llm:models --provider openai|anthropic` from the CLI.
   Ensure `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` env vars are present (see `.env.example` once added).
+- For offering-aware draft generation, store `offering_domain` on ICP profiles and pass
+  `metadata.offering_hash` + `metadata.offering_summary` when drafts are saved from external orchestrators such as
+  `Outreacher`; `email:record-outbound` preserves that provenance in `email_outbound.metadata`.
+- For enrichment-aware orchestration, use `enrich:run --dry-run` as the preview path. Freshness is based on one
+  shared enrichment timestamp per company/employee store, with a default refresh threshold of `90` days; `--limit`
+  is interpreted as a company-level limit.
 - Apply migrations before exercising new analytics/enrichment features:
   - `supabase db push` (dev) or `supabase db reset` (local only, destructive).
   - Newest migrations: `20251201120000_add_email_event_fk_columns.sql`, `20251201120500_update_analytics_events_flat_view.sql`.

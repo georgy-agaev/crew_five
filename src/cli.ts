@@ -25,8 +25,11 @@ import {
 import { judgeDraftsCommand } from './commands/judgeDrafts';
 import { segmentCreateHandler } from './commands/segmentCreate';
 import { segmentSnapshotHandler } from './commands/segmentSnapshot';
+import { segmentListHandler } from './commands/segmentList';
+import { campaignListHandler } from './commands/campaignList';
 import { validateFilters } from './filters';
 import { emailSendHandler } from './cli-email-send';
+import { emailRecordOutboundHandler } from './cli-email-record-outbound';
 import { eventIngestHandler } from './cli-event-ingest';
 import { buildSmartleadMcpClient, type SmartleadMcpClient } from './integrations/smartleadMcp';
 import { AiClient, type EmailDraftRequest } from './services/aiClient';
@@ -37,6 +40,9 @@ import type { ChatClient } from './services/chatClient';
 import { icpCoachProfileCommand } from './commands/icpCoachProfile';
 import { icpCoachHypothesisCommand } from './commands/icpCoachHypothesis';
 import { icpDiscoverCommand } from './commands/icpDiscover';
+import { draftSaveHandler } from './commands/draftSave';
+import { draftLoadHandler } from './commands/draftLoad';
+import { draftUpdateStatusHandler } from './commands/draftUpdateStatus';
 import { listLlmModels } from './services/providers/llmModels';
 
 interface CliHandlers {
@@ -182,6 +188,21 @@ export function createProgram(deps: CliDependencies) {
     });
 
   program
+    .command('segment:list')
+    .option('--icp-profile-id <icpProfileId>', 'Filter by linked ICP profile id')
+    .option('--icp-hypothesis-id <icpHypothesisId>', 'Filter by linked ICP hypothesis id')
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
+    .action(
+      wrapCliAction(async (options) => {
+        const rows = await segmentListHandler(deps.supabaseClient, {
+          icpProfileId: options.icpProfileId,
+          icpHypothesisId: options.icpHypothesisId,
+        });
+        console.log(JSON.stringify(rows));
+      })
+    );
+
+  program
     .command('judge:drafts')
     .requiredOption('--campaign-id <campaignId>')
     .option('--dry-run', 'Skip writes, print summary only')
@@ -194,6 +215,23 @@ export function createProgram(deps: CliDependencies) {
       });
       console.log(JSON.stringify(summary));
     });
+
+  program
+    .command('campaign:list')
+    .option('--status <status>', 'Filter by campaign status')
+    .option('--segment-id <segmentId>', 'Filter by segment id')
+    .option('--icp-profile-id <icpProfileId>', 'Filter campaigns by linked segment ICP profile id')
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
+    .action(
+      wrapCliAction(async (options) => {
+        const rows = await campaignListHandler(deps.supabaseClient, {
+          status: options.status,
+          segmentId: options.segmentId,
+          icpProfileId: options.icpProfileId,
+        });
+        console.log(JSON.stringify(rows));
+      })
+    );
 
   program
     .command('campaign:create')
@@ -287,6 +325,57 @@ export function createProgram(deps: CliDependencies) {
       });
     })
   );
+
+  program
+    .command('draft:save')
+    .requiredOption('--payload <json>', 'Draft row JSON object or array')
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
+    .action(
+      wrapCliAction(async (options) => {
+        const rows = await draftSaveHandler(deps.supabaseClient, {
+          payload: options.payload,
+        });
+        console.log(JSON.stringify(rows));
+      })
+    );
+
+  program
+    .command('draft:load')
+    .requiredOption('--campaign-id <campaignId>')
+    .option('--status <status>', 'Filter by draft status')
+    .option('--limit <limit>', 'Max drafts to load')
+    .option('--include-recipient-context', 'Include contact/company sendability and resolved recipient fields')
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
+    .action(
+      wrapCliAction(async (options) => {
+        const rows = await draftLoadHandler(deps.supabaseClient, {
+          campaignId: options.campaignId,
+          status: options.status,
+          limit: options.limit ? Number(options.limit) : undefined,
+          includeRecipientContext: Boolean(options.includeRecipientContext),
+        } as any);
+        console.log(JSON.stringify(rows));
+      })
+    );
+
+  program
+    .command('draft:update-status')
+    .requiredOption('--draft-id <draftId>')
+    .requiredOption('--status <status>', 'generated|approved|rejected|sent')
+    .option('--reviewer <reviewer>', 'Reviewer name/id')
+    .option('--metadata <json>', 'Metadata patch merged into drafts.metadata')
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
+    .action(
+      wrapCliAction(async (options) => {
+        const row = await draftUpdateStatusHandler(deps.supabaseClient, {
+          draftId: options.draftId,
+          status: options.status,
+          reviewer: options.reviewer,
+          metadata: options.metadata,
+        } as any);
+        console.log(JSON.stringify(row));
+      })
+    );
 
   program
     .command('segment:snapshot')
@@ -407,6 +496,17 @@ export function createProgram(deps: CliDependencies) {
         batchId: options.batchId,
       });
     });
+
+  program
+    .command('email:record-outbound')
+    .requiredOption('--payload <json>', 'Outbound send result JSON')
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
+    .action(
+      wrapCliAction(async (options) => {
+        const result = await emailRecordOutboundHandler(deps.supabaseClient, options.payload);
+        console.log(JSON.stringify(result));
+      })
+    );
 
   program
     .command('event:ingest')
@@ -554,9 +654,11 @@ export function createProgram(deps: CliDependencies) {
     .command('enrich:run')
     .requiredOption('--segment-id <segmentId>')
     .option('--adapter <adapter>', 'Enrichment adapter', 'mock')
-    .option('--provider <provider>', 'Enrichment provider: mock|exa|parallel|firecrawl|anysite')
+    .option('--provider <provider>', 'Enrichment provider(s): mock|exa|parallel|firecrawl|anysite; comma-separated for combinations')
     .option('--dry-run', 'Skip enrichment, print summary')
     .option('--limit <limit>', 'Max members to enrich', '10')
+    .option('--max-age-days <days>', 'Refresh stale enrichment older than N days', '90')
+    .option('--force-refresh', 'Refresh even if existing enrichment is still fresh')
     .option('--run-now', 'Execute immediately after enqueueing')
     .option('--legacy-sync', 'Use legacy synchronous enrichment path')
     .option('--error-format <format>', 'Error output format: text|json', 'text')
@@ -568,6 +670,8 @@ export function createProgram(deps: CliDependencies) {
           provider: options.provider,
           dryRun: Boolean(options.dryRun),
           limit: options.limit ? Number(options.limit) : undefined,
+          maxAgeDays: options.maxAgeDays ? Number(options.maxAgeDays) : undefined,
+          forceRefresh: Boolean(options.forceRefresh),
           runNow: Boolean(options.runNow),
           legacySync: Boolean(options.legacySync),
         });
@@ -579,52 +683,59 @@ export function createProgram(deps: CliDependencies) {
     .command('analytics:summary')
     .option('--group-by <groupBy>', 'icp|segment|pattern', 'icp')
     .option('--since <iso>', 'Filter events by occurred_at >= since')
-    .action(async (options) => {
-      const groupBy = options.groupBy ?? 'icp';
-      const since = options.since as string | undefined;
-      const client = deps.supabaseClient;
-      let results: unknown[] = [];
-      if (groupBy === 'icp') {
-        results = await getAnalyticsByIcpAndHypothesis(client, { since });
-      } else if (groupBy === 'segment') {
-        const { getAnalyticsBySegmentAndRole } = await import('./services/analytics');
-        results = await getAnalyticsBySegmentAndRole(client, { since });
-      } else if (groupBy === 'pattern') {
-        const { getAnalyticsByPatternAndUserEdit } = await import('./services/analytics');
-        results = await getAnalyticsByPatternAndUserEdit(client, { since });
-      } else {
-        console.log(
-          JSON.stringify({
-            groupBy,
-            results: [],
-          })
-        );
-        return;
-      }
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
+    .action(
+      wrapCliAction(async (options) => {
+        const groupBy = options.groupBy ?? 'icp';
+        const since = options.since as string | undefined;
+        const client = deps.supabaseClient;
+        let results: unknown[] = [];
+        if (groupBy === 'icp') {
+          results = await getAnalyticsByIcpAndHypothesis(client, { since });
+        } else if (groupBy === 'segment') {
+          const { getAnalyticsBySegmentAndRole } = await import('./services/analytics');
+          results = await getAnalyticsBySegmentAndRole(client, { since });
+        } else if (groupBy === 'pattern') {
+          const { getAnalyticsByPatternAndUserEdit } = await import('./services/analytics');
+          results = await getAnalyticsByPatternAndUserEdit(client, { since });
+        } else {
+          console.log(
+            JSON.stringify({
+              groupBy,
+              results: [],
+            })
+          );
+          return;
+        }
 
-      console.log(JSON.stringify(formatAnalyticsOutput(groupBy, results)));
-    });
+        console.log(JSON.stringify(formatAnalyticsOutput(groupBy, results)));
+      })
+    );
 
   program
     .command('analytics:optimize')
     .option('--since <iso>', 'Filter events by occurred_at >= since')
-    .action(async (options) => {
-      const since = options.since as string | undefined;
-      const client = deps.supabaseClient;
-      const suggestions = await suggestPromptPatternAdjustments(client, { since });
-      const simSummary = await getSimJobSummaryForAnalytics(client);
-      console.log(
-        JSON.stringify({
-          suggestions,
-          simSummary,
-        })
-      );
-    });
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
+    .action(
+      wrapCliAction(async (options) => {
+        const since = options.since as string | undefined;
+        const client = deps.supabaseClient;
+        const suggestions = await suggestPromptPatternAdjustments(client, { since });
+        const simSummary = await getSimJobSummaryForAnalytics(client);
+        console.log(
+          JSON.stringify({
+            suggestions,
+            simSummary,
+          })
+        );
+      })
+    );
 
   program
     .command('icp:create')
     .requiredOption('--name <name>')
     .option('--description <description>')
+    .option('--offering-domain <offeringDomain>', 'Offering domain used by this ICP, e.g. voicexpert.ru')
     .option('--company-criteria <json>', 'JSON company criteria')
     .option('--persona-criteria <json>', 'JSON persona criteria')
     .option('--created-by <createdBy>')
@@ -632,6 +743,7 @@ export function createProgram(deps: CliDependencies) {
       await icpCreateCommand(deps.supabaseClient, {
         name: options.name,
         description: options.description,
+        offeringDomain: options.offeringDomain,
         companyCriteria: options.companyCriteria,
         personaCriteria: options.personaCriteria,
         createdBy: options.createdBy,
@@ -657,37 +769,43 @@ export function createProgram(deps: CliDependencies) {
 
   program
     .command('icp:list')
-    .option('--columns <columns>', 'Comma-separated columns to include (default: id,name,description)')
-    .action(async (options) => {
-      const columns = options.columns
-        ? String(options.columns)
-            .split(',')
-            .map((c: string) => c.trim())
-            .filter(Boolean)
-        : undefined;
-      const rows = await icpListCommand(deps.supabaseClient, { columns });
-      console.log(JSON.stringify(rows));
-    });
+    .option('--columns <columns>', 'Comma-separated columns to include (default: id,name,description,offering_domain)')
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
+    .action(
+      wrapCliAction(async (options) => {
+        const columns = options.columns
+          ? String(options.columns)
+              .split(',')
+              .map((c: string) => c.trim())
+              .filter(Boolean)
+          : undefined;
+        const rows = await icpListCommand(deps.supabaseClient, { columns });
+        console.log(JSON.stringify(rows));
+      })
+    );
 
   program
     .command('icp:hypothesis:list')
     .option('--columns <columns>', 'Comma-separated columns to include (default: id,icp_profile_id,segment_id,status)')
     .option('--icp-profile-id <icpProfileId>', 'Filter by ICP profile id')
     .option('--segment-id <segmentId>', 'Filter by segment id')
-    .action(async (options) => {
-      const columns = options.columns
-        ? String(options.columns)
-            .split(',')
-            .map((c: string) => c.trim())
-            .filter(Boolean)
-        : undefined;
-      const rows = await icpHypothesisListCommand(deps.supabaseClient, {
-        columns,
-        icpProfileId: options.icpProfileId,
-        segmentId: options.segmentId,
-      });
-      console.log(JSON.stringify(rows));
-    });
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
+    .action(
+      wrapCliAction(async (options) => {
+        const columns = options.columns
+          ? String(options.columns)
+              .split(',')
+              .map((c: string) => c.trim())
+              .filter(Boolean)
+          : undefined;
+        const rows = await icpHypothesisListCommand(deps.supabaseClient, {
+          columns,
+          icpProfileId: options.icpProfileId,
+          segmentId: options.segmentId,
+        });
+        console.log(JSON.stringify(rows));
+      })
+    );
 
   program
     .command('icp:discover')
@@ -726,6 +844,7 @@ export function createProgram(deps: CliDependencies) {
     .option('--description <description>')
     .option('--website-url <url>')
     .option('--value-prop <valueProp>')
+    .option('--offering-domain <offeringDomain>', 'Offering domain used by this ICP, e.g. voicexpert.ru')
     .option('--error-format <format>', 'Error output format: text|json', 'text')
     .action(
       wrapCliAction(async (options) => {
@@ -737,6 +856,7 @@ export function createProgram(deps: CliDependencies) {
           description: options.description,
           websiteUrl: options.websiteUrl,
           valueProp: options.valueProp,
+          offeringDomain: options.offeringDomain,
         });
       })
     );

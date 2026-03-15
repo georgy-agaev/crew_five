@@ -7,6 +7,7 @@ export interface IcpProfile {
   description: string | null;
   company_criteria: Record<string, unknown>;
   persona_criteria: Record<string, unknown>;
+  offering_domain: string | null;
   phase_outputs: Record<string, unknown> | null;
   created_by: string | null;
   created_at: string;
@@ -28,6 +29,7 @@ export interface IcpProfileInput {
   description?: string;
   companyCriteria?: Record<string, unknown>;
   personaCriteria?: Record<string, unknown>;
+  offeringDomain?: string;
   createdBy?: string;
   phaseOutputs?: Record<string, unknown>;
 }
@@ -41,6 +43,7 @@ export interface IcpHypothesisInput {
 }
 
 let icpProfilesSupportsPhaseOutputs = true;
+let icpProfilesSupportsOfferingDomain = true;
 
 export async function createIcpProfile(
   client: SupabaseClient,
@@ -54,10 +57,14 @@ export async function createIcpProfile(
     created_by: input.createdBy ?? null,
   };
 
-  async function attemptInsert(includePhaseOutputs: boolean) {
-    const row = includePhaseOutputs
-      ? { ...baseRow, phase_outputs: input.phaseOutputs ?? null }
-      : baseRow;
+  async function attemptInsert(includePhaseOutputs: boolean, includeOfferingDomain: boolean) {
+    const row: Record<string, unknown> = { ...baseRow };
+    if (includePhaseOutputs) {
+      row.phase_outputs = input.phaseOutputs ?? null;
+    }
+    if (includeOfferingDomain) {
+      row.offering_domain = input.offeringDomain ?? null;
+    }
 
     const { data, error } = await client
       .from('icp_profiles')
@@ -68,20 +75,22 @@ export async function createIcpProfile(
     return { data, error };
   }
 
-  let { data, error } = await attemptInsert(icpProfilesSupportsPhaseOutputs);
+  let { data, error } = await attemptInsert(icpProfilesSupportsPhaseOutputs, icpProfilesSupportsOfferingDomain);
 
-  // Some environments have not yet applied the phase_outputs column migration.
-  // When we detect that column is missing, retry once without it and remember
-  // that future inserts should omit the field.
   const message = String((error as any)?.message ?? '').toLowerCase();
-  const code = (error as any)?.code as string | undefined;
-  const isPhaseOutputsMissing =
-    message.includes('phase_outputs') &&
-    (message.includes('does not exist') || message.includes('could not find'));
+  const columnMissing = (columnName: string) =>
+    message.includes(columnName) && (message.includes('does not exist') || message.includes('could not find'));
+  const isPhaseOutputsMissing = columnMissing('phase_outputs');
+  const isOfferingDomainMissing = columnMissing('offering_domain');
 
-  if (error && isPhaseOutputsMissing) {
-    icpProfilesSupportsPhaseOutputs = false;
-    ({ data, error } = await attemptInsert(false));
+  if (error && (isPhaseOutputsMissing || isOfferingDomainMissing)) {
+    if (isPhaseOutputsMissing) {
+      icpProfilesSupportsPhaseOutputs = false;
+    }
+    if (isOfferingDomainMissing) {
+      icpProfilesSupportsOfferingDomain = false;
+    }
+    ({ data, error } = await attemptInsert(icpProfilesSupportsPhaseOutputs, icpProfilesSupportsOfferingDomain));
   }
 
   if (error || !data) {

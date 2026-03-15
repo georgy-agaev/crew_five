@@ -119,7 +119,14 @@ export function buildContactQuery(client: SupabaseClient, filters: FilterClause[
   let query: any = client
     .from('employees')
     .select(
-      'id, company_id, full_name, work_email, position, company:companies(id, company_name, segment)'
+      [
+        'id',
+        'company_id',
+        'full_name',
+        'work_email',
+        'position',
+        'company:companies(id, company_name, company_description, website, employee_count, region, office_qualification, segment, company_research)',
+      ].join(', ')
     );
 
   for (const filter of filters) {

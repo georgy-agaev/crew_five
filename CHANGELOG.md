@@ -2,6 +2,137 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.04] - 2026-03-15
+### Added
+- Added `docs/sessions/2026-03-15_6_outreacher_task_closure_and_repo_hygiene.md`, summarizing final task closure,
+  verification, and commit-prep steps for the current `Outreacher` integration batch.
+
+### Changed
+- Marked the current `docs/tasks/*.md` items as completed so the task list now matches the implemented `crew_five`
+  state.
+- Completed final repository hygiene for the current delivery batch by re-running the full test suite and build
+  before commit.
+
+## [0.2.03] - 2026-03-15
+### Added
+- Added `docs/sessions/2026-03-15_5_analytics_error_format_parity.md`, documenting the `analytics:*`
+  CLI error-format parity fix for `Outreacher`.
+
+### Changed
+- `analytics:summary` now supports `--error-format json` and routes failures through the shared CLI error wrapper.
+- `analytics:optimize` now also supports `--error-format json` for adjacent parity with `analytics:summary`.
+- Updated `README.md` and `docs/Outreach_crew_five_cli_contract.md` so automation examples include the
+  analytics commands in JSON error mode.
+
+## [0.2.02] - 2026-03-15
+### Added
+- Added `docs/sessions/2026-03-15_4_outreacher_runtime_and_docs_updates.md`, recording the completed runtime +
+  documentation work for the current `Outreacher` task set.
+
+### Changed
+- Snapshot payloads now persist a stable minimal company shape for `Outreacher`, including:
+  - `company_description`
+  - `website`
+  - `employee_count`
+  - `region`
+  - `office_qualification`
+  - `company_research`
+- `enrich:run` now supports a real preview mode via `--dry-run`, including:
+  - freshness-based counts
+  - `--max-age-days`
+  - `--force-refresh`
+  - company-level `--limit`
+  - comma-separated provider combinations treated as a union
+- `campaign:list` now supports `--icp-profile-id`.
+- Updated `docs/Outreach_crew_five_cli_contract.md`, `docs/Outreacher_operating_model.md`,
+  `docs/Outreach_agent_runner_examples.md`, `README.md`, and the example runners to reflect the finalized
+  `Outreacher` integration contract.
+
+## [0.2.01] - 2026-03-15
+### Added
+- Added `docs/sessions/2026-03-15_2_outreacher_tasks_review_and_options.md`, a consolidated review of all current
+  `docs/tasks/*` items from `Outreacher`, including implementation options, recommendations, and suggested execution
+  order.
+- Added `docs/sessions/2026-03-15_3_outreacher_improvements_execution_plan.md`, a detailed execution plan covering
+  the agreed next phases:
+  - minimal snapshot company payload parity
+  - enrichment preview via `enrich:run --dry-run`
+  - `campaign:list --icp-profile-id`
+  - final docs/runner refresh
+### Changed
+- Refined the execution plan for `Outreacher` enrichment preview to use freshness-based semantics instead of simple
+  filled/not-filled checks:
+  - data older than 90 days is refresh-eligible by default
+  - `Outreacher` can force refresh regardless of age
+  - provider and provider-combination selection remains part of the contract
+- Locked the enrichment preview/operator contract so `enrich:run --limit N` is interpreted as a company-level limit,
+  with employee counts treated as secondary informational metrics.
+- Simplified the planned freshness model for enrichment preview: use one shared timestamp per entity rather than
+  provider-specific freshness timestamps.
+
+## [0.2.00] - 2026-03-15
+### Added
+- Added repository migration `supabase/migrations/20260315093000_add_icp_profile_offering_domain.sql` to introduce
+  `icp_profiles.offering_domain` and backfill current ICP rows to `voicexpert.ru`.
+- Added a new session log `docs/sessions/2026-03-15_1_offering_domain_and_provenance.md` documenting the selected
+  balanced offering provenance model.
+
+### Changed
+- `icp:create` and `icp:coach:profile` now accept `--offering-domain`, and `icp:list` now default-includes
+  `offering_domain` in its JSON output.
+- `draft:generate` now persists offering provenance in `drafts.metadata`:
+  - `offering_domain`
+  - `offering_hash`
+  - `offering_summary`
+- `email:record-outbound` now benefits from the existing metadata inheritance path, so offering provenance is carried
+  into `email_outbound.metadata` automatically when sends are recorded.
+- Updated `docs/Outreach_crew_five_cli_contract.md`, `docs/Database_Description.md`, `README.md`, and
+  `docs/tasks/add_offering_domain_to_icp_profiles.md` to describe the new ICP/offering contract and live migration
+  state.
+
+## [0.1.99] - 2026-03-14
+### Added
+- Added shared recipient resolution logic for outbound orchestration:
+  - prefer `employees.work_email`
+  - fall back to `employees.generic_email`
+  - classify resolved recipients as `corporate`, `personal`, `generic`, or `missing`
+- Added `email:record-outbound` so external orchestrators such as `Outreacher` can persist send results into `email_outbound` and mark successful drafts as `sent`.
+- Added targeted tests for recipient resolution, recipient-aware draft loading, outbound recording, and CLI wiring.
+- Added session log `docs/sessions/2026-03-14_1_outreacher_imap_send_contract.md` documenting the selected `Outreacher -> imap_mcp -> crew_five` send architecture.
+- Added ready-to-use `Outreacher` runner helpers for the IMAP send loop in both example runners:
+  - `loadDraftsForSend` / `load_drafts_for_send`
+  - `recordOutbound` / `record_outbound`
+- Added payload templates for `draft:load --include-recipient-context`, `email:record-outbound`, and `event:ingest` in `docs/Outreach_agent_runner_examples.md`.
+- Added `docs/Outreacher_operating_model.md`, a full operating guide for `Outreacher` covering send orchestration, inbox polling, follow-up scheduling, reply classification, and pattern analytics against `crew_five` + `imap_mcp`.
+
+### Changed
+- `draft:load` now supports `--include-recipient-context`, returning resolved recipient metadata (`recipient_email`, `recipient_email_source`, `recipient_email_kind`, `sendable`) alongside draft rows for send orchestration.
+- Updated `docs/Outreach_crew_five_cli_contract.md` to document the IMAP MCP send loop, the outbound-recording payload, and the current live migration state.
+- Updated `README.md` with the new `imap_mcp`-oriented send flow and CLI examples.
+
+## [0.1.98] - 2026-03-13
+### Added
+- Added CLI commands for draft persistence and review workflows:
+  - `draft:save` for inserting one or many drafts from JSON payloads.
+  - `draft:load` for loading drafts by `campaign_id` with optional status/limit filters.
+  - `draft:update-status` for review transitions (`generated|approved|rejected|sent`) with optional reviewer and metadata merge.
+- Added CLI list commands for orchestration/wizard flows:
+  - `segment:list` with optional ICP filters.
+  - `campaign:list` with optional status/segment filters.
+- Added repository migration `supabase/migrations/20260313110000_add_icp_profile_learnings.sql` so `icp_profiles` can persist `learnings jsonb`.
+- Added `docs/Outreach_crew_five_cli_contract.md` documenting the shared-Supabase integration contract, JSON error handling, command surface, and migration prerequisites for using `crew_five` behind an `Outreach` AI agent.
+- Added ready-to-adapt `Outreach` command-runner examples in TypeScript and Python plus a usage note in `docs/Outreach_agent_runner_examples.md`.
+
+### Changed
+- `icp:list` now allows richer profile columns, including `phase_outputs`, `learnings`, and `created_at`.
+- `icp:hypothesis:list` now reads the real schema (`icp_hypotheses.icp_id`) while preserving CLI-compatible output fields such as `icp_profile_id` and `segment_id`.
+- Updated `docs/Database_Description.md` to reflect the current live schema after applying the pending remote Supabase migrations (`icp_profiles.phase_outputs`, `icp_profiles.learnings`, `icp_discovery_*`, `prompt_registry.step` / rollout statuses).
+
+### Fixed
+- Wrapped `icp:list` and `icp:hypothesis:list` in the shared `wrapCliAction` flow so list failures no longer surface as unhandled promise rejections.
+- Segment snapshots now carry `company_research` in `segment_members.snapshot.company`, aligning downstream consumers with the current enrichment field instead of older company-description assumptions.
+- Suppressed `dotenv` tip output during env loading by enabling quiet mode, preventing stdout noise from breaking JSON pipe consumers in `Outreach`.
+
 ## [0.1.97] - 2026-01-27
 ### Changed
 - Updated `docs/Database_Description.md` to reflect the current Supabase `public` schema (tables, columns,

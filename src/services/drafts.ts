@@ -40,6 +40,12 @@ interface SegmentMemberRow {
   };
 }
 
+interface OfferingProvenance {
+  offeringDomain: string | null;
+  offeringHash: string | null;
+  offeringSummary: Record<string, unknown> | null;
+}
+
 function normalizeEmail(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -182,6 +188,52 @@ function buildDraftPattern(metadata: Record<string, unknown>): string {
   return `${coachId}:${patternMode}:${variant}`;
 }
 
+function asTrimmedString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function buildOfferingSummaryFromOffer(offer: EmailDraftRequest['brief']['offer']): Record<string, unknown> {
+  return {
+    product_name: offer.product_name,
+    one_liner: offer.one_liner,
+    key_benefits: offer.key_benefits,
+    proof_points: offer.proof_points ?? [],
+    main_cta: offer.CTA ?? null,
+  };
+}
+
+function resolveOfferingProvenance(params: {
+  request: EmailDraftRequest;
+  profile: Record<string, unknown> | null;
+}): OfferingProvenance {
+  const context = asObjectRecord(params.request?.brief?.context) ?? {};
+  const offeringDomain =
+    asTrimmedString(context.offering_domain) ??
+    asTrimmedString(context.offeringDomain) ??
+    asTrimmedString(params.profile?.offering_domain) ??
+    null;
+  const offeringHash = asTrimmedString(context.offering_hash) ?? asTrimmedString(context.offeringHash) ?? null;
+  const offeringSummary =
+    asObjectRecord(context.offering_summary) ??
+    asObjectRecord(context.offeringSummary) ??
+    buildOfferingSummaryFromOffer(params.request.brief.offer);
+
+  return {
+    offeringDomain,
+    offeringHash,
+    offeringSummary,
+  };
+}
+
 export async function generateDrafts(
   client: SupabaseClient,
   aiClient: AiClient,
@@ -242,7 +294,7 @@ export async function generateDrafts(
   const profileRes = options.icpProfileId
     ? await client
         .from('icp_profiles')
-        .select('id,name,description,company_criteria,persona_criteria,phase_outputs')
+        .select('id,name,description,offering_domain,company_criteria,persona_criteria,phase_outputs')
         .eq('id', options.icpProfileId)
         .maybeSingle()
     : null;
@@ -331,6 +383,11 @@ export async function generateDrafts(
             },
           };
 
+    const offeringProvenance = resolveOfferingProvenance({
+      request,
+      profile: (profile as Record<string, unknown> | null) ?? null,
+    });
+
     if (options.dryRun) {
       summary.skipped += 1;
       eligibleContactsConsidered += 1;
@@ -398,6 +455,9 @@ export async function generateDrafts(
         user_edited: false,
         icp_profile_id: options.icpProfileId ?? null,
         icp_hypothesis_id: options.icpHypothesisId ?? null,
+        offering_domain: offeringProvenance.offeringDomain,
+        offering_hash: offeringProvenance.offeringHash,
+        offering_summary: offeringProvenance.offeringSummary,
         provider: options.provider ?? existingProvider ?? null,
         model: options.model ?? existingModel ?? null,
         enrichment_provider: enriched.enrichmentProvider,

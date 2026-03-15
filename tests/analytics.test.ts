@@ -258,4 +258,43 @@ describe('analytics CLI', () => {
 
     logSpy.mockRestore();
   });
+
+  it('analytics_summary_accepts_error_format_json_without_unknown_option', async () => {
+    const rows = [
+      {
+        draft_pattern: 'intro_v1:standard:A',
+        user_edited: false,
+        event_type: 'delivered',
+        outcome_classification: null,
+      },
+    ];
+    const select = vi.fn().mockReturnValue(Promise.resolve({ data: rows, error: null }));
+    const gte = vi.fn().mockReturnValue({ select });
+    const from = vi.fn().mockReturnValue({ select, gte });
+    const supabaseClient = { from } as any;
+
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      smartleadClient: {} as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'analytics:summary',
+      '--group-by',
+      'pattern',
+      '--error-format',
+      'json',
+    ]);
+
+    const payload = JSON.parse((logSpy.mock.calls[0] as any[])[0] as string);
+    expect(payload.groupBy).toBe('pattern');
+    expect(payload.results[0]).toHaveProperty('draft_pattern');
+
+    logSpy.mockRestore();
+  });
 });

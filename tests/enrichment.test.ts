@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { enrichCommand } from '../src/commands/enrich';
-import { enqueueSegmentEnrichment, runSegmentEnrichmentOnce } from '../src/services/enrichSegment';
+import { enqueueSegmentEnrichment, planSegmentEnrichment, runSegmentEnrichmentOnce } from '../src/services/enrichSegment';
 import { createEnrichmentProviderRegistry, getEnrichmentAdapter } from '../src/services/enrichment/registry';
 import * as exaIntegration from '../src/integrations/exa';
 import * as firecrawlIntegration from '../src/integrations/firecrawl';
@@ -17,6 +17,28 @@ describe('enrichment', () => {
     const ensureSpy = vi
       .spyOn(snapshotWorkflow, 'ensureFinalSegmentSnapshot')
       .mockResolvedValue({ version: 1, count: 3 });
+    const planSpy = vi.spyOn(enrichSegmentSvc, 'planSegmentEnrichment').mockResolvedValue({
+      segmentId: 'seg-1',
+      segmentVersion: 1,
+      providers: ['mock'],
+      refreshPolicy: { maxAgeDays: 90, forceRefresh: false },
+      counts: {
+        companiesTotal: 1,
+        companiesFresh: 0,
+        companiesStale: 0,
+        companiesMissing: 1,
+        companiesEligibleForRefresh: 1,
+        contactsTotal: 1,
+        contactsFresh: 0,
+        contactsStale: 0,
+        contactsMissing: 1,
+        contactsEligibleForRefresh: 1,
+        plannedCompanyCount: 1,
+        plannedContactCount: 1,
+      },
+      plannedCompanyIds: ['co1'],
+      plannedContactIds: ['c1'],
+    });
     const enqueueSpy = vi.spyOn(enrichSegmentSvc, 'enqueueSegmentEnrichment').mockResolvedValue({
       id: 'job-1',
       type: 'enrich',
@@ -39,6 +61,7 @@ describe('enrichment', () => {
 
     const queued = await enrichCommand(client, { segmentId: 'seg-1', adapter: 'mock', dryRun: false });
     expect(ensureSpy).toHaveBeenCalledWith(client, 'seg-1');
+    expect(planSpy).toHaveBeenCalled();
     expect(enqueueSpy).toHaveBeenCalledWith(client, expect.objectContaining({ segmentId: 'seg-1', adapter: 'mock' }));
     expect(runSpy).not.toHaveBeenCalled();
     expect(queued.status).toBe('queued');
@@ -55,10 +78,145 @@ describe('enrichment', () => {
     expect(runNow.summary?.processed).toBe(1);
   });
 
+  it('returns a preview payload for dry-run without enqueueing a job', async () => {
+    process.env.PARALLEL_API_KEY = 'test-parallel-key';
+    const ensureSpy = vi
+      .spyOn(snapshotWorkflow, 'ensureFinalSegmentSnapshot')
+      .mockResolvedValue({ version: 1, count: 3 });
+    const planSpy = vi.spyOn(enrichSegmentSvc, 'planSegmentEnrichment').mockResolvedValue({
+      segmentId: 'seg-1',
+      segmentVersion: 1,
+      providers: ['exa', 'firecrawl'],
+      refreshPolicy: { maxAgeDays: 90, forceRefresh: false },
+      counts: {
+        companiesTotal: 10,
+        companiesFresh: 4,
+        companiesStale: 3,
+        companiesMissing: 3,
+        companiesEligibleForRefresh: 6,
+        contactsTotal: 20,
+        contactsFresh: 9,
+        contactsStale: 5,
+        contactsMissing: 6,
+        contactsEligibleForRefresh: 11,
+        plannedCompanyCount: 5,
+        plannedContactCount: 7,
+      },
+      plannedCompanyIds: ['co1', 'co2', 'co3', 'co4', 'co5'],
+      plannedContactIds: ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7'],
+    });
+    const enqueueSpy = vi.spyOn(enrichSegmentSvc, 'enqueueSegmentEnrichment');
+    const client = { from: vi.fn() } as any;
+
+    const preview = await enrichCommand(client, {
+      segmentId: 'seg-1',
+      provider: 'mock,parallel',
+      dryRun: true,
+      limit: 5,
+    });
+
+    expect(ensureSpy).toHaveBeenCalledWith(client, 'seg-1');
+    expect(planSpy).toHaveBeenCalled();
+    expect(enqueueSpy).not.toHaveBeenCalled();
+    expect(preview.status).toBe('preview');
+    expect(preview.providers).toEqual(['mock', 'parallel']);
+    expect(preview.counts.plannedCompanyCount).toBe(5);
+  });
+
+  it('plans company limit and contact eligibility from shared freshness timestamps', async () => {
+    const segmentMembersSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        eq: vi.fn().mockResolvedValue({
+          data: [
+            { contact_id: 'c1', company_id: 'co1' },
+            { contact_id: 'c2', company_id: 'co1' },
+            { contact_id: 'c3', company_id: 'co2' },
+          ],
+          error: null,
+        }),
+      }),
+    });
+    const selectSegment = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: { id: 'seg-1', version: 1 },
+          error: null,
+        }),
+      }),
+    });
+    const freshIso = new Date().toISOString();
+    const staleIso = new Date(Date.now() - 120 * 24 * 60 * 60 * 1000).toISOString();
+    const companiesSelect = vi.fn().mockReturnValue({
+      in: vi.fn().mockResolvedValue({
+        data: [
+          { id: 'co1', company_research: { version: 1, providers: { exa: {} }, lastUpdatedAt: freshIso } },
+          { id: 'co2', company_research: { version: 1, providers: { exa: {} }, lastUpdatedAt: staleIso } },
+        ],
+        error: null,
+      }),
+    });
+    const employeesSelect = vi.fn().mockReturnValue({
+      in: vi.fn().mockResolvedValue({
+        data: [
+          { id: 'c1', ai_research_data: { version: 1, providers: { exa: {} }, lastUpdatedAt: freshIso } },
+          { id: 'c2', ai_research_data: null },
+          { id: 'c3', ai_research_data: { version: 1, providers: { exa: {} }, lastUpdatedAt: freshIso } },
+        ],
+        error: null,
+      }),
+    });
+
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table === 'segments') return { select: selectSegment };
+        if (table === 'segment_members') return { select: segmentMembersSelect };
+        if (table === 'companies') return { select: companiesSelect };
+        if (table === 'employees') return { select: employeesSelect };
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    } as any;
+
+    const plan = await planSegmentEnrichment(client, {
+      segmentId: 'seg-1',
+      providers: ['exa'],
+      limit: 1,
+      maxAgeDays: 90,
+    });
+
+    expect(plan.counts.companiesFresh).toBe(1);
+    expect(plan.counts.companiesStale).toBe(1);
+    expect(plan.counts.contactsMissing).toBe(1);
+    expect(plan.counts.companiesEligibleForRefresh).toBe(2);
+    expect(plan.plannedCompanyIds).toEqual(['co1']);
+    expect(plan.plannedContactIds).toEqual(['c2']);
+  });
+
   it('enrich_run_with_exa_adapter_uses_async_job_flow', async () => {
     const ensureSpy = vi
       .spyOn(snapshotWorkflow, 'ensureFinalSegmentSnapshot')
       .mockResolvedValue({ version: 1, count: 3 });
+    vi.spyOn(enrichSegmentSvc, 'planSegmentEnrichment').mockResolvedValue({
+      segmentId: 'seg-2',
+      segmentVersion: 1,
+      providers: ['exa'],
+      refreshPolicy: { maxAgeDays: 90, forceRefresh: false },
+      counts: {
+        companiesTotal: 1,
+        companiesFresh: 0,
+        companiesStale: 0,
+        companiesMissing: 1,
+        companiesEligibleForRefresh: 1,
+        contactsTotal: 1,
+        contactsFresh: 0,
+        contactsStale: 0,
+        contactsMissing: 1,
+        contactsEligibleForRefresh: 1,
+        plannedCompanyCount: 1,
+        plannedContactCount: 1,
+      },
+      plannedCompanyIds: ['co1'],
+      plannedContactIds: ['c1'],
+    });
     const enqueueSpy = vi.spyOn(enrichSegmentSvc, 'enqueueSegmentEnrichment').mockResolvedValue({
       id: 'job-2',
       type: 'enrich',
@@ -97,6 +255,28 @@ describe('enrichment', () => {
     const ensureSpy = vi
       .spyOn(snapshotWorkflow, 'ensureFinalSegmentSnapshot')
       .mockResolvedValue({ version: 1, count: 3 });
+    vi.spyOn(enrichSegmentSvc, 'planSegmentEnrichment').mockResolvedValue({
+      segmentId: 'seg-3',
+      segmentVersion: 1,
+      providers: ['parallel'],
+      refreshPolicy: { maxAgeDays: 90, forceRefresh: false },
+      counts: {
+        companiesTotal: 1,
+        companiesFresh: 0,
+        companiesStale: 0,
+        companiesMissing: 1,
+        companiesEligibleForRefresh: 1,
+        contactsTotal: 0,
+        contactsFresh: 0,
+        contactsStale: 0,
+        contactsMissing: 0,
+        contactsEligibleForRefresh: 0,
+        plannedCompanyCount: 1,
+        plannedContactCount: 0,
+      },
+      plannedCompanyIds: ['co1'],
+      plannedContactIds: [],
+    });
     const enqueueSpy = vi.spyOn(enrichSegmentSvc, 'enqueueSegmentEnrichment').mockResolvedValue({
       id: 'job-3',
       type: 'enrich',

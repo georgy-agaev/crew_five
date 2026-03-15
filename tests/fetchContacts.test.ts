@@ -25,6 +25,10 @@ describe('fetchContactsForSegment', () => {
 
     expect(from).toHaveBeenCalledWith('employees');
     expect(chain.select).toHaveBeenCalled();
+    expect(String(chain.select.mock.calls[0]?.[0] ?? '')).toContain('company_description');
+    expect(String(chain.select.mock.calls[0]?.[0] ?? '')).toContain('website');
+    expect(String(chain.select.mock.calls[0]?.[0] ?? '')).toContain('employee_count');
+    expect(String(chain.select.mock.calls[0]?.[0] ?? '')).toContain('company_research');
     expect(chain.eq).toHaveBeenCalledWith('position', 'CTO');
     expect(chain.gte).toHaveBeenCalledWith('company.employee_count', 50);
     expect(chain.lte).toHaveBeenCalledWith('company.employee_count', 500);

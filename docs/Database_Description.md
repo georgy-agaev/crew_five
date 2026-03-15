@@ -1,6 +1,6 @@
 # Supabase Database Reference (Current Schema)
 
-> Version: v0.3 (2026-01-27)
+> Version: v0.4 (2026-03-13)
 
 This document is a shareable, table-by-table reference for the **current** Supabase Postgres schema used by the
 AI SDR toolkit.
@@ -19,6 +19,8 @@ AI SDR toolkit.
 - `email_outbound` (1) → (N) `email_events`
 - `jobs` optionally attaches to `segments` (for background actions)
 - `icp_profiles` (1) → (N) `icp_hypotheses`; `segments` can optionally reference both
+- `icp_discovery_runs` optionally attach to `jobs`, `icp_profiles`, and `icp_hypotheses`
+- `icp_discovery_runs` (1) → (N) `icp_discovery_candidates`
 
 ## Tables (Detailed)
 
@@ -434,6 +436,9 @@ available.
 | `description` | `text` | yes |  |  |
 | `company_criteria` | `jsonb` | yes |  |  |
 | `persona_criteria` | `jsonb` | yes |  |  |
+| `offering_domain` | `text` | yes |  |  |
+| `phase_outputs` | `jsonb` | yes |  |  |
+| `learnings` | `jsonb` | yes |  |  |
 | `created_by` | `text` | yes |  |  |
 | `created_at` | `timestamptz` | no | `now()` |  |
 
@@ -442,6 +447,79 @@ available.
 
 **Indexes**
 - `icp_profiles_pkey`: `CREATE UNIQUE INDEX icp_profiles_pkey ON public.icp_profiles USING btree (id)`
+
+### `public.icp_discovery_runs`
+
+**What it is**: run-level metadata for ICP discovery jobs, linking a discovery execution to a background job,
+an ICP profile, and an optional hypothesis.
+
+**Key facts**
+- Primary key: `id` (`uuid`, default `gen_random_uuid()`)
+- Foreign keys:
+  - `job_id` → `jobs(id)` (`ON DELETE SET NULL`)
+  - `icp_profile_id` → `icp_profiles(id)` (`ON DELETE SET NULL`)
+  - `icp_hypothesis_id` → `icp_hypotheses(id)` (`ON DELETE SET NULL`)
+- Approx rows: `0`
+- RLS: disabled
+
+**Columns**
+| Column | Type | Nullable | Default | Comment |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | no | `gen_random_uuid()` |  |
+| `job_id` | `uuid` | yes |  |  |
+| `icp_profile_id` | `uuid` | yes |  |  |
+| `icp_hypothesis_id` | `uuid` | yes |  |  |
+| `provider` | `text` | no | `'exa'::text` |  |
+| `status` | `text` | no | `'created'::text` |  |
+| `metadata` | `jsonb` | no | `'{}'::jsonb` |  |
+| `created_at` | `timestamptz` | no | `now()` |  |
+| `updated_at` | `timestamptz` | no | `now()` |  |
+
+**Constraints**
+- `icp_discovery_runs_pkey`: `PRIMARY KEY (id)`
+- `icp_discovery_runs_job_id_fkey`: `FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE SET NULL`
+- `icp_discovery_runs_icp_profile_id_fkey`: `FOREIGN KEY (icp_profile_id) REFERENCES icp_profiles(id) ON DELETE SET NULL`
+- `icp_discovery_runs_icp_hypothesis_id_fkey`: `FOREIGN KEY (icp_hypothesis_id) REFERENCES icp_hypotheses(id) ON DELETE SET NULL`
+
+**Indexes**
+- `icp_discovery_runs_pkey`: `CREATE UNIQUE INDEX icp_discovery_runs_pkey ON public.icp_discovery_runs USING btree (id)`
+- `icp_discovery_runs_job_idx`: `CREATE INDEX icp_discovery_runs_job_idx ON public.icp_discovery_runs USING btree (job_id)`
+- `icp_discovery_runs_icp_idx`: `CREATE INDEX icp_discovery_runs_icp_idx ON public.icp_discovery_runs USING btree (icp_profile_id, icp_hypothesis_id)`
+
+### `public.icp_discovery_candidates`
+
+**What it is**: candidate companies surfaced by an ICP discovery run, stored with raw provider payload and a
+lightweight confidence/size summary for later approval or promotion into segments.
+
+**Key facts**
+- Primary key: `id` (`uuid`, default `gen_random_uuid()`)
+- Foreign keys:
+  - `run_id` → `icp_discovery_runs(id)` (`ON DELETE CASCADE`)
+- Approx rows: `0`
+- RLS: disabled
+
+**Columns**
+| Column | Type | Nullable | Default | Comment |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | no | `gen_random_uuid()` |  |
+| `run_id` | `uuid` | no |  |  |
+| `candidate_name` | `text` | yes |  |  |
+| `domain` | `text` | yes |  |  |
+| `url` | `text` | yes |  |  |
+| `country` | `text` | yes |  |  |
+| `size_hint` | `text` | yes |  |  |
+| `confidence` | `numeric` | yes |  |  |
+| `raw` | `jsonb` | no | `'{}'::jsonb` |  |
+| `created_at` | `timestamptz` | no | `now()` |  |
+| `updated_at` | `timestamptz` | no | `now()` |  |
+
+**Constraints**
+- `icp_discovery_candidates_pkey`: `PRIMARY KEY (id)`
+- `icp_discovery_candidates_run_id_fkey`: `FOREIGN KEY (run_id) REFERENCES icp_discovery_runs(id) ON DELETE CASCADE`
+
+**Indexes**
+- `icp_discovery_candidates_pkey`: `CREATE UNIQUE INDEX icp_discovery_candidates_pkey ON public.icp_discovery_candidates USING btree (id)`
+- `icp_discovery_candidates_run_idx`: `CREATE INDEX icp_discovery_candidates_run_idx ON public.icp_discovery_candidates USING btree (run_id)`
 
 ### `public.icp_hypotheses`
 
@@ -523,16 +601,17 @@ result.
 | --- | --- | --- | --- | --- |
 | `id` | `uuid` | no | `gen_random_uuid()` |  |
 | `coach_prompt_id` | `text` | no |  |  |
+| `step` | `text` | yes |  |  |
 | `description` | `text` | yes |  |  |
 | `version` | `text` | yes |  |  |
+| `prompt_text` | `text` | yes |  |  |
 | `rollout_status` | `text` | no | `'active'::text` |  |
 | `created_at` | `timestamptz` | no | `now()` |  |
 | `updated_at` | `timestamptz` | no | `now()` |  |
-| `prompt_text` | `text` | yes |  |  |
 
 **Constraints**
 - `prompt_registry_pkey`: `PRIMARY KEY (id)`
-- `prompt_registry_rollout_status_check`: `CHECK (rollout_status = ANY (ARRAY['active','deprecated']))`
+- `prompt_registry_rollout_status_check`: `CHECK (rollout_status = ANY (ARRAY['pilot','active','retired','deprecated']))`
 
 **Indexes**
 - `prompt_registry_pkey`: `CREATE UNIQUE INDEX prompt_registry_pkey ON public.prompt_registry USING btree (id)`

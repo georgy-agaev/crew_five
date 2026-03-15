@@ -186,7 +186,15 @@ describe('generateDrafts', () => {
           select: () => ({
             eq: () => ({
               maybeSingle: vi.fn().mockResolvedValue({
-                data: { id: 'p1', name: 'Tool', description: 'Desc', company_criteria: {}, persona_criteria: {}, phase_outputs: {} },
+                data: {
+                  id: 'p1',
+                  name: 'Tool',
+                  description: 'Desc',
+                  offering_domain: 'voicexpert.ru',
+                  company_criteria: {},
+                  persona_criteria: {},
+                  phase_outputs: {},
+                },
                 error: null,
               }),
             }),
@@ -247,8 +255,131 @@ describe('generateDrafts', () => {
     expect(draftRow.metadata?.user_edited).toBe(false);
     expect(draftRow.metadata?.provider).toBe('openai');
     expect(draftRow.metadata?.model).toBe('gpt-4o-mini');
+    expect(draftRow.metadata?.offering_domain).toBe('voicexpert.ru');
+    expect(draftRow.metadata?.offering_hash).toBe(null);
+    expect(draftRow.metadata?.offering_summary).toEqual({
+      product_name: 'Tool',
+      one_liner: 'Desc',
+      key_benefits: [],
+      proof_points: [],
+      main_cta: null,
+    });
     expect(draftRow.metadata?.enrichment_provider).toEqual({ company: 'mock', employee: 'mock' });
     expect(draftRow.metadata?.enrichment_by_provider).toBe(null);
+  });
+
+  it('prefers request-level offering provenance when present', async () => {
+    const single = vi.fn().mockResolvedValue({
+      data: {
+        id: 'camp',
+        segment_id: 'seg',
+        segment_version: 1,
+        language: 'en',
+        pattern_mode: 'standard',
+      },
+      error: null,
+    });
+    const eq = vi.fn().mockReturnValue({ single });
+
+    const membersMatch = vi.fn().mockReturnValue({
+      limit: vi.fn().mockResolvedValue({
+        data: [
+          {
+            contact_id: 'contact-1',
+            company_id: 'company-1',
+            snapshot: {
+              request: {
+                email_type: 'intro',
+                language: 'en',
+                pattern_mode: 'standard',
+                brief: {
+                  prospect: { full_name: 'Jane Doe', role: 'CTO', company_name: 'Acme', email: 'jane@acme.test' },
+                  company: {},
+                  context: {
+                    offering_domain: 'skomplekt.com',
+                    offering_hash: 'sha256:abc123',
+                    offering_summary: {
+                      product_name: 'Skomplekt',
+                      one_liner: 'Updated offer',
+                    },
+                  },
+                  offer: { product_name: 'Tool', one_liner: 'Desc', key_benefits: ['a'] },
+                  constraints: {},
+                },
+              },
+            },
+          },
+        ],
+        error: null,
+      }),
+    });
+
+    const insertSelect = vi.fn().mockResolvedValue({ data: [{ id: 'draft-1' }], error: null });
+    const insert = vi.fn().mockReturnValue({ select: insertSelect });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'campaigns') return { select: () => ({ eq }) } as any;
+      if (table === 'segments') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }),
+            }),
+          }),
+        } as any;
+      }
+      if (table === 'icp_profiles') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: { id: 'p1', name: 'Tool', offering_domain: 'voicexpert.ru' },
+                error: null,
+              }),
+            }),
+          }),
+        } as any;
+      }
+      if (table === 'segment_members') return { select: () => ({ match: membersMatch }) } as any;
+      if (table === 'app_settings') {
+        return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) } as any;
+      }
+      if (table === 'companies') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      if (table === 'employees') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      if (table === 'drafts') return { insert } as any;
+      throw new Error(`Unexpected table ${table}`);
+    });
+
+    const aiClient = new AiClient({
+      complete: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          subject: 'Hello',
+          body: 'Body',
+          metadata: {
+            model: 'mock',
+            language: 'en',
+            pattern_mode: 'standard',
+            email_type: 'intro',
+            coach_prompt_id: 'intro_v1',
+          },
+        })
+      ),
+    });
+
+    const summary = await generateDrafts({ from } as any, aiClient, {
+      campaignId: 'camp',
+      icpProfileId: 'p1',
+    });
+
+    expect(summary.generated).toBe(1);
+    const insertedPayload = insert.mock.calls[0]?.[0] as any[];
+    const draftRow = insertedPayload[0];
+    expect(draftRow.metadata?.offering_domain).toBe('skomplekt.com');
+    expect(draftRow.metadata?.offering_hash).toBe('sha256:abc123');
+    expect(draftRow.metadata?.offering_summary).toEqual({
+      product_name: 'Skomplekt',
+      one_liner: 'Updated offer',
+    });
   });
 
   it('returns failed counts and error message when draft insert fails', async () => {

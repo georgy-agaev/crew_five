@@ -249,6 +249,7 @@ export async function createIcpProfileViaCoach(
     description: payload.description ?? input.description,
     companyCriteria: mergedCompanyCriteria,
     personaCriteria,
+    offeringDomain: input.offeringDomain,
     createdBy: undefined,
     phaseOutputs: phaseOutputs as unknown as Record<string, unknown>,
   });

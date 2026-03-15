@@ -116,6 +116,12 @@ export interface CampaignSpineContext {
   segment_version: number;
 }
 
+export interface ListCampaignsOptions {
+  status?: string;
+  segmentId?: string;
+  icpProfileId?: string;
+}
+
 export async function getCampaignSpineContext(
   client: SupabaseClient,
   campaignId: string
@@ -135,4 +141,47 @@ export async function getCampaignSpineContext(
   }
 
   return data as CampaignSpineContext;
+}
+
+export async function listCampaigns(client: SupabaseClient, options: ListCampaignsOptions = {}) {
+  let allowedSegmentIds: string[] | null = null;
+  if (options.icpProfileId) {
+    const { data: segments, error: segmentsError } = await client
+      .from('segments')
+      .select('id')
+      .eq('icp_profile_id', options.icpProfileId);
+
+    if (segmentsError) {
+      throw segmentsError;
+    }
+
+    allowedSegmentIds = (segments ?? []).map((row: any) => String(row.id)).filter(Boolean);
+    if (allowedSegmentIds.length === 0) {
+      return [];
+    }
+  }
+
+  let query: any = client
+    .from('campaigns')
+    .select('id,name,status,segment_id,segment_version,created_by,metadata,created_at,updated_at')
+    .order('created_at', { ascending: false });
+
+  if (options.status) {
+    query = query.eq('status', options.status);
+  }
+
+  if (options.segmentId) {
+    query = query.eq('segment_id', options.segmentId);
+  }
+
+  if (allowedSegmentIds) {
+    query = query.in('segment_id', allowedSegmentIds);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw error;
+  }
+
+  return data ?? [];
 }
