@@ -16,7 +16,7 @@ Use ast-grep to enforce project-specific guardrails (CLI parity, idempotency, er
 - **Retry/error hygiene**: Avoid hardcoded Retry-After caps and enforce Smartlead error details (`smartlead-retry-cap-constant`, `smartlead-error-hygiene`).
 
 ## Run
-- Repo task: `pnpm run scan:ast-grep` (uses `ast-grep.yml`)
+- Repo task: `pnpm run scan:ast-grep` (uses `ast-grep.yml` via `pnpm dlx @ast-grep/cli`, so CI does not depend on a globally installed binary)
 - Lint-style output: `ast-grep --config ast-grep.yml --lint .`
 - Search ad-hoc: `ast-grep -p "assumeNowOccurredAt" --lang ts`
 - Rewrite example: `ast-grep -p 'var $X = $Y' -r 'let $X = $Y' --lang js`

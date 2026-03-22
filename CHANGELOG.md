@@ -9,6 +9,8 @@ All notable changes to this project will be documented in this file.
   - `license: "Apache-2.0"` in [package.json](/Users/georgyagaev/crew_five/package.json)
     and [web/package.json](/Users/georgyagaev/crew_five/web/package.json)
   - licensing section in [README.md](/Users/georgyagaev/crew_five/README.md)
+### Fixed
+- Made `scan:ast-grep` self-contained via `pnpm dlx @ast-grep/cli` so GitHub Actions security checks no longer depend on a globally installed `ast-grep` binary.
 
 ## [0.2.46] - 2026-03-22
 ### Fixed
