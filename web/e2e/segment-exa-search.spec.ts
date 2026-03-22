@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+import { openLegacyPipeline } from './helpers';
+
 /**
  * T030: EXA Web Search Segment → Enrichment Workflow
  *
@@ -12,7 +14,7 @@ import { test, expect } from '@playwright/test';
 test.describe('T030: EXA Web Search Segment Creation', () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to web UI
-    await page.goto('/');
+    await openLegacyPipeline(page);
     await page.waitForLoadState('networkidle');
   });
 

@@ -13,10 +13,13 @@ const PERSONAL_EMAIL_DOMAINS = new Set([
 
 export type RecipientEmailSource = 'work' | 'generic' | 'missing';
 export type RecipientEmailKind = 'corporate' | 'personal' | 'generic' | 'missing';
+export type EmailDeliverabilityStatus = 'unknown' | 'valid' | 'invalid' | 'bounced';
 
 export interface RecipientResolutionInput {
   work_email?: string | null;
+  work_email_status?: EmailDeliverabilityStatus | null;
   generic_email?: string | null;
+  generic_email_status?: EmailDeliverabilityStatus | null;
 }
 
 export interface RecipientResolution {
@@ -27,8 +30,8 @@ export interface RecipientResolution {
 }
 
 export function resolveRecipientEmail(input: RecipientResolutionInput): RecipientResolution {
-  const workEmail = normalizeEmail(input.work_email);
-  if (workEmail) {
+  const workEmail = normalizeEmailAddress(input.work_email);
+  if (workEmail && isDeliverableEmailStatus(input.work_email_status)) {
     return {
       recipientEmail: workEmail,
       recipientEmailSource: 'work',
@@ -37,8 +40,8 @@ export function resolveRecipientEmail(input: RecipientResolutionInput): Recipien
     };
   }
 
-  const genericEmail = normalizeEmail(input.generic_email);
-  if (genericEmail) {
+  const genericEmail = normalizeEmailAddress(input.generic_email);
+  if (genericEmail && isDeliverableEmailStatus(input.generic_email_status)) {
     return {
       recipientEmail: genericEmail,
       recipientEmailSource: 'generic',
@@ -55,7 +58,7 @@ export function resolveRecipientEmail(input: RecipientResolutionInput): Recipien
   };
 }
 
-function normalizeEmail(value?: string | null) {
+export function normalizeEmailAddress(value?: string | null) {
   if (!value) {
     return null;
   }
@@ -66,6 +69,10 @@ function normalizeEmail(value?: string | null) {
   }
 
   return match[0].trim().toLowerCase();
+}
+
+function isDeliverableEmailStatus(status?: EmailDeliverabilityStatus | null) {
+  return status !== 'invalid' && status !== 'bounced';
 }
 
 function classifyWorkEmailKind(email: string): RecipientEmailKind {

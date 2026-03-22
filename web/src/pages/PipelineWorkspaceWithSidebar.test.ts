@@ -1,42 +1,50 @@
+import React from 'react';
+import { renderToString } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
-import {
-  formatDraftSummary,
-  formatSendSummary,
-  getPromptStatusKey,
-  aggregateAnalyticsMetrics,
-  formatAnalyticsGroupKey,
-  mapEnrichmentErrorMessage,
-  getActivePromptIdForStep,
+import PipelineWorkspaceWithSidebar, {
   // helper used to normalize prompt create form payloads
   buildPromptCreateEntry,
-  // helpers for prompt/task wiring
-  mapTaskToPromptStep,
-  getPromptOptionsForStep,
-  getPromptOptions,
-  getTaskSelectionLabel,
-  setTaskPrompt,
-  applyActivePromptSelection,
-  mapTaskToProviderKey,
   mapLlmModelsErrorMessage,
-  buildIcpSummaryFromProfile,
-  buildHypothesisSummaryFromSearchConfig,
-  formatIcpSummaryForChat,
-  formatHypothesisSummaryForChat,
+} from './PipelineWorkspaceWithSidebar';
+import {
+  aggregateAnalyticsMetrics,
+  formatAnalyticsGroupKey,
+  buildDraftGenerateOptions,
+  formatDraftSummary,
+  formatSendSummary,
+  getActivePromptIdForStep,
+  getPromptStatusKey,
+  hasLiveDraftsReady,
+} from './legacyWorkspace/legacyWorkspaceMetrics';
+import {
+  applyActivePromptSelection,
+  getModelOptionsForProvider,
+  getPromptOptions,
+  getPromptOptionsForStep,
+  getTaskSelectionLabel,
+  mapTaskToPromptStep,
+  mapTaskToProviderKey,
+  setTaskPrompt,
+} from './legacyWorkspace/legacyWorkspacePromptHelpers';
+import {
   appendChatMessage,
   appendInteractiveCoachMessage,
-  buildInteractiveIcpPrompt,
-  buildInteractiveHypothesisPrompt,
-  persistLatestDiscoveryRun,
-  getPersistedDiscoveryRun,
-  buildDiscoveryLinkParams,
-  openIcpDiscoveryForLatestRun,
-  hasPersistedDiscoveryRun,
-  resolveCoachRunMode,
   applyCoachResultToState,
-  buildDraftGenerateOptions,
-  hasLiveDraftsReady,
-} from './PipelineWorkspaceWithSidebar';
+  buildDiscoveryLinkParams,
+  buildHypothesisSummaryFromSearchConfig,
+  buildIcpSummaryFromProfile,
+  buildInteractiveHypothesisPrompt,
+  buildInteractiveIcpPrompt,
+  formatHypothesisSummaryForChat,
+  formatIcpSummaryForChat,
+  getPersistedDiscoveryRun,
+  hasPersistedDiscoveryRun,
+  openIcpDiscoveryForLatestRun,
+  persistLatestDiscoveryRun,
+  resolveCoachRunMode,
+} from './legacyWorkspace/legacyWorkspaceCoachHelpers';
+import { mapEnrichmentErrorMessage } from './PipelineWorkspaceWithSidebar';
 
 const memorySessionStorage = (() => {
   let store: Record<string, string> = {};
@@ -66,6 +74,118 @@ const memorySessionStorage = (() => {
 };
 
 describe('PipelineWorkspaceWithSidebar helpers', () => {
+  it('renders parallel surface links inside the legacy workspace shell', () => {
+    const html = renderToString(
+      React.createElement(PipelineWorkspaceWithSidebar, {
+        apiBase: '/api',
+        modeLabel: 'live',
+        supabaseReady: true,
+        smartleadReady: true,
+        initialPage: 'pipeline',
+      })
+    );
+
+    expect(html).toContain('Parallel Surfaces');
+    expect(html).toContain('?view=builder-v2');
+    expect(html).toContain('?view=inbox-v2');
+  });
+
+  it('renders legacy inbox page with the same empty state copy', () => {
+    const html = renderToString(
+      React.createElement(PipelineWorkspaceWithSidebar, {
+        apiBase: '/api',
+        modeLabel: 'live',
+        supabaseReady: true,
+        smartleadReady: true,
+        initialPage: 'inbox',
+      })
+    );
+
+    expect(html).toContain('Inbox');
+    expect(html).toContain('Manage your campaign replies and conversations');
+    expect(html).toContain('No messages yet');
+  });
+
+  it('renders legacy analytics page with overview empty state copy', () => {
+    const html = renderToString(
+      React.createElement(PipelineWorkspaceWithSidebar, {
+        apiBase: '/api',
+        modeLabel: 'live',
+        supabaseReady: true,
+        smartleadReady: true,
+        initialPage: 'analytics',
+      })
+    );
+
+    expect(html).toContain('Analytics');
+    expect(html).toContain('Overview');
+    expect(html).toContain('No data available');
+  });
+
+  it('renders prompt registry api endpoints panel', () => {
+    const html = renderToString(
+      React.createElement(PipelineWorkspaceWithSidebar, {
+        apiBase: '/api',
+        modeLabel: 'live',
+        supabaseReady: true,
+        smartleadReady: true,
+        initialPage: 'promptRegistry',
+      })
+    );
+
+    expect(html).toContain('Available API Endpoints');
+    expect(html).toContain('/api/prompt-registry');
+    expect(html).toContain('COMING SOON');
+  });
+
+  it('renders prompt registry table empty state copy', () => {
+    const html = renderToString(
+      React.createElement(PipelineWorkspaceWithSidebar, {
+        apiBase: '/api',
+        modeLabel: 'live',
+        supabaseReady: true,
+        smartleadReady: true,
+        initialPage: 'promptRegistry',
+      })
+    );
+
+    expect(html).toContain('No prompts yet');
+    expect(html).toContain('Create your first prompt to start optimizing your AI workflows.');
+  });
+
+  it('renders prompt registry task configuration section', () => {
+    const html = renderToString(
+      React.createElement(PipelineWorkspaceWithSidebar, {
+        apiBase: '/api',
+        modeLabel: 'live',
+        supabaseReady: true,
+        smartleadReady: true,
+        initialPage: 'promptRegistry',
+      })
+    );
+
+    expect(html).toContain('Task Configuration');
+    expect(html).toContain('Provider');
+    expect(html).toContain('Model');
+    expect(html).toContain('Prompt');
+  });
+
+  it('renders prompt registry live llm models panel', () => {
+    const html = renderToString(
+      React.createElement(PipelineWorkspaceWithSidebar, {
+        apiBase: '/api',
+        modeLabel: 'live',
+        supabaseReady: true,
+        smartleadReady: true,
+        initialPage: 'promptRegistry',
+      })
+    );
+
+    expect(html).toContain('Live LLM models (via provider APIs)');
+    expect(html).toContain('OpenAI');
+    expect(html).toContain('Anthropic');
+  });
+
   it('formats draft summary with modes and dryRun flag', () => {
     const summary = formatDraftSummary({
       generated: 42,
@@ -262,6 +382,15 @@ describe('PipelineWorkspaceWithSidebar helpers', () => {
     expect(mapTaskToProviderKey('hypothesisGen')).toBe('hypothesis');
     expect(mapTaskToProviderKey('emailDraft')).toBe('draft');
     expect(mapTaskToProviderKey('linkedinMsg')).toBe('draft');
+  });
+
+  it('prefers recommended live models before the rest', () => {
+    const options = getModelOptionsForProvider('openai', {
+      openai: ['gpt-4.1-mini', 'gpt-5-mini', 'gpt-4o-mini'],
+    });
+
+    expect(options[0]?.value).toBe('gpt-4o-mini');
+    expect(options.slice(1).map((entry) => entry.value)).toEqual(['gpt-4.1-mini', 'gpt-5-mini']);
   });
 
   it('builds prompt options for step from entries', () => {

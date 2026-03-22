@@ -6,6 +6,7 @@ import {
   collectConsoleLogs,
   generateSegmentName,
   openExaWebSearch,
+  openLegacyPipeline,
   openSegmentBuilder,
   runCli,
   verifySegmentInList,
@@ -31,7 +32,7 @@ test.describe('Segment → Enrichment end-to-end (specs/001-segment-search/e2e-t
   test('T029: Filter-based segment can be snapshotted and enriched (UI + CLI + DB)', async ({
     page,
   }) => {
-    await page.goto('/');
+    await openLegacyPipeline(page);
     await waitForAppReady(page);
 
     // Step 1: Create segment via Database Search UI
@@ -202,7 +203,7 @@ test.describe('Segment → Enrichment end-to-end (specs/001-segment-search/e2e-t
       test.skip();
     }
 
-    await page.goto('/');
+    await openLegacyPipeline(page);
     await waitForAppReady(page);
 
     // Step 1: Create segment via EXA Web Search UI
@@ -391,4 +392,3 @@ test.describe('Segment → Enrichment end-to-end (specs/001-segment-search/e2e-t
     }
   });
 });
-

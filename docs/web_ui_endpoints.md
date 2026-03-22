@@ -1,6 +1,6 @@
 # Web UI Endpoint Map
 
-> Version: v0.8 (2026-01-20)
+> Version: v0.22 (2026-03-22)
 >
 > This document catalogues the HTTP endpoints exposed by the web adapter
 > (`src/web/server.ts`) and shows how the React Web UI (`web/src`) uses them.
@@ -10,6 +10,9 @@
 ## Overview
 
 - Base URL is `VITE_API_BASE` (defaults to `/api` in `web/src/apiClient.ts`).
+- Canonical local ports:
+  - daily work: adapter `8787`, Vite UI `5173`
+  - isolated validation: adapter `8888`, Vite UI `5174`
 - All endpoints live under this base and are implemented in
   `src/web/server.ts` via the `dispatch` function.
 - The React app calls these endpoints exclusively through
@@ -23,18 +26,302 @@
 
 - `GET /api/campaigns`
   - Returns: list of campaigns (`id`, `name`, `status`, `segment_id`,
-    `segment_version`).
+    `segment_version`, `project_id`, `offer_id`, `icp_hypothesis_id`).
   - Used by: `fetchCampaigns` in `web/src/apiClient.ts`.
 - `POST /api/campaigns`
-  - Body: `{ name, segmentId, segmentVersion, createdBy? }`.
-  - Returns: created campaign row (includes `id`, `name`, `segment_id`, `segment_version`).
+  - Body: `{ name, segmentId, segmentVersion, projectId?, offerId?, icpHypothesisId?, createdBy? }`.
+  - Returns: created campaign row (includes `id`, `name`, `project_id`, `offer_id`, `icp_hypothesis_id`, `segment_id`, `segment_version`).
   - Used by: `createCampaign` in `web/src/apiClient.ts` (Pipeline Draft step inline creation).
+- `GET /api/campaigns/:campaignId/next-wave-preview`
+  - Returns:
+    - `sourceCampaign`
+    - `defaults`:
+      - `targetSegmentId`
+      - `targetSegmentVersion`
+      - `offerId`
+      - `icpHypothesisId`
+      - `sendPolicy`
+      - `senderPlanSummary`
+    - `summary`
+    - `blockedBreakdown`
+    - `items[]`:
+      - `contactId`
+      - `companyId`
+      - `source`
+      - `eligible`
+      - `blockedReason`
+      - `recipientEmail`
+      - `recipientEmailSource`
+      - `exposure_summary`:
+        - `total_exposures`
+        - `last_icp_hypothesis_id`
+        - `last_offer_id`
+        - `last_offer_title`
+        - `last_sent_at`
+    - `items`
+  - Used by: future next-wave preview flow.
+- `POST /api/campaigns/next-wave`
+  - Body: `{ sourceCampaignId, name, createdBy?, targetSegmentId?, targetSegmentVersion?, offerId?, icpHypothesisId?, snapshotMode?, senderPlan?, sendTimezone?, sendWindowStartHour?, sendWindowEndHour?, sendWeekdaysOnly? }`
+  - Returns:
+    - created `campaign`
+    - reused defaults
+    - `senderPlan`
+    - `sendPolicy`
+    - `summary`
+    - `blockedBreakdown`
+    - `items`
+  - Used by: future next-wave create flow.
+- `GET /api/campaigns/:campaignId/rotation-preview`
+  - Returns:
+    - `sourceCampaign`
+      - `campaignId`
+      - `campaignName`
+      - `offerId`
+      - `offerTitle`
+      - `icpHypothesisId`
+      - `icpHypothesisLabel`
+      - `icpProfileId`
+      - `icpProfileName`
+    - `summary`
+      - `sourceContactCount`
+      - `candidateCount`
+      - `eligibleCandidateContactCount`
+      - `blockedCandidateContactCount`
+    - `candidates[]`
+      - `icpHypothesisId`
+      - `hypothesisLabel`
+      - `messagingAngle`
+      - `offerId`
+      - `offerTitle`
+      - `projectName`
+      - `eligibleContactCount`
+      - `blockedContactCount`
+      - `blockedBreakdown`
+    - `contacts[]`
+      - `contactId`
+      - `companyId`
+      - `companyName`
+      - `fullName`
+      - `position`
+      - `recipientEmail`
+      - `recipientEmailSource`
+      - `sendable`
+      - `exposureSummary`
+      - `globalBlockedReasons[]`
+      - `candidateEvaluations[]`
+  - Used by: future controlled-rotation operator preview flow.
+- `GET /api/projects`
+  - Query params:
+    - `status` (optional) – `active` | `inactive`
+  - Returns: canonical project registry rows:
+    - `id`, `key`, `name`, `description`, `status`
+  - Used by: future launch / workspace project selectors.
+- `POST /api/projects`
+  - Body: `{ key, name, description?, status? }`
+  - Returns: created project row.
+- `PUT /api/projects/:projectId`
+  - Body: `{ name?, description?, status? }`
+  - Returns: updated project row.
+- `GET /api/offers`
+  - Query params:
+    - `status` (optional) – `active` | `inactive`
+  - Returns: minimal offer registry rows:
+    - `id`, `project_id`, `title`, `project_name`, `description`, `status`
+  - Used by: future launch / builder offer selectors.
+- `POST /api/offers`
+  - Body: `{ projectId?, title, projectName?, description?, status? }`
+  - Returns: created offer row.
+  - Used by: future operator / `Outreacher` offer-management flows.
+- `PUT /api/offers/:offerId`
+  - Body: `{ projectId?, title?, projectName?, description?, status? }`
+  - Returns: updated offer row.
+  - Used by: future operator / `Outreacher` offer-management flows.
+- `GET /api/campaigns/:campaignId/companies`
+  - Returns:
+    - `campaign`: operator-facing campaign detail (`id`, `name`, `status`,
+      `segment_id`, `segment_version`, `created_at`, `updated_at`)
+    - `companies`: the companies currently bound to the campaign audience
+      (base `segment_members` plus any `campaign_member_additions`, minus any
+      `campaign_member_exclusions`), including:
+      - `company_id`
+      - `company_name`
+      - `website`
+      - `employee_count`
+      - `region`
+      - `office_qualification`
+      - `company_description`
+      - `company_research`
+      - `contact_count`
+      - `enrichment`:
+        - `status` – `fresh` | `stale` | `missing`
+        - `last_updated_at`
+        - `provider_hint`
+  - Used by: `fetchCampaignCompanies` in `web/src/apiClient.ts`,
+    powering the Campaign Ops operator surface.
+- `GET /api/campaigns/:campaignId/detail`
+  - Returns:
+    - `campaign`: operator-facing campaign detail (`id`, `name`, `status`,
+      `segment_id`, `segment_version`, `created_at`, `updated_at`)
+    - `segment`, `icp_profile`, `icp_hypothesis`, `offer`: optional campaign context
+      - `offer`:
+        - `id`
+        - `title`
+        - `project_name`
+        - `description`
+        - `status`
+      - `icp_hypothesis`:
+        - `id`
+        - `name`
+        - `offer_id`
+        - `status`
+        - `messaging_angle`
+    - `companies`: the same campaign company rows as `/companies`, but each row also includes
+      `composition_summary` and `employees[]` with campaign-scoped employee detail:
+      - `composition_summary`:
+        - `total_contacts`
+        - `sendable_contacts`
+        - `eligible_for_new_intro_contacts`
+        - `blocked_no_sendable_email_contacts`
+        - `blocked_bounced_contacts`
+        - `blocked_unsubscribed_contacts`
+        - `blocked_already_used_contacts`
+        - `contacts_with_drafts`
+        - `contacts_with_sent_outbound`
+      - `contact_id`, `full_name`, `position`
+      - `work_email`, `generic_email`
+      - `recipient_email`
+      - `recipient_email_source` – `work` | `generic` | `missing`
+      - `sendable`
+      - `block_reasons` – `no_sendable_email` | `bounced` | `unsubscribed` | `already_used`
+      - `eligible_for_new_intro`
+      - `draft_counts`
+      - `outbound_count`, `sent_count`
+      - `replied`, `reply_count`
+      - `exposure_summary`:
+        - `total_exposures`
+        - `last_icp_hypothesis_id`
+        - `last_offer_id`
+        - `last_offer_title`
+        - `last_sent_at`
+      - `execution_exposures[]`:
+        - `campaign_id`
+        - `icp_profile_id`
+        - `icp_hypothesis_id`
+        - `offer_id`
+        - `offer_title`
+        - `project_name`
+        - `offering_domain`
+        - `offering_hash`
+        - `offering_summary`
+        - `first_sent_at`
+        - `last_sent_at`
+        - `sent_count`
+        - `replied`
+        - `bounced`
+        - `unsubscribed`
+  - Used by: `fetchCampaignDetail` in `web/src/apiClient.ts`, powering the `Employees` column in
+    the Campaigns operator desk so company selection does not depend on draft presence and both the
+    UI and `Outreach` can read one shared campaign-wave composition / intro-eligibility model plus
+    historical execution exposure memory anchored to outbound ledger rows.
+- `POST /api/campaigns/:campaignId/companies/attach`
+  - Body: `{ companyIds, attachedBy?, source? }`
+  - Behaviour:
+    - Attaches already-processed companies into an existing campaign wave without mutating the
+      source segment definition.
+    - Writes campaign-scoped contact rows into `campaign_member_additions`.
+    - Returns an operator-readable summary with per-company status rows.
+  - Used by: future `Import -> Process -> Attach` operator workflows.
+- `GET /api/campaigns/:campaignId/audit`
+  - Returns:
+    - `campaign`: operator-facing campaign detail (`id`, `name`, `status`,
+      `segment_id`, `segment_version`, `created_at`, `updated_at`)
+    - `summary`: campaign coverage counters across snapshot contacts, drafts,
+      outbounds, and events, including:
+      - `company_count`, `snapshot_contact_count`
+      - `contacts_with_any_draft`, `contacts_with_intro_draft`, `contacts_with_bump_draft`
+      - `contacts_with_sent_outbound`, `contacts_with_events`
+      - `draft_count` and draft status/sendability breakdowns
+      - `outbound_count` and outbound status/missing-recipient breakdowns
+      - `event_count` and reply/bounce/unsubscribe breakdowns
+      - anomaly counters such as
+        `snapshot_contacts_without_draft_count`,
+        `drafts_missing_recipient_email_count`,
+        `duplicate_draft_pair_count`,
+        `draft_company_mismatch_count`,
+        `sent_drafts_without_outbound_count`,
+        `outbounds_without_draft_count`
+    - `issues`: drill-down arrays for the corresponding anomaly buckets:
+      - `snapshot_contacts_without_draft`
+      - `drafts_missing_recipient_email`
+      - `duplicate_drafts`
+      - `draft_company_mismatches`
+      - `sent_drafts_without_outbound`
+      - `outbounds_without_draft`
+      - `outbounds_missing_recipient_email`
+  - Used by: operator audit workflows, external verification scripts, and the
+    Campaigns page audit panel in `web/src/components/CampaignAuditPanel.tsx`.
+- `GET /api/campaigns/:campaignId/outbounds`
+  - Returns:
+    - `campaign`: operator-facing campaign detail (`id`, `name`, `status`,
+      `segment_id`, `segment_version`, `created_at`, `updated_at`)
+    - `outbounds`: campaign-scoped send ledger rows including:
+      - `id`, `status`, `provider`, `provider_message_id`
+      - `sender_identity`, `sent_at`, `created_at`, `error`
+      - `pattern_mode`
+      - `draft_id`, `draft_email_type`, `draft_status`, `subject`
+      - `contact_id`, `contact_name`, `contact_position`
+      - `company_id`, `company_name`, `company_website`
+      - `recipient_email`, `recipient_email_source`, `recipient_email_kind`
+      - `metadata`
+  - Used by: `fetchCampaignOutbounds` in `web/src/apiClient.ts`,
+    powering the outbound ledger section in Campaigns.
+- `GET /api/campaigns/:campaignId/events`
+  - Returns:
+    - `campaign`: operator-facing campaign detail (`id`, `name`, `status`,
+      `segment_id`, `segment_version`, `created_at`, `updated_at`)
+    - `events`: campaign-scoped event ledger rows including:
+      - `id`, `outbound_id`, `event_type`, `outcome_classification`
+      - `provider_event_id`, `occurred_at`, `created_at`
+      - `pattern_id`, `coach_prompt_id`, `payload`
+      - `draft_id`, `draft_email_type`, `draft_status`, `subject`
+      - `provider`, `provider_message_id`, `sender_identity`, `sent_at`
+      - `recipient_email`, `recipient_email_source`, `recipient_email_kind`
+      - `contact_id`, `contact_name`, `contact_position`
+      - `company_id`, `company_name`, `company_website`
+  - Used by: `fetchCampaignEvents` in `web/src/apiClient.ts`,
+    powering the campaign event ledger in Campaigns.
 - `GET /api/drafts`
   - Query params:
     - `campaignId` (optional) – filter drafts by campaign.
-    - `status` (optional) – filter by draft status (e.g. `pending`).
-  - Returns: draft rows (`id`, `status`, `contact`, `metadata`).
-  - Used by: `fetchDrafts`.
+    - `status` (optional) – filter by draft status.
+    - `includeRecipientContext` (optional, `true|false`) – when `true`,
+      enriches each draft row with contact/company/recipient context for operator review.
+  - Returns: draft rows including:
+    - `id`, `status`, `email_type`, `subject`, `body`
+    - `pattern_mode`, `variant_label`, `reviewer`
+    - `contact_id`, `contact_name`, `contact_position`
+    - `company_id`, `company_name`
+    - `recipient_email`, `recipient_email_source`, `recipient_email_kind`, `sendable`
+    - `metadata`
+  - Used by: `fetchDrafts`, including the Campaigns review surface.
+- `POST /api/drafts/:draftId/status`
+  - Body: `{ status, reviewer?, metadata? }`.
+  - Behaviour:
+    - Updates a draft review status via the existing draft store.
+    - Merges `metadata` into existing draft metadata instead of replacing it.
+    - `Campaigns` uses this path to persist reject-review metadata such as
+      `review_reason_code`, `review_reason_codes`, `review_reason_text`,
+      `reviewed_at`, and `reviewed_by`.
+  - Returns: updated draft row.
+  - Used by: `reviewDraftStatus` in `web/src/apiClient.ts`, powering operator review in Campaigns.
+- `POST /api/drafts/:draftId/content`
+  - Body: `{ subject, body }`.
+  - Behaviour:
+    - Updates the `subject` and `body` of a draft via the draft store.
+    - Returns a sparse updated draft row; UI consumers should preserve already-loaded
+      contact/company/recipient context when merging the response into local state.
+  - Returns: updated draft row.
+  - Used by: `updateDraftContent` in `web/src/apiClient.ts`, powering inline draft edits in Campaigns.
 - `POST /api/drafts/generate`
   - Body: JSON payload from `triggerDraftGenerate`, including:
     - `campaignId` (required),
@@ -92,8 +379,9 @@
   - Body: `{ campaignId, smartleadCampaignId, dryRun?, batchSize?, step?, variantLabel? }`.
   - Behaviour:
     - Prepares a Smartlead campaign using the direct Smartlead API (no MCP server):
-      - Pulls contacts from the selected internal campaign’s `segment_members` and maps them into
-        Smartlead leads (requires `employees.work_email`).
+      - Pulls contacts from the selected internal campaign audience (base `segment_members` plus
+        `campaign_member_additions`) and maps them into Smartlead leads (requires
+        `employees.work_email`).
       - Syncs a single email sequence step using the first generated draft (subject/body).
       - Stores `smartlead_campaign_id` and `smartlead_last_prepared_at` under `campaigns.metadata`.
     - In `dryRun=true`, returns counts only and does not call Smartlead.
@@ -132,17 +420,22 @@
   - Returns: ICP profiles.
   - Used by: `fetchIcpProfiles`.
 - `POST /api/icp/profiles`
-  - Body: `{ name, description? }`.
+  - Body: `{ name, projectId?, description? }`.
   - Returns: created ICP profile.
   - Used by: `createIcpProfile`.
 - `GET /api/icp/hypotheses`
   - Query params:
     - `icpProfileId` (optional),
     - `segmentId` (optional).
-  - Returns: ICP hypotheses for the given filters.
+  - Returns: ICP hypotheses for the given filters, now including operational preset fields:
+    - `offer_id`
+    - `targeting_defaults`
+    - `messaging_angle`
+    - `pattern_defaults`
+    - `notes`
   - Used by: `fetchIcpHypotheses`.
 - `POST /api/icp/hypotheses`
-  - Body: `{ icpProfileId, hypothesisLabel, segmentId?, searchConfig? }`.
+  - Body: `{ icpProfileId, hypothesisLabel, offerId?, segmentId?, searchConfig?, targetingDefaults?, messagingAngle?, patternDefaults?, notes? }`.
   - Returns: created hypothesis.
   - Used by: `createIcpHypothesis`.
 - `POST /api/coach/icp`
@@ -180,27 +473,295 @@
   - Query params: `since?`, `topN?`.
   - Returns: reply patterns (`reply_label`, `count`).
   - Used by: `fetchReplyPatterns`.
+- `GET /api/dashboard/overview`
+  - Returns one canonical dashboard payload for the new `Home` surface:
+    - `campaigns.total`
+    - `campaigns.active`
+    - `campaigns.byStatus`
+    - `pending.draftsOnReview`
+    - `pending.inboxReplies` (currently unhandled canonical reply events)
+    - `pending.staleEnrichment`
+    - `pending.missingEnrichment`
+    - `recentActivity[]` from campaigns, drafts, and reply events
+  - Used by: future `Home / Dashboard` UI to avoid stitching multiple endpoints client-side.
 - `GET /api/analytics/summary`
   - Query params:
-    - `groupBy?` – `icp` | `segment` | `pattern`,
+    - `groupBy?` – `icp` | `segment` | `pattern` | `rejection_reason` | `offering` | `offer`,
     - `since?` – ISO timestamp.
   - Returns: aggregated metrics per group (delivered, opened, replied,
     positive replies).
+  - Notes:
+    - `offering` groups by legacy draft metadata `offering_domain`
+    - `offer` groups by canonical `campaign.offer_id` plus offer registry labels
   - Used by: `fetchAnalyticsSummary`.
+- `GET /api/analytics/rejection-reasons`
+  - Query params: `since?` – ISO timestamp.
+  - Returns grouped draft-review rejection analytics derived from `drafts.metadata`:
+    - `total_rejected`
+    - `by_reason`
+    - `by_pattern`
+    - `by_pattern_and_reason`
+    - `by_campaign`
+    - `by_email_type`
+    - `by_icp_profile`
+    - `by_icp_hypothesis`
+  - Used by: rejection analytics / review learnings UI surfaces.
 - `GET /api/analytics/optimize`
   - Query params: `since?`.
   - Returns: `{ suggestions, simSummary? }` for prompt/pattern tuning.
   - Used by: `fetchAnalyticsOptimize`.
 
-### Inbox (stub)
+### Import / Post-Import Processing
+
+- `POST /api/company-import/preview`
+  - Body: `{ records }` where `records` is an array of canonical import rows.
+  - Returns:
+    - `mode`
+    - `summary`
+    - `items`
+  - Used by: `ImportWorkspacePage` preview flow.
+- `POST /api/company-import/apply`
+  - Body: `{ records }` where `records` is an array of canonical import rows.
+  - Returns:
+    - `mode`
+    - `summary`
+    - `items`
+    - `applied[]` with actual persisted company ids per submitted row:
+      - `index`
+      - `company_id`
+      - `action`
+  - Used by: `ImportWorkspacePage` apply flow and follow-up processing handoff.
+- `POST /api/company-import/process`
+  - Starts async post-import company processing through Outreacher.
+  - Body:
+```json
+{
+  "companyIds": ["uuid-1", "uuid-2"],
+  "mode": "full",
+  "source": "xlsx-import"
+}
+```
+  - Response:
+    - `jobId`
+    - `status`
+    - `mode`
+    - `totalCompanies`
+    - `batchSize`
+    - `source`
+  - Runtime:
+    - validates company ids exist
+    - chunks work by recommended batch size (`10`)
+    - uses local command bridge `OUTREACH_PROCESS_COMPANY_CMD`
+    - rejects hard max batches `>20`
+  - Used by: future `Import -> Apply + process with Outreacher` UI.
+- `GET /api/company-import/process/:jobId`
+  - Returns async processing job status:
+    - `jobId`
+    - `status`
+    - `mode`
+    - `totalCompanies`
+    - `batchSize`
+    - `processedCompanies`
+    - `completedCompanies`
+    - `failedCompanies`
+    - `skippedCompanies`
+    - `results[]`
+    - `errors[]`
+  - Used by: future import processing progress UI.
+
+### Mailboxes / Sender Planning
+
+- `POST /api/campaigns/launch-preview`
+  - Returns the canonical launch preview for a proposed campaign payload.
+  - Request body:
+```json
+{
+  "name": "Q2 Negotiation Rooms",
+  "segmentId": "seg-uuid",
+  "segmentVersion": 1,
+  "projectId": "project-1",
+  "offerId": "offer-1",
+  "snapshotMode": "reuse",
+  "sendTimezone": "Europe/Moscow",
+  "sendWindowStartHour": 9,
+  "sendWindowEndHour": 17,
+  "sendWeekdaysOnly": true,
+  "senderPlan": {
+    "assignments": [
+      {
+        "mailboxAccountId": "mbox-1",
+        "senderIdentity": "sales@voicexpert.ru",
+        "provider": "imap_mcp"
+      }
+    ]
+  }
+}
+```
+  - Response includes:
+    - `campaign`
+    - `segment.snapshotStatus`
+    - `summary.companyCount`
+    - `summary.contactCount`
+    - `summary.sendableContactCount`
+    - `summary.freshCompanyCount`
+    - `summary.staleCompanyCount`
+    - `summary.missingCompanyCount`
+    - `summary.senderAssignmentCount`
+    - `senderPlan.domains`
+    - `sendPolicy`
+    - `warnings[]`
+  - Used by: future `Builder V2` / `Campaigns` launch wizard surfaces.
+- `POST /api/campaigns/launch`
+  - Performs the canonical launch mutation.
+  - Request body matches `launch-preview`, plus optional `createdBy`.
+  - Response includes:
+    - `campaign`
+    - `segment.snapshot`
+    - `senderPlan.assignments`
+    - `senderPlan.summary`
+    - `sendPolicy`
+  - Used by: future `Builder V2` / `Campaigns` launch wizard surfaces and `Outreacher /launch-campaign`.
+- `GET /api/mailboxes`
+  - Returns ledger-derived **observed** mailbox inventory from `email_outbound`.
+- `GET /api/campaigns/:id/auto-send`
+  - Returns canonical campaign auto-send flags:
+    - `campaignId`
+    - `campaignName`
+    - `campaignStatus`
+    - `autoSendIntro`
+    - `autoSendBump`
+    - `bumpMinDaysSinceIntro`
+    - `updatedAt`
+  - Used by: future Campaigns / Builder V2 auto-send controls.
+- `PUT /api/campaigns/:id/auto-send`
+  - Body:
+    - `autoSendIntro?`
+    - `autoSendBump?`
+    - `bumpMinDaysSinceIntro?`
+  - Validation:
+    - body must be an object
+    - at least one field must be provided
+    - `bumpMinDaysSinceIntro` must be an integer `>= 1`
+  - Returns: the updated canonical auto-send settings view.
+  - Used by: future Campaigns / Builder V2 auto-send controls.
+- `GET /api/campaigns/:id/send-policy`
+  - Returns canonical campaign-local send calendar policy:
+    - `campaignId`
+    - `campaignName`
+    - `campaignStatus`
+    - `sendTimezone`
+    - `sendWindowStartHour`
+    - `sendWindowEndHour`
+    - `sendWeekdaysOnly`
+    - `updatedAt`
+  - Used by: future Campaigns / Builder V2 send-calendar controls.
+- `PUT /api/campaigns/:id/send-policy`
+  - Body:
+    - `sendTimezone?`
+    - `sendWindowStartHour?`
+    - `sendWindowEndHour?`
+    - `sendWeekdaysOnly?`
+  - Validation:
+    - body must be an object
+    - at least one field must be provided
+    - `sendTimezone` must be a valid IANA timezone
+    - `sendWindowStartHour` must be an integer `0..23`
+    - `sendWindowEndHour` must be an integer `1..24`
+    - `sendWindowEndHour` must be greater than `sendWindowStartHour`
+    - `sendWeekdaysOnly` must be a boolean when provided
+  - Returns: the updated canonical send policy view.
+  - Used by: future Campaigns / Builder V2 send-calendar controls.
+- `GET /api/campaigns/:id/mailbox-summary`
+  - Returns observed mailbox consistency for a campaign.
+- `GET /api/campaigns/:id/mailbox-assignment`
+  - Returns **planned** sender identities for a campaign from `campaign_mailbox_assignments`.
+  - Response includes assignment rows plus summary counts:
+    - `assignmentCount`
+    - `mailboxAccountCount`
+    - `senderIdentityCount`
+    - `domainCount`
+    - `domains`
+- `PUT /api/campaigns/:id/mailbox-assignment`
+  - Replaces the full planned sender set for a campaign.
+  - Request body:
+```json
+{
+  "source": "outreacher",
+  "assignments": [
+    {
+      "mailboxAccountId": "mbox-1",
+      "senderIdentity": "sales@voicexpert.ru",
+      "provider": "imap_mcp",
+      "metadata": null
+    }
+  ]
+}
+```
+  - Used by: mailbox planning / pre-send sender assignment flows.
+- `GET /api/campaigns/:id/send-preflight`
+  - Returns the canonical send-readiness view for a campaign.
+  - Response includes:
+    - `readyToSend`
+    - `blockers[]`
+      - possible blocker codes include:
+        - `no_sender_assignment`
+        - `draft_not_approved`
+        - `missing_recipient_email`
+        - `suppressed_contact`
+        - `no_sendable_drafts`
+        - `campaign_paused`
+    - `summary.mailboxAssignmentCount`
+    - `summary.draftCount`
+    - `summary.approvedDraftCount`
+    - `summary.generatedDraftCount`
+    - `summary.rejectedDraftCount`
+    - `summary.sentDraftCount`
+    - `summary.sendableApprovedDraftCount`
+    - `summary.approvedMissingRecipientEmailCount`
+    - `summary.approvedSuppressedContactCount`
+    - `senderPlan.assignmentCount`
+    - `senderPlan.domains`
+  - Behaviour:
+    - uses canonical recipient resolution from `employees.work_email` / `generic_email`
+    - blocks approved drafts that target bounced / unsubscribed / complaint contacts
+    - blocks repeated intro sends for already-used contacts
+  - Used by: future `Campaigns` and `Builder V2` send-preflight surfaces.
+
+### Inbox
 
 - `GET /api/inbox/messages`
-  - Query params: `status?`, `limit?` (currently ignored by the stub
+  - Query params: `status?`, `limit?` (currently ignored by the legacy stub
     implementation).
-  - Returns: `{ messages: [], total: 0 }` in the current stub; structure
-    is compatible with `InboxMessage` in `web/src/apiClient.ts`.
-  - Used by: `fetchInboxMessages`, primarily in
-    `PipelineWorkspaceWithSidebar` for the Inbox view.
+  - Returns: `{ messages: [], total: 0 }`.
+  - Used by: legacy inbox surfaces only.
+- `GET /api/inbox/replies`
+  - Query params:
+    - `campaignId?`
+    - `replyLabel?`
+    - `handled?` (`true` or `false`)
+    - `limit?`
+  - Returns canonical reply events joined with outbound/draft/contact/company
+    context.
+  - Each reply includes:
+    - `handled`
+    - `handled_at`
+    - `handled_by`
+  - Used by: `Inbox V2`.
+- `POST /api/inbox/poll`
+  - Triggers Outreach reply polling via the adapter when configured.
+  - Supports either:
+    - external HTTP trigger via `OUTREACH_PROCESS_REPLIES_URL`
+    - fallback base URL via `OUTREACH_API_BASE` -> `/process-replies`
+    - local command bridge via `OUTREACH_PROCESS_REPLIES_CMD`
+  - Returns `202` on accepted trigger, `501` when polling is not configured.
+  - Used by: `Inbox V2`.
+- `POST /api/inbox/replies/:id/handled`
+  - Marks a canonical inbox reply event as handled.
+  - Request body may include `handledBy`.
+  - Returns `{ id, handled, handled_at, handled_by }`.
+- `POST /api/inbox/replies/:id/unhandled`
+  - Clears handled state for a canonical inbox reply event.
+  - Returns `{ id, handled, handled_at, handled_by }`.
 
 ### Prompt registry
 

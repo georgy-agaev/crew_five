@@ -7,6 +7,9 @@ interface CampaignCreateOptions {
   name: string;
   segmentId: string;
   segmentVersion?: number;
+  projectId?: string;
+  offerId?: string;
+  icpHypothesisId?: string;
   senderProfileId?: string;
   promptPackId?: string;
   schedule?: string;
@@ -57,6 +60,9 @@ export async function campaignCreateHandler(
     name: options.name,
     segmentId: options.segmentId,
     segmentVersion: snapshot.version,
+    projectId: options.projectId,
+    offerId: options.offerId,
+    icpHypothesisId: options.icpHypothesisId,
     senderProfileId: options.senderProfileId,
     promptPackId: options.promptPackId,
     schedule,

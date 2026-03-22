@@ -210,6 +210,10 @@ describe('createProgram', () => {
       'Q1 Dry',
       '--segment-id',
       'seg-1',
+      '--offer-id',
+      'offer-1',
+      '--icp-hypothesis-id',
+      'hyp-1',
       '--dry-run',
     ]);
 
@@ -218,9 +222,215 @@ describe('createProgram', () => {
       expect.objectContaining({
         name: 'Q1 Dry',
         segmentId: 'seg-1',
+        offerId: 'offer-1',
+        icpHypothesisId: 'hyp-1',
         dryRun: true,
       })
     );
+  });
+
+  it('wires offer:create', async () => {
+    const offerCreate = vi.fn().mockResolvedValue({
+      id: 'offer-1',
+      title: 'Negotiation room audit',
+      project_name: 'VoiceXpert',
+      description: 'Audit offer',
+      status: 'active',
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { offerCreate } as any,
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'offer:create',
+      '--title',
+      'Negotiation room audit',
+      '--project-name',
+      'VoiceXpert',
+      '--description',
+      'Audit offer',
+      '--status',
+      'active',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(offerCreate).toHaveBeenCalledWith(supabaseClient, {
+      title: 'Negotiation room audit',
+      projectName: 'VoiceXpert',
+      description: 'Audit offer',
+      status: 'active',
+    });
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.id).toBe('offer-1');
+    logSpy.mockRestore();
+  });
+
+  it('wires offer:list with status filter', async () => {
+    const offerList = vi.fn().mockResolvedValue([
+      {
+        id: 'offer-1',
+        title: 'Negotiation room audit',
+        project_name: 'VoiceXpert',
+        description: 'Audit offer',
+        status: 'active',
+      },
+    ]);
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { offerList } as any,
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'offer:list',
+      '--status',
+      'active',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(offerList).toHaveBeenCalledWith(supabaseClient, { status: 'active' });
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload[0].id).toBe('offer-1');
+    logSpy.mockRestore();
+  });
+
+  it('wires offer:update', async () => {
+    const offerUpdate = vi.fn().mockResolvedValue({
+      id: 'offer-1',
+      title: 'Negotiation room audit',
+      project_name: 'VoiceXpert',
+      description: 'Updated audit offer',
+      status: 'inactive',
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { offerUpdate } as any,
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'offer:update',
+      '--offer-id',
+      'offer-1',
+      '--description',
+      'Updated audit offer',
+      '--status',
+      'inactive',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(offerUpdate).toHaveBeenCalledWith(supabaseClient, 'offer-1', {
+      description: 'Updated audit offer',
+      status: 'inactive',
+    });
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.status).toBe('inactive');
+    logSpy.mockRestore();
+  });
+
+  it('wires project:create, project:list, and project:update', async () => {
+    const projectCreate = vi.fn().mockResolvedValue({
+      id: 'project-1',
+      key: 'voicexpert',
+      name: 'VoiceXpert',
+      description: 'Core workspace',
+      status: 'active',
+    });
+    const projectList = vi.fn().mockResolvedValue([
+      {
+        id: 'project-1',
+        key: 'voicexpert',
+        name: 'VoiceXpert',
+        description: 'Core workspace',
+        status: 'active',
+      },
+    ]);
+    const projectUpdate = vi.fn().mockResolvedValue({
+      id: 'project-1',
+      key: 'voicexpert',
+      name: 'VoiceXpert Core',
+      description: 'Updated',
+      status: 'inactive',
+    });
+    const program = createProgram({
+      supabaseClient: { from: vi.fn() } as any,
+      aiClient: {} as any,
+      handlers: { projectCreate, projectList, projectUpdate } as any,
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'project:create',
+      '--key',
+      'voicexpert',
+      '--name',
+      'VoiceXpert',
+      '--description',
+      'Core workspace',
+      '--error-format',
+      'json',
+    ]);
+    expect(projectCreate).toHaveBeenCalledWith(expect.anything(), {
+      key: 'voicexpert',
+      name: 'VoiceXpert',
+      description: 'Core workspace',
+      status: undefined,
+    });
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'project:list',
+      '--status',
+      'active',
+      '--error-format',
+      'json',
+    ]);
+    expect(projectList).toHaveBeenCalledWith(expect.anything(), { status: 'active' });
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'project:update',
+      '--project-id',
+      'project-1',
+      '--name',
+      'VoiceXpert Core',
+      '--description',
+      'Updated',
+      '--status',
+      'inactive',
+      '--error-format',
+      'json',
+    ]);
+    expect(projectUpdate).toHaveBeenCalledWith(expect.anything(), 'project-1', {
+      name: 'VoiceXpert Core',
+      description: 'Updated',
+      status: 'inactive',
+    });
+
+    const lastPayload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(lastPayload.status).toBe('inactive');
+    logSpy.mockRestore();
   });
 
   it('campaign:create emits JSON error when error-format=json', async () => {
@@ -257,6 +467,322 @@ describe('createProgram', () => {
 
     errorSpy.mockRestore();
     process.exitCode = originalExitCode;
+  });
+
+  it('runs employee:repair-names in dry-run mode and prints JSON summary', async () => {
+    const repairNames = vi.fn().mockResolvedValue({
+      mode: 'dry-run',
+      summary: {
+        scanned_count: 2,
+        candidate_count: 1,
+        fixable_count: 1,
+        skipped_count: 0,
+        updated_count: 0,
+      },
+      candidates: [
+        {
+          employee_id: 'emp-1',
+          current_first_name: 'Федина',
+          current_last_name: 'Инна',
+          proposed_first_name: 'Инна',
+          proposed_last_name: 'Федина',
+          confidence: 'high',
+        },
+      ],
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { repairEmployeeNames: repairNames } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'employee:repair-names',
+      '--dry-run',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(repairNames).toHaveBeenCalledWith(supabaseClient, {
+      dryRun: true,
+      confidence: 'high',
+    });
+    const payload = JSON.parse((logSpy.mock.calls[0] as any)[0] as string);
+    expect(payload.mode).toBe('dry-run');
+    expect(payload.summary.fixable_count).toBe(1);
+
+    logSpy.mockRestore();
+  });
+
+  it('passes confidence filter to employee:repair-names handler', async () => {
+    const repairNames = vi.fn().mockResolvedValue({
+      mode: 'dry-run',
+      summary: {
+        scanned_count: 2,
+        candidate_count: 2,
+        fixable_count: 2,
+        skipped_count: 0,
+        updated_count: 0,
+      },
+      candidates: [],
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { repairEmployeeNames: repairNames } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'employee:repair-names',
+      '--dry-run',
+      '--confidence',
+      'all',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(repairNames).toHaveBeenCalledWith(supabaseClient, {
+      dryRun: true,
+      confidence: 'all',
+    });
+
+    logSpy.mockRestore();
+  });
+
+  it('runs company:import in dry-run mode from a JSON file', async () => {
+    const companyImport = vi.fn().mockResolvedValue({
+      mode: 'dry-run',
+      summary: {
+        total_count: 1,
+        created_count: 1,
+        updated_count: 0,
+        skipped_count: 0,
+        employee_created_count: 0,
+        employee_updated_count: 0,
+      },
+      items: [{ company_name: 'ООО Новая', action: 'create', warnings: [] }],
+    });
+    const tmpFile = '/tmp/crew-five-company-import.json';
+    await import('node:fs/promises').then((fs) =>
+      fs.writeFile(tmpFile, JSON.stringify([{ company_name: 'ООО Новая', tin: '1234567890' }]), 'utf8')
+    );
+
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { companyImport } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'company:import',
+      '--file',
+      tmpFile,
+      '--dry-run',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(companyImport).toHaveBeenCalledWith(supabaseClient, expect.objectContaining({ dryRun: true }));
+    const payload = JSON.parse((logSpy.mock.calls[0] as any)[0] as string);
+    expect(payload.mode).toBe('dry-run');
+    expect(payload.summary.created_count).toBe(1);
+
+    logSpy.mockRestore();
+  });
+
+  it('runs company:save-processed from payload json', async () => {
+    const companySaveProcessed = vi.fn().mockResolvedValue({
+      company_id: 'company-1',
+      employee_ids: ['employee-1'],
+      warnings: [],
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { companySaveProcessed } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'company:save-processed',
+      '--payload',
+      JSON.stringify({
+        company: {
+          tin: '7707083893',
+          company_name: 'ООО Пример',
+          processing_status: 'completed',
+        },
+        employees: [{ full_name: 'Инна Федина' }],
+      }),
+      '--error-format',
+      'json',
+    ]);
+
+    expect(companySaveProcessed).toHaveBeenCalledWith(
+      supabaseClient,
+      expect.objectContaining({
+        company: expect.objectContaining({
+          tin: '7707083893',
+          company_name: 'ООО Пример',
+        }),
+        employees: [expect.objectContaining({ full_name: 'Инна Федина' })],
+      })
+    );
+    const payload = JSON.parse((logSpy.mock.calls[0] as any)[0] as string);
+    expect(payload.company_id).toBe('company-1');
+    expect(payload.employee_ids).toEqual(['employee-1']);
+
+    logSpy.mockRestore();
+  });
+
+  it('runs campaign:attach-companies and prints JSON summary', async () => {
+    const campaignAttachCompanies = vi.fn().mockResolvedValue({
+      campaignId: 'camp-1',
+      summary: {
+        requestedCompanyCount: 2,
+        attachedCompanyCount: 1,
+        alreadyPresentCompanyCount: 1,
+        blockedCompanyCount: 0,
+        invalidCompanyCount: 0,
+        insertedContactCount: 2,
+        alreadyPresentContactCount: 1,
+      },
+      items: [],
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { campaignAttachCompanies } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:attach-companies',
+      '--campaign-id',
+      'camp-1',
+      '--company-ids',
+      '["co-1","co-2"]',
+      '--attached-by',
+      'web-ui',
+      '--source',
+      'import_workspace',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(campaignAttachCompanies).toHaveBeenCalledWith(supabaseClient, {
+      campaignId: 'camp-1',
+      companyIds: ['co-1', 'co-2'],
+      attachedBy: 'web-ui',
+      source: 'import_workspace',
+    });
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.summary.attachedCompanyCount).toBe(1);
+
+    logSpy.mockRestore();
+  });
+
+  it('runs campaign:followup-candidates and prints JSON rows', async () => {
+    const campaignFollowupCandidates = vi.fn().mockResolvedValue([
+      {
+        contact_id: 'contact-1',
+        company_id: 'company-1',
+        intro_sent: true,
+        intro_sent_at: '2026-03-10T10:00:00Z',
+        intro_sender_identity: 'sales@example.com',
+        reply_received: false,
+        bounce: false,
+        unsubscribed: false,
+        bump_draft_exists: true,
+        bump_sent: false,
+        eligible: true,
+        days_since_intro: 6,
+        auto_reply: null,
+      },
+    ]);
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { campaignFollowupCandidates } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:followup-candidates',
+      '--campaign-id',
+      'camp-1',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(campaignFollowupCandidates).toHaveBeenCalledWith(supabaseClient, 'camp-1');
+    const payload = JSON.parse((logSpy.mock.calls[0] as any)[0] as string);
+    expect(payload).toHaveLength(1);
+    expect(payload[0]?.eligible).toBe(true);
+
+    logSpy.mockRestore();
+  });
+
+  it('runs campaign:detail and prints the campaign read model', async () => {
+    const campaignDetailReadModel = vi.fn().mockResolvedValue({
+      campaign: { id: 'camp-1', name: 'Q1 Push' },
+      segment: { id: 'segment-1', name: 'SMB Moscow' },
+      icp_profile: { id: 'icp-1', name: 'VoiceXpert ICP' },
+      icp_hypothesis: { id: 'hyp-1', name: 'Negotiation room refresh' },
+      companies: [],
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { campaignDetailReadModel } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:detail',
+      '--campaign-id',
+      'camp-1',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(campaignDetailReadModel).toHaveBeenCalledWith(supabaseClient, 'camp-1');
+    const payload = JSON.parse((logSpy.mock.calls[0] as any)[0] as string);
+    expect(payload.campaign?.name).toBe('Q1 Push');
+    expect(payload.segment?.name).toBe('SMB Moscow');
+
+    logSpy.mockRestore();
   });
 
   it('wires icp:discover with minimal args and returns summary json', async () => {
@@ -1087,7 +1613,7 @@ describe('createProgram', () => {
             select: () => ({
               eq: () => ({
                 single: async () => ({
-                  data: { id: 'camp-1', segment_id: 'seg-1', metadata: {} },
+                  data: { id: 'camp-1', segment_id: 'seg-1', segment_version: 1, metadata: {} },
                   error: null,
                 }),
               }),
@@ -1100,11 +1626,31 @@ describe('createProgram', () => {
         if (table === 'segment_members') {
           return {
             select: () => ({
-              eq: () => ({
+              match: () => ({
                 limit: async () => ({
                   data: [{ contact_id: 'e1' }],
                   error: null,
                 }),
+              }),
+            }),
+          };
+        }
+        if (table === 'campaign_member_additions') {
+          return {
+            select: () => ({
+              eq: async () => ({
+                data: [],
+                error: null,
+              }),
+            }),
+          };
+        }
+        if (table === 'campaign_member_exclusions') {
+          return {
+            select: () => ({
+              eq: async () => ({
+                data: [],
+                error: null,
               }),
             }),
           };
@@ -1475,6 +2021,81 @@ describe('createProgram', () => {
     logSpy.mockRestore();
   });
 
+  it('wires campaign:audit and prints JSON payload', async () => {
+    const campaignAudit = vi.fn().mockResolvedValue({
+      campaign: {
+        id: 'camp-1',
+        name: 'Q1 Push',
+        status: 'review',
+        segment_id: 'seg-1',
+        segment_version: 2,
+      },
+      summary: {
+        company_count: 3,
+        snapshot_contact_count: 7,
+        contacts_with_any_draft: 6,
+        contacts_with_intro_draft: 5,
+        contacts_with_bump_draft: 1,
+        contacts_with_sent_outbound: 4,
+        contacts_with_events: 2,
+        draft_count: 7,
+        generated_draft_count: 1,
+        approved_draft_count: 5,
+        rejected_draft_count: 1,
+        sent_draft_count: 1,
+        sendable_draft_count: 6,
+        unsendable_draft_count: 1,
+        outbound_count: 4,
+        outbound_sent_count: 4,
+        outbound_failed_count: 0,
+        outbound_missing_recipient_email_count: 0,
+        event_count: 2,
+        replied_event_count: 1,
+        bounced_event_count: 1,
+        unsubscribed_event_count: 0,
+        snapshot_contacts_without_draft_count: 1,
+        drafts_missing_recipient_email_count: 1,
+        duplicate_draft_pair_count: 0,
+        draft_company_mismatch_count: 0,
+        sent_drafts_without_outbound_count: 0,
+        outbounds_without_draft_count: 0,
+      },
+      issues: {
+        snapshot_contacts_without_draft: [{ contact_id: 'contact-7' }],
+        drafts_missing_recipient_email: [{ draft_id: 'draft-7' }],
+        duplicate_drafts: [],
+        draft_company_mismatches: [],
+        sent_drafts_without_outbound: [],
+        outbounds_without_draft: [],
+        outbounds_missing_recipient_email: [],
+      },
+    });
+
+    const program = createProgram({
+      supabaseClient: { from: vi.fn() } as any,
+      aiClient: {} as any,
+      handlers: { campaignAudit },
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:audit',
+      '--campaign-id',
+      'camp-1',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(campaignAudit).toHaveBeenCalledWith(expect.anything(), 'camp-1');
+    const payload = JSON.parse((logSpy.mock.calls[0] as any[])[0] as string);
+    expect(payload.summary.snapshot_contact_count).toBe(7);
+    expect(payload.issues.drafts_missing_recipient_email[0].draft_id).toBe('draft-7');
+    logSpy.mockRestore();
+  });
+
   it('enrich_run_dry_run_returns_preview_with_company_limit_and_refresh_policy', async () => {
     const segmentMembersSelect = vi.fn().mockReturnValue({
       match: vi.fn().mockResolvedValue({ data: [{ id: 'member-1' }], error: null, count: 2 }),
@@ -1602,6 +2223,8 @@ describe('createProgram', () => {
       'icp:create',
       '--name',
       'Fintech ICP',
+      '--project-id',
+      'project-1',
       '--offering-domain',
       'voicexpert.ru',
       '--company-criteria',
@@ -1612,6 +2235,7 @@ describe('createProgram', () => {
     expect(insert).toHaveBeenCalledWith([
       expect.objectContaining({
         name: 'Fintech ICP',
+        project_id: 'project-1',
         offering_domain: 'voicexpert.ru',
       }),
     ]);
@@ -1620,13 +2244,38 @@ describe('createProgram', () => {
   });
 
   it('wires icp:hypothesis:create and prints hypothesis id', async () => {
+    const insertHypotheses = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: { id: 'hypo-1' },
+          error: null,
+        }),
+      }),
+    });
     const from = vi.fn((table: string) => {
       if (table === 'icp_hypotheses') {
         return {
-          insert: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({
+          insert: insertHypotheses,
+        };
+      }
+      if (table === 'icp_profiles') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
               single: vi.fn().mockResolvedValue({
-                data: { id: 'hypo-1' },
+                data: { id: 'icp-1', project_id: 'project-1' },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'offers') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({
+                data: { id: 'offer-1', project_id: 'project-1' },
                 error: null,
               }),
             }),
@@ -1659,11 +2308,30 @@ describe('createProgram', () => {
       'icp-1',
       '--label',
       'Mid-market',
+      '--offer-id',
+      'offer-1',
+      '--targeting-defaults',
+      '{"regions":["EU"]}',
+      '--messaging-angle',
+      'Negotiation room refresh',
+      '--pattern-defaults',
+      '{"introPattern":"standard"}',
+      '--notes',
+      'Use for audit waves',
       '--segment-id',
       'segment-1',
     ]);
 
     expect(from).toHaveBeenCalledWith('icp_hypotheses');
+    expect(insertHypotheses).toHaveBeenCalledWith([
+      expect.objectContaining({
+        offer_id: 'offer-1',
+        targeting_defaults: { regions: ['EU'] },
+        messaging_angle: 'Negotiation room refresh',
+        pattern_defaults: { introPattern: 'standard' },
+        notes: 'Use for audit waves',
+      }),
+    ]);
     expect(logSpy).toHaveBeenCalledWith(JSON.stringify({ id: 'hypo-1' }));
     logSpy.mockRestore();
   });
@@ -2009,6 +2677,36 @@ describe('createProgram', () => {
     process.exitCode = originalExitCode;
   });
 
+  it('campaign:audit emits JSON error when error-format=json', async () => {
+    const campaignAudit = vi.fn().mockRejectedValue(new Error('audit failed'));
+    const program = createProgram({
+      supabaseClient: { from: vi.fn() } as any,
+      aiClient: {} as any,
+      handlers: { campaignAudit },
+    });
+
+    const originalExitCode = process.exitCode;
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:audit',
+      '--campaign-id',
+      'camp-err',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(errorSpy).toHaveBeenCalled();
+    const payload = JSON.parse((errorSpy.mock.calls[0] as any[])[0] as string);
+    expect(payload.ok).toBe(false);
+    expect(payload.error?.message).toMatch(/audit failed/i);
+
+    errorSpy.mockRestore();
+    process.exitCode = originalExitCode;
+  });
+
   it('analytics:optimize emits JSON error when error-format=json', async () => {
     const selectAnalytics = vi.fn().mockRejectedValue(new Error('optimize failed'));
     const gte = vi.fn().mockReturnValue({ select: selectAnalytics });
@@ -2060,5 +2758,755 @@ describe('createProgram', () => {
 
     await program.parseAsync(['node', 'gtm', 'judge:drafts', '--campaign-id', 'c1', '--dry-run', '--limit', '5']);
     expect(select).toHaveBeenCalled();
+  });
+
+  it('wires campaign:mailbox-assignment:get', async () => {
+    const getCampaignMailboxAssignment = vi.fn().mockResolvedValue({
+      campaignId: 'camp-1',
+      assignments: [
+        {
+          id: 'a-1',
+          mailboxAccountId: 'mbox-1',
+          senderIdentity: 'sales@acme.ai',
+          provider: 'imap_mcp',
+          source: 'outreacher',
+          assignedAt: '2026-03-19T10:00:00Z',
+          metadata: null,
+        },
+      ],
+      summary: {
+        assignmentCount: 1,
+        mailboxAccountCount: 1,
+        senderIdentityCount: 1,
+        domainCount: 1,
+        domains: ['acme.ai'],
+      },
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { getCampaignMailboxAssignment } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:mailbox-assignment:get',
+      '--campaign-id',
+      'camp-1',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(getCampaignMailboxAssignment).toHaveBeenCalledWith(supabaseClient, 'camp-1');
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.summary.assignmentCount).toBe(1);
+    logSpy.mockRestore();
+  });
+
+  it('wires campaign:mailbox-assignment:put', async () => {
+    const replaceCampaignMailboxAssignment = vi.fn().mockResolvedValue({
+      campaignId: 'camp-1',
+      assignments: [
+        {
+          id: 'a-1',
+          mailboxAccountId: 'mbox-1',
+          senderIdentity: 'sales@acme.ai',
+          provider: 'imap_mcp',
+          source: 'outreacher',
+          assignedAt: '2026-03-19T10:00:00Z',
+          metadata: null,
+        },
+      ],
+      summary: {
+        assignmentCount: 1,
+        mailboxAccountCount: 1,
+        senderIdentityCount: 1,
+        domainCount: 1,
+        domains: ['acme.ai'],
+      },
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { replaceCampaignMailboxAssignment } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:mailbox-assignment:put',
+      '--campaign-id',
+      'camp-1',
+      '--payload',
+      JSON.stringify({
+        assignments: [
+          {
+            mailboxAccountId: 'mbox-1',
+            senderIdentity: 'sales@acme.ai',
+            provider: 'imap_mcp',
+          },
+        ],
+        source: 'outreacher',
+      }),
+      '--error-format',
+      'json',
+    ]);
+
+    expect(replaceCampaignMailboxAssignment).toHaveBeenCalledWith(supabaseClient, {
+      campaignId: 'camp-1',
+      assignments: [
+        {
+          mailboxAccountId: 'mbox-1',
+          senderIdentity: 'sales@acme.ai',
+          provider: 'imap_mcp',
+        },
+      ],
+      source: 'outreacher',
+    });
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.summary.assignmentCount).toBe(1);
+    logSpy.mockRestore();
+  });
+
+  it('wires campaign:send-preflight', async () => {
+    const campaignSendPreflight = vi.fn().mockResolvedValue({
+      campaign: {
+        id: 'camp-1',
+        name: 'Q2 Send',
+        status: 'ready',
+        segment_id: 'seg-1',
+        segment_version: 1,
+      },
+      readyToSend: true,
+      blockers: [],
+      summary: {
+        mailboxAssignmentCount: 1,
+        draftCount: 5,
+        approvedDraftCount: 5,
+        generatedDraftCount: 0,
+        rejectedDraftCount: 0,
+        sentDraftCount: 0,
+        sendableApprovedDraftCount: 5,
+        approvedMissingRecipientEmailCount: 0,
+      },
+      senderPlan: {
+        assignmentCount: 1,
+        mailboxAccountCount: 1,
+        senderIdentityCount: 1,
+        domainCount: 1,
+        domains: ['acme.ai'],
+      },
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { campaignSendPreflight } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:send-preflight',
+      '--campaign-id',
+      'camp-1',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(campaignSendPreflight).toHaveBeenCalledWith(supabaseClient, 'camp-1');
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.readyToSend).toBe(true);
+    logSpy.mockRestore();
+  });
+
+  it('campaign:send-preflight emits JSON error when error-format=json', async () => {
+    const campaignSendPreflight = vi.fn().mockRejectedValue(new Error('preflight failed'));
+    const program = createProgram({
+      supabaseClient: { from: vi.fn() } as any,
+      aiClient: {} as any,
+      handlers: { campaignSendPreflight } as any,
+    });
+
+    const originalExitCode = process.exitCode;
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:send-preflight',
+      '--campaign-id',
+      'camp-err',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(errorSpy).toHaveBeenCalled();
+    const payload = JSON.parse((errorSpy.mock.calls[0] as any[])[0] as string);
+    expect(payload.ok).toBe(false);
+    expect(payload.error?.message).toMatch(/preflight failed/i);
+
+    errorSpy.mockRestore();
+    process.exitCode = originalExitCode;
+  });
+
+  it('wires campaign:auto-send:get', async () => {
+    const campaignAutoSendGet = vi.fn().mockResolvedValue({
+      campaignId: 'camp-1',
+      campaignName: 'Auto Send Campaign',
+      campaignStatus: 'review',
+      autoSendIntro: true,
+      autoSendBump: false,
+      bumpMinDaysSinceIntro: 3,
+      updatedAt: '2026-03-21T10:00:00Z',
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { campaignAutoSendGet } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:auto-send:get',
+      '--campaign-id',
+      'camp-1',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(campaignAutoSendGet).toHaveBeenCalledWith(supabaseClient, 'camp-1');
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.autoSendIntro).toBe(true);
+    logSpy.mockRestore();
+  });
+
+  it('wires campaign:auto-send:put', async () => {
+    const campaignAutoSendPut = vi.fn().mockResolvedValue({
+      campaignId: 'camp-1',
+      campaignName: 'Auto Send Campaign',
+      campaignStatus: 'review',
+      autoSendIntro: true,
+      autoSendBump: true,
+      bumpMinDaysSinceIntro: 5,
+      updatedAt: '2026-03-21T10:00:00Z',
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { campaignAutoSendPut } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:auto-send:put',
+      '--campaign-id',
+      'camp-1',
+      '--payload',
+      JSON.stringify({
+        autoSendIntro: true,
+        autoSendBump: true,
+        bumpMinDaysSinceIntro: 5,
+      }),
+      '--error-format',
+      'json',
+    ]);
+
+    expect(campaignAutoSendPut).toHaveBeenCalledWith(supabaseClient, {
+      campaignId: 'camp-1',
+      autoSendIntro: true,
+      autoSendBump: true,
+      bumpMinDaysSinceIntro: 5,
+    });
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.autoSendBump).toBe(true);
+    logSpy.mockRestore();
+  });
+
+  it('wires campaign:send-policy:get', async () => {
+    const campaignSendPolicyGet = vi.fn().mockResolvedValue({
+      campaignId: 'camp-1',
+      campaignName: 'EMEA Campaign',
+      campaignStatus: 'review',
+      sendTimezone: 'Europe/Berlin',
+      sendWindowStartHour: 8,
+      sendWindowEndHour: 16,
+      sendWeekdaysOnly: true,
+      updatedAt: '2026-03-21T12:00:00Z',
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { campaignSendPolicyGet } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:send-policy:get',
+      '--campaign-id',
+      'camp-1',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(campaignSendPolicyGet).toHaveBeenCalledWith(supabaseClient, 'camp-1');
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.sendTimezone).toBe('Europe/Berlin');
+    logSpy.mockRestore();
+  });
+
+  it('wires campaign:send-policy:put', async () => {
+    const campaignSendPolicyPut = vi.fn().mockResolvedValue({
+      campaignId: 'camp-1',
+      campaignName: 'EMEA Campaign',
+      campaignStatus: 'review',
+      sendTimezone: 'America/New_York',
+      sendWindowStartHour: 9,
+      sendWindowEndHour: 17,
+      sendWeekdaysOnly: false,
+      updatedAt: '2026-03-21T12:10:00Z',
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { campaignSendPolicyPut } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:send-policy:put',
+      '--campaign-id',
+      'camp-1',
+      '--payload',
+      JSON.stringify({
+        sendTimezone: 'America/New_York',
+        sendWindowStartHour: 9,
+        sendWindowEndHour: 17,
+        sendWeekdaysOnly: false,
+      }),
+      '--error-format',
+      'json',
+    ]);
+
+    expect(campaignSendPolicyPut).toHaveBeenCalledWith(supabaseClient, {
+      campaignId: 'camp-1',
+      sendTimezone: 'America/New_York',
+      sendWindowStartHour: 9,
+      sendWindowEndHour: 17,
+      sendWeekdaysOnly: false,
+    });
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.sendWeekdaysOnly).toBe(false);
+    logSpy.mockRestore();
+  });
+
+  it('wires campaign:launch:preview', async () => {
+    const campaignLaunchPreview = vi.fn().mockResolvedValue({
+      ok: true,
+      campaign: {
+        name: 'Launch Q2',
+        status: 'draft',
+      },
+      segment: {
+        id: 'seg-1',
+        version: 1,
+        snapshotStatus: 'existing',
+      },
+      summary: {
+        companyCount: 2,
+        contactCount: 3,
+        sendableContactCount: 2,
+        freshCompanyCount: 1,
+        staleCompanyCount: 0,
+        missingCompanyCount: 1,
+        senderAssignmentCount: 1,
+      },
+      senderPlan: {
+        assignmentCount: 1,
+        mailboxAccountCount: 1,
+        senderIdentityCount: 1,
+        domainCount: 1,
+        domains: ['voicexpertout.ru'],
+      },
+      warnings: [],
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { campaignLaunchPreview } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:launch:preview',
+      '--payload',
+      JSON.stringify({
+        name: 'Launch Q2',
+        segmentId: 'seg-1',
+        segmentVersion: 1,
+        snapshotMode: 'reuse',
+      }),
+      '--error-format',
+      'json',
+    ]);
+
+    expect(campaignLaunchPreview).toHaveBeenCalledWith(supabaseClient, {
+      name: 'Launch Q2',
+      segmentId: 'seg-1',
+      segmentVersion: 1,
+      snapshotMode: 'reuse',
+    });
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.ok).toBe(true);
+    expect(payload.segment.snapshotStatus).toBe('existing');
+    logSpy.mockRestore();
+  });
+
+  it('campaign:launch:preview emits JSON error when payload is invalid', async () => {
+    const program = createProgram({
+      supabaseClient: { from: vi.fn() } as any,
+      aiClient: {} as any,
+    });
+
+    const originalExitCode = process.exitCode;
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:launch:preview',
+      '--payload',
+      'not-json',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(errorSpy).toHaveBeenCalled();
+    const payload = JSON.parse((errorSpy.mock.calls[0] as any[])[0] as string);
+    expect(payload.ok).toBe(false);
+    expect(payload.error?.code).toBe('INVALID_JSON');
+    expect(payload.error?.message).toMatch(/payload is not valid json/i);
+
+    errorSpy.mockRestore();
+    process.exitCode = originalExitCode;
+  });
+
+  it('wires campaign:launch', async () => {
+    const campaignLaunch = vi.fn().mockResolvedValue({
+      campaign: {
+        id: 'camp-9',
+        name: 'Launch Q2',
+        status: 'draft',
+      },
+      segment: {
+        id: 'seg-1',
+        version: 3,
+        snapshot: {
+          version: 3,
+          count: 120,
+        },
+      },
+      senderPlan: {
+        assignments: [],
+        summary: {
+          assignmentCount: 0,
+          mailboxAccountCount: 0,
+          senderIdentityCount: 0,
+          domainCount: 0,
+          domains: [],
+        },
+      },
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { campaignLaunch } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:launch',
+      '--payload',
+      JSON.stringify({
+        name: 'Launch Q2',
+        segmentId: 'seg-1',
+        segmentVersion: 1,
+        snapshotMode: 'reuse',
+      }),
+      '--error-format',
+      'json',
+    ]);
+
+    expect(campaignLaunch).toHaveBeenCalledWith(supabaseClient, {
+      name: 'Launch Q2',
+      segmentId: 'seg-1',
+      segmentVersion: 1,
+      snapshotMode: 'reuse',
+    });
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.campaign.id).toBe('camp-9');
+    expect(payload.segment.version).toBe(3);
+    logSpy.mockRestore();
+  });
+
+  it('campaign:launch emits JSON error when payload is invalid', async () => {
+    const program = createProgram({
+      supabaseClient: { from: vi.fn() } as any,
+      aiClient: {} as any,
+    });
+
+    const originalExitCode = process.exitCode;
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:launch',
+      '--payload',
+      'not-json',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(errorSpy).toHaveBeenCalled();
+    const payload = JSON.parse((errorSpy.mock.calls[0] as any[])[0] as string);
+    expect(payload.ok).toBe(false);
+    expect(payload.error?.code).toBe('INVALID_JSON');
+    expect(payload.error?.message).toMatch(/payload is not valid json/i);
+
+    errorSpy.mockRestore();
+    process.exitCode = originalExitCode;
+  });
+
+  it('wires campaign:next-wave:preview', async () => {
+    const campaignNextWavePreview = vi.fn().mockResolvedValue({
+      sourceCampaign: { id: 'camp-1', name: 'Wave 1' },
+      defaults: {
+        targetSegmentId: 'seg-1',
+        targetSegmentVersion: 1,
+        offerId: 'offer-1',
+        icpHypothesisId: 'hyp-1',
+        sendPolicy: {
+          sendTimezone: 'Europe/Moscow',
+          sendWindowStartHour: 9,
+          sendWindowEndHour: 17,
+          sendWeekdaysOnly: true,
+        },
+        senderPlanSummary: {
+          assignmentCount: 1,
+          mailboxAccountCount: 1,
+          senderIdentityCount: 1,
+          domainCount: 1,
+          domains: ['example.com'],
+        },
+      },
+      summary: {
+        candidateContactCount: 5,
+        eligibleContactCount: 2,
+        blockedContactCount: 3,
+      },
+      blockedBreakdown: {
+        suppressed_contact: 1,
+        already_contacted_recently: 1,
+        no_sendable_email: 1,
+        already_in_target_wave: 0,
+        already_used_in_source_wave: 0,
+      },
+      items: [],
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { campaignNextWavePreview } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:next-wave:preview',
+      '--campaign-id',
+      'camp-1',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(campaignNextWavePreview).toHaveBeenCalledWith(supabaseClient, {
+      sourceCampaignId: 'camp-1',
+    });
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.summary.candidateContactCount).toBe(5);
+    logSpy.mockRestore();
+  });
+
+  it('wires campaign:next-wave:create', async () => {
+    const campaignNextWaveCreate = vi.fn().mockResolvedValue({
+      campaign: {
+        id: 'camp-next',
+        name: 'Wave 2',
+        status: 'draft',
+      },
+      sourceCampaign: { id: 'camp-1', name: 'Wave 1' },
+      defaults: {
+        targetSegmentId: 'seg-1',
+        targetSegmentVersion: 1,
+        offerId: 'offer-1',
+        icpHypothesisId: 'hyp-1',
+        sendPolicy: {
+          sendTimezone: 'Europe/Moscow',
+          sendWindowStartHour: 9,
+          sendWindowEndHour: 17,
+          sendWeekdaysOnly: true,
+        },
+        senderPlanSummary: {
+          assignmentCount: 1,
+          mailboxAccountCount: 1,
+          senderIdentityCount: 1,
+          domainCount: 1,
+          domains: ['example.com'],
+        },
+      },
+      senderPlan: {
+        assignments: [],
+        summary: {
+          assignmentCount: 0,
+          mailboxAccountCount: 0,
+          senderIdentityCount: 0,
+          domainCount: 0,
+          domains: [],
+        },
+      },
+      sendPolicy: {
+        sendTimezone: 'Europe/Moscow',
+        sendWindowStartHour: 9,
+        sendWindowEndHour: 17,
+        sendWeekdaysOnly: true,
+      },
+      summary: {
+        candidateContactCount: 5,
+        eligibleContactCount: 2,
+        blockedContactCount: 3,
+      },
+      blockedBreakdown: {
+        suppressed_contact: 1,
+        already_contacted_recently: 1,
+        no_sendable_email: 1,
+        already_in_target_wave: 0,
+        already_used_in_source_wave: 0,
+      },
+      items: [],
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { campaignNextWaveCreate } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:next-wave:create',
+      '--payload',
+      JSON.stringify({
+        sourceCampaignId: 'camp-1',
+        name: 'Wave 2',
+      }),
+      '--error-format',
+      'json',
+    ]);
+
+    expect(campaignNextWaveCreate).toHaveBeenCalledWith(supabaseClient, {
+      sourceCampaignId: 'camp-1',
+      name: 'Wave 2',
+    });
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.campaign.id).toBe('camp-next');
+    logSpy.mockRestore();
+  });
+
+  it('wires campaign:rotation:preview', async () => {
+    const campaignRotationPreview = vi.fn().mockResolvedValue({
+      sourceCampaign: {
+        campaignId: 'camp-1',
+        campaignName: 'Wave 1',
+        offerId: 'offer-1',
+        offerTitle: 'Offer 1',
+        icpHypothesisId: 'hyp-1',
+        icpHypothesisLabel: 'Hypothesis 1',
+        icpProfileId: 'icp-1',
+        icpProfileName: 'ICP 1',
+      },
+      summary: {
+        sourceContactCount: 5,
+        candidateCount: 2,
+        eligibleCandidateContactCount: 3,
+        blockedCandidateContactCount: 7,
+      },
+      candidates: [],
+      contacts: [],
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { campaignRotationPreview } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:rotation:preview',
+      '--campaign-id',
+      'camp-1',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(campaignRotationPreview).toHaveBeenCalledWith(supabaseClient, {
+      sourceCampaignId: 'camp-1',
+    });
+    const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
+    expect(payload.summary.candidateCount).toBe(2);
+    logSpy.mockRestore();
   });
 });

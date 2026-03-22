@@ -71,7 +71,7 @@ export async function recordEmailOutbound(client: SupabaseClient, input: EmailOu
         'company_id',
         'pattern_mode',
         'metadata',
-        'contact:employees(id,work_email,generic_email)',
+        'contact:employees(id,work_email,work_email_status,generic_email,generic_email_status)',
       ].join(',')
     )
     .eq('id', draftId)
@@ -83,7 +83,9 @@ export async function recordEmailOutbound(client: SupabaseClient, input: EmailOu
 
   const resolvedRecipient = resolveRecipientEmail({
     work_email: (draft as any).contact?.work_email,
+    work_email_status: (draft as any).contact?.work_email_status,
     generic_email: (draft as any).contact?.generic_email,
+    generic_email_status: (draft as any).contact?.generic_email_status,
   });
   const recipientEmail = pickFirst(input.recipientEmail, input.recipient_email) ?? resolvedRecipient.recipientEmail;
   const recipientEmailSource =

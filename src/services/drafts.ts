@@ -7,6 +7,7 @@ import { resolvePromptForStep } from './promptRegistry.js';
 import { getPrimaryProvidersForWorkflow } from './enrichmentSettings.js';
 import { getProviderResult } from './enrichment/store.js';
 import { buildHybridEnrichmentByProvider } from './enrichment/hybridContext.js';
+import { listCampaignAudience } from './campaignAudience.js';
 
 interface GenerateDraftsOptions {
   campaignId: string;
@@ -247,15 +248,11 @@ export async function generateDrafts(
   const campaign = campaignRes.data;
   const draftLimit = Math.max(0, options.limit ?? 100);
   const memberFetchLimit = Math.min(Math.max(draftLimit * 25, 250), 2000);
+  const audience = await listCampaignAudience(client, options.campaignId, { limit: memberFetchLimit });
+  const memberRows = audience.rows.slice(0, memberFetchLimit) as SegmentMemberRow[];
 
-  const membersRes = await client
-    .from('segment_members')
-    .select('contact_id, company_id, snapshot')
-    .match({ segment_id: campaign.segment_id, segment_version: campaign.segment_version })
-    .limit(memberFetchLimit);
-
-  if (membersRes.error || !membersRes.data || membersRes.data.length === 0) {
-    throw membersRes.error ?? new Error('No segment members found');
+  if (memberRows.length === 0) {
+    throw new Error('No campaign audience members found');
   }
 
   const draftsPayload = [] as any[];
@@ -323,7 +320,6 @@ export async function generateDrafts(
   };
 
   const primaryProvider = await getPrimaryProvidersForWorkflow(client, 'mock');
-  const memberRows = membersRes.data as SegmentMemberRow[];
   const contactIds = Array.from(new Set(memberRows.map((m) => m.contact_id).filter(Boolean)));
   const companyIds = Array.from(new Set(memberRows.map((m) => m.company_id).filter(Boolean)));
 

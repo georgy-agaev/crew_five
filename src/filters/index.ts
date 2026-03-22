@@ -13,21 +13,36 @@ type FieldScope = 'employees' | 'companies';
 
 const allowedFields: Record<string, { scope: FieldScope; column: string }> = {
   // Employee-level filters
+  'employees.id': { scope: 'employees', column: 'id' },
   'employees.role': { scope: 'employees', column: 'position' },
   'employees.position': { scope: 'employees', column: 'position' },
+  'employees.processing_status': { scope: 'employees', column: 'processing_status' },
+  'employees.work_email_status': { scope: 'employees', column: 'work_email_status' },
+  'employees.generic_email_status': { scope: 'employees', column: 'generic_email_status' },
 
   // Company-level filters
   'companies.segment': { scope: 'companies', column: 'segment' },
   'companies.employee_count': { scope: 'companies', column: 'employee_count' },
+  'companies.office_qualification': { scope: 'companies', column: 'office_qualification' },
 };
 
 const allowedFieldNames = Object.keys(allowedFields);
 const allowedOps: FilterOp[] = ['eq', 'in', 'not_in', 'gte', 'lte', 'contains'];
+const legacyFieldAliases: Record<string, string> = {
+  id: 'employees.id',
+  employee_count: 'companies.employee_count',
+  office_qualification: 'companies.office_qualification',
+  processing_status: 'employees.processing_status',
+};
 
 function ensureFieldAllowed(field: string) {
   if (!allowedFields[field]) {
     throw new Error(`Unknown field: ${field}. Allowed fields: ${allowedFieldNames.join(', ')}`);
   }
+}
+
+function normalizeFilterField(field: string): string {
+  return legacyFieldAliases[field] ?? field;
 }
 
 function mapFilterFieldToSupabaseColumn(field: string): string {
@@ -55,16 +70,19 @@ export function parseSegmentFilters(definition: unknown): FilterClause[] {
       !clause ||
       typeof clause !== 'object' ||
       typeof (clause as any).field !== 'string' ||
-      typeof (clause as any).operator !== 'string'
+      (typeof (clause as any).operator !== 'string' && typeof (clause as any).op !== 'string')
     ) {
       throw new Error(`Invalid filter clause at index ${idx}`);
     }
 
-    const { field, operator, value } = clause as {
+    const { value } = clause as {
       field: string;
-      operator: FilterOp;
+      operator?: FilterOp;
+      op?: FilterOp;
       value: unknown;
     };
+    const field = normalizeFilterField((clause as any).field);
+    const operator = ((clause as any).operator ?? (clause as any).op) as FilterOp;
 
     ensureFieldAllowed(field);
 

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export type JobType = 'send' | 'enrich' | 'sim' | 'icp';
+export type JobType = 'send' | 'enrich' | 'sim' | 'icp' | 'company_process';
 
 export type JobStatus = 'created' | 'running' | 'completed' | 'failed' | 'not_implemented';
 

@@ -7,6 +7,7 @@ prompts/*
 AGENTS.md
 CLAUDE.md
 .github/agents/
+.agents/
 
 # Dependencies
 node_modules
@@ -43,3 +44,8 @@ coverage
 .tmp
 web/playwright-report
 web/test-results
+
+# Internal planning / session notes
+docs/private/
+docs/sessions/*
+!docs/sessions/roadmap.md

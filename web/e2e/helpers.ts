@@ -8,6 +8,17 @@ import { fileURLToPath } from 'node:url';
  * E2E Test Helpers for Segment Workflows
  */
 
+const LEGACY_PIPELINE_PATH = '/?view=pipeline';
+
+/**
+ * Open the legacy pipeline workspace explicitly.
+ * Home is now the default app entrypoint, while segment/discovery flows still live in the
+ * frozen legacy pipeline surface.
+ */
+export async function openLegacyPipeline(page: Page) {
+  await page.goto(LEGACY_PIPELINE_PATH);
+}
+
 /**
  * Wait for the web UI to be fully loaded
  */

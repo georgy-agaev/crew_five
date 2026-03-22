@@ -1,6 +1,6 @@
 # Supabase Database Reference (Current Schema)
 
-> Version: v0.4 (2026-03-13)
+> Version: v0.7 (2026-03-22)
 
 This document is a shareable, table-by-table reference for the **current** Supabase Postgres schema used by the
 AI SDR toolkit.
@@ -12,9 +12,14 @@ AI SDR toolkit.
 
 ## Quick Map (Entities & Relationships)
 
+- `projects` (1) → (N) `icp_profiles`
+- `projects` (1) → (N) `offers`
+- `projects` (1) → (N) `campaigns`
 - `companies` (1) → (N) `employees`
 - `segments` (1) → (N) `segment_members`
 - `segments` (1) → (N) `campaigns`
+- `campaigns` (1) → (N) `campaign_member_additions`
+- `campaigns` (1) → (N) `campaign_member_exclusions`
 - `campaigns` (1) → (N) `drafts`
 - `email_outbound` (1) → (N) `email_events`
 - `jobs` optionally attaches to `segments` (for background actions)
@@ -77,6 +82,39 @@ AI SDR toolkit.
 **Indexes**
 - `app_settings_pkey`: `CREATE UNIQUE INDEX app_settings_pkey ON public.app_settings USING btree (key)`
 
+### `public.projects`
+
+**What it is**: canonical business/workspace registry used to group ICP roots, offers, and
+campaigns without replacing the execution spine rooted in ICP.
+
+**Key facts**
+- Primary key: `id` (`uuid`, default `gen_random_uuid()`)
+- Referenced by:
+  - `icp_profiles.project_id` (`ON DELETE SET NULL`)
+  - `offers.project_id` (`ON DELETE SET NULL`)
+  - `campaigns.project_id` (`ON DELETE SET NULL`)
+- Approx rows: `0`
+- RLS: enabled; **no policies found**
+
+**Columns**
+| Column | Type | Nullable | Default | Comment |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | no | `gen_random_uuid()` |  |
+| `key` | `text` | no |  | Stable machine-readable project key. |
+| `name` | `text` | no |  | Human-facing project/workspace name. |
+| `description` | `text` | yes |  | Optional operator-facing project description. |
+| `status` | `text` | no | `'active'::text` | `active` or `inactive`. |
+| `created_at` | `timestamptz` | no | `timezone('utc'::text, now())` |  |
+| `updated_at` | `timestamptz` | no | `timezone('utc'::text, now())` |  |
+
+**Constraints**
+- `projects_pkey`: `PRIMARY KEY (id)`
+- `projects_status_check`: `CHECK (status = ANY (ARRAY['active','inactive']))`
+
+**Indexes**
+- `projects_pkey`: `CREATE UNIQUE INDEX projects_pkey ON public.projects USING btree (id)`
+- `projects_key_uidx`: `CREATE UNIQUE INDEX projects_key_uidx ON public.projects USING btree (key)`
+
 ### `public.campaigns`
 
 **What it is**: campaign container that binds a `segment_id` + `segment_version` snapshot to drafting/sending.
@@ -95,6 +133,9 @@ AI SDR toolkit.
 | `name` | `text` | no |  |  |
 | `segment_id` | `uuid` | no |  |  |
 | `segment_version` | `integer` | no |  |  |
+| `project_id` | `uuid` | yes |  | Optional project/workspace boundary for this campaign. |
+| `offer_id` | `uuid` | yes |  | Canonical optional link to the offer registry row used by this campaign. |
+| `icp_hypothesis_id` | `uuid` | yes |  | Canonical optional link to the operational hypothesis preset used by this campaign wave. |
 | `sender_profile_id` | `uuid` | yes |  |  |
 | `prompt_pack_id` | `uuid` | yes |  |  |
 | `status` | `text` | no | `'draft'::text` |  |
@@ -103,6 +144,13 @@ AI SDR toolkit.
 | `schedule` | `jsonb` | yes |  |  |
 | `throttle` | `jsonb` | yes |  |  |
 | `metadata` | `jsonb` | yes |  |  |
+| `auto_send_intro` | `boolean` | no | `false` | Enables scheduler-triggered intro sends for this campaign. |
+| `auto_send_bump` | `boolean` | no | `false` | Enables scheduler-triggered bump sends for this campaign. |
+| `bump_min_days_since_intro` | `integer` | no | `3` | Canonical minimum delay in days before a bump becomes eligible. |
+| `send_timezone` | `text` | no | `'Europe/Moscow'::text` | Canonical campaign-local timezone used by the auto-send scheduler calendar gate. |
+| `send_window_start_hour` | `integer` | no | `9` | Inclusive local-hour start for auto-send eligibility. |
+| `send_window_end_hour` | `integer` | no | `17` | Exclusive local-hour end for auto-send eligibility. |
+| `send_weekdays_only` | `boolean` | no | `true` | When true, scheduler skips Saturdays and Sundays for this campaign. |
 | `created_by` | `text` | yes |  |  |
 | `created_at` | `timestamptz` | no | `now()` |  |
 | `updated_at` | `timestamptz` | no | `now()` |  |
@@ -110,14 +158,137 @@ AI SDR toolkit.
 **Constraints**
 - `campaigns_pkey`: `PRIMARY KEY (id)`
 - `campaigns_segment_id_fkey`: `FOREIGN KEY (segment_id) REFERENCES segments(id) ON DELETE RESTRICT`
+- `campaigns_project_id_fkey`: `FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL`
+- `campaigns_offer_id_fkey`: `FOREIGN KEY (offer_id) REFERENCES offers(id) ON DELETE SET NULL`
+- `campaigns_icp_hypothesis_id_fkey`: `FOREIGN KEY (icp_hypothesis_id) REFERENCES icp_hypotheses(id) ON DELETE SET NULL`
 - `campaigns_status_check`: `CHECK (status = ANY (ARRAY['draft','ready','generating','review','scheduled','sending','complete','paused']))`
 - `campaigns_interaction_mode_check`: `CHECK (interaction_mode = ANY (ARRAY['express','coach']))`
 - `campaigns_data_quality_mode_check`: `CHECK (data_quality_mode = ANY (ARRAY['strict','graceful']))`
 
 **Indexes**
 - `campaigns_pkey`: `CREATE UNIQUE INDEX campaigns_pkey ON public.campaigns USING btree (id)`
+- `campaigns_project_id_idx`: `CREATE INDEX campaigns_project_id_idx ON public.campaigns USING btree (project_id)`
+- `campaigns_offer_id_idx`: `CREATE INDEX campaigns_offer_id_idx ON public.campaigns USING btree (offer_id)`
+- `campaigns_icp_hypothesis_id_idx`: `CREATE INDEX campaigns_icp_hypothesis_id_idx ON public.campaigns USING btree (icp_hypothesis_id)`
 - `campaigns_segment_idx`: `CREATE INDEX campaigns_segment_idx ON public.campaigns USING btree (segment_id)`
 - `campaigns_status_idx`: `CREATE INDEX campaigns_status_idx ON public.campaigns USING btree (status)`
+
+### `public.offers`
+
+**What it is**: minimal offer registry for reusable outbound offer definitions that can be linked to
+campaigns without forcing `Outreach` or the Web UI to keep offer context only in local runtime
+memory.
+
+**Key facts**
+- Primary key: `id` (`uuid`, default `gen_random_uuid()`)
+- Referenced by:
+  - `offers.project_id` → `projects(id)` (`ON DELETE SET NULL`)
+  - `campaigns.offer_id` (`ON DELETE SET NULL`)
+- Approx rows: `0`
+- RLS: enabled; **no policies found**
+
+**Columns**
+| Column | Type | Nullable | Default | Comment |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | no | `gen_random_uuid()` |  |
+| `project_id` | `uuid` | yes |  | Optional project/workspace boundary for this offer. |
+| `title` | `text` | no |  | Canonical human-facing offer title. |
+| `project_name` | `text` | yes |  | Optional project/product grouping label. |
+| `description` | `text` | yes |  | Optional operator-facing offer description. |
+| `status` | `text` | no | `'active'::text` | `active` or `inactive`. |
+| `created_at` | `timestamptz` | no | `timezone('utc'::text, now())` |  |
+| `updated_at` | `timestamptz` | no | `timezone('utc'::text, now())` |  |
+
+**Constraints**
+- `offers_pkey`: `PRIMARY KEY (id)`
+- `offers_project_id_fkey`: `FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL`
+- `offers_status_check`: `CHECK (status = ANY (ARRAY['active','inactive']))`
+
+**Indexes**
+- `offers_pkey`: `CREATE UNIQUE INDEX offers_pkey ON public.offers USING btree (id)`
+- `offers_project_id_idx`: `CREATE INDEX offers_project_id_idx ON public.offers USING btree (project_id)`
+
+### `public.campaign_member_additions`
+
+**What it is**: campaign-scoped audience additions that extend a frozen campaign wave without
+rewriting its source `segment_members` snapshot.
+
+**Key facts**
+- Primary key: `id` (`uuid`, default `gen_random_uuid()`)
+- Foreign keys:
+  - `campaign_id` → `campaigns(id)` (`ON DELETE CASCADE`)
+  - `company_id` → `companies(id)` (`ON DELETE CASCADE`)
+  - `contact_id` → `employees(id)` (`ON DELETE CASCADE`)
+- Approx rows: `0`
+- RLS: enabled; **no policies found**
+
+**Columns**
+| Column | Type | Nullable | Default | Comment |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | no | `gen_random_uuid()` |  |
+| `campaign_id` | `uuid` | no |  |  |
+| `company_id` | `uuid` | no |  |  |
+| `contact_id` | `uuid` | no |  |  |
+| `source` | `text` | no | `'manual_attach'::text` | Attach origin such as `manual_attach` or `import_workspace`. |
+| `attached_by` | `text` | yes |  | Operator / runtime that performed the attach. |
+| `attached_at` | `timestamptz` | no | `now()` |  |
+| `metadata` | `jsonb` | yes |  | Optional attach metadata. |
+| `snapshot` | `jsonb` | yes |  | Frozen minimal company/contact context captured at attach time. |
+
+**Constraints**
+- `campaign_member_additions_pkey`: `PRIMARY KEY (id)`
+- `campaign_member_additions_campaign_id_contact_id_key`: `UNIQUE (campaign_id, contact_id)`
+- `campaign_member_additions_campaign_id_fkey`: `FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE`
+- `campaign_member_additions_company_id_fkey`: `FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE`
+- `campaign_member_additions_contact_id_fkey`: `FOREIGN KEY (contact_id) REFERENCES employees(id) ON DELETE CASCADE`
+
+**Indexes**
+- `campaign_member_additions_pkey`: `CREATE UNIQUE INDEX campaign_member_additions_pkey ON public.campaign_member_additions USING btree (id)`
+- `campaign_member_additions_campaign_id_contact_id_key`: `CREATE UNIQUE INDEX campaign_member_additions_campaign_id_contact_id_key ON public.campaign_member_additions USING btree (campaign_id, contact_id)`
+- `campaign_member_additions_campaign_idx`: `CREATE INDEX campaign_member_additions_campaign_idx ON public.campaign_member_additions USING btree (campaign_id)`
+- `campaign_member_additions_campaign_company_idx`: `CREATE INDEX campaign_member_additions_campaign_company_idx ON public.campaign_member_additions USING btree (campaign_id, company_id)`
+- `campaign_member_additions_campaign_contact_idx`: `CREATE INDEX campaign_member_additions_campaign_contact_idx ON public.campaign_member_additions USING btree (campaign_id, contact_id)`
+
+### `public.campaign_member_exclusions`
+
+**What it is**: campaign-scoped contact exclusions layered on top of the frozen segment snapshot.
+Used by next-wave support to keep the new wave auditable while excluding blocked contacts from the
+effective audience.
+
+**Key facts**
+- Primary key: `id` (`uuid`, default `gen_random_uuid()`)
+- Foreign keys:
+  - `campaign_id` → `campaigns(id)` (`ON DELETE CASCADE`)
+  - `company_id` → `companies(id)` (`ON DELETE SET NULL`)
+  - `contact_id` → `employees(id)` (`ON DELETE CASCADE`)
+- RLS: enabled; **no policies found**
+
+**Columns**
+| Column | Type | Nullable | Default | Comment |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | no | `gen_random_uuid()` |  |
+| `campaign_id` | `uuid` | no |  | Target campaign wave. |
+| `company_id` | `uuid` | yes |  | Optional company link for operator context. |
+| `contact_id` | `uuid` | no |  | Excluded contact. |
+| `source` | `text` | no | `'next_wave_exclusion'::text` | Backend/source that created the exclusion row. |
+| `reason` | `text` | yes |  | Canonical blocked reason code. |
+| `excluded_by` | `text` | yes |  | Optional operator/runtime actor. |
+| `metadata` | `jsonb` | yes |  | Optional provenance metadata. |
+| `excluded_at` | `timestamptz` | no | `now()` |  |
+
+**Constraints**
+- `campaign_member_exclusions_pkey`: `PRIMARY KEY (id)`
+- `campaign_member_exclusions_campaign_id_contact_id_key`: `UNIQUE (campaign_id, contact_id)`
+- `campaign_member_exclusions_campaign_id_fkey`: `FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE`
+- `campaign_member_exclusions_company_id_fkey`: `FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL`
+- `campaign_member_exclusions_contact_id_fkey`: `FOREIGN KEY (contact_id) REFERENCES employees(id) ON DELETE CASCADE`
+
+**Indexes**
+- `campaign_member_exclusions_pkey`: `CREATE UNIQUE INDEX campaign_member_exclusions_pkey ON public.campaign_member_exclusions USING btree (id)`
+- `campaign_member_exclusions_campaign_id_contact_id_key`: `CREATE UNIQUE INDEX campaign_member_exclusions_campaign_id_contact_id_key ON public.campaign_member_exclusions USING btree (campaign_id, contact_id)`
+- `campaign_member_exclusions_campaign_idx`: `CREATE INDEX campaign_member_exclusions_campaign_idx ON public.campaign_member_exclusions USING btree (campaign_id)`
+- `campaign_member_exclusions_campaign_company_idx`: `CREATE INDEX campaign_member_exclusions_campaign_company_idx ON public.campaign_member_exclusions USING btree (campaign_id, company_id)`
+- `campaign_member_exclusions_campaign_contact_idx`: `CREATE INDEX campaign_member_exclusions_campaign_contact_idx ON public.campaign_member_exclusions USING btree (campaign_id, contact_id)`
 
 ### `public.companies`
 
@@ -390,6 +561,43 @@ draft/campaign/contact/company when known.
 - `idx_employees_company_session_key`: `CREATE INDEX idx_employees_company_session_key ON public.employees USING btree (company_session_key)`
 - `idx_employees_employee_session_key`: `CREATE INDEX idx_employees_employee_session_key ON public.employees USING btree (employee_session_key)`
 
+### `public.employee_data_repairs`
+
+**What it is**: durable audit trail for applied employee data repairs, currently used for
+name normalization (`first_name` / `last_name` swaps).
+
+**Key facts**
+- Primary key: `id` (`uuid`, default `gen_random_uuid()`)
+- Foreign keys:
+  - `employee_id` → `employees(id)` (`ON DELETE CASCADE`)
+- Approx rows: `0`
+- RLS: enabled; **no policies found**
+
+**Columns**
+| Column | Type | Nullable | Default | Comment |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | no | `gen_random_uuid()` |  |
+| `employee_id` | `uuid` | no |  | repaired employee |
+| `repair_type` | `text` | no |  | currently `name_swap` |
+| `source` | `text` | no |  | `employee:repair-names` or `company:save-processed` |
+| `confidence` | `text` | no |  | `high` or `low` |
+| `original_first_name` | `varchar(100)` | yes |  |  |
+| `original_last_name` | `varchar(100)` | yes |  |  |
+| `repaired_first_name` | `varchar(100)` | yes |  |  |
+| `repaired_last_name` | `varchar(100)` | yes |  |  |
+| `applied_at` | `timestamptz` | no | `now()` |  |
+
+**Constraints**
+- `employee_data_repairs_pkey`: `PRIMARY KEY (id)`
+- `employee_data_repairs_employee_id_fkey`: `FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE`
+- `employee_data_repairs_repair_type_check`: `CHECK (repair_type = ANY (ARRAY['name_swap']::text[]))`
+- `employee_data_repairs_source_check`: `CHECK (source = ANY (ARRAY['employee:repair-names','company:save-processed']::text[]))`
+- `employee_data_repairs_confidence_check`: `CHECK (confidence = ANY (ARRAY['high','low']::text[]))`
+
+**Indexes**
+- `employee_data_repairs_unique_repair_idx`: unique repair fingerprint index for idempotent writes
+- `employee_data_repairs_employee_idx`: `CREATE INDEX employee_data_repairs_employee_idx ON public.employee_data_repairs USING btree (employee_id, applied_at DESC)`
+
 ### `public.fallback_templates`
 
 **What it is**: fallback JSON templates (by `category` + `locale`) used when prompt packs/providers are not
@@ -434,6 +642,7 @@ available.
 | `id` | `uuid` | no | `gen_random_uuid()` |  |
 | `name` | `text` | no |  |  |
 | `description` | `text` | yes |  |  |
+| `project_id` | `uuid` | yes |  | Optional project/workspace boundary for this ICP root. |
 | `company_criteria` | `jsonb` | yes |  |  |
 | `persona_criteria` | `jsonb` | yes |  |  |
 | `offering_domain` | `text` | yes |  |  |
@@ -444,9 +653,11 @@ available.
 
 **Constraints**
 - `icp_profiles_pkey`: `PRIMARY KEY (id)`
+- `icp_profiles_project_id_fkey`: `FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL`
 
 **Indexes**
 - `icp_profiles_pkey`: `CREATE UNIQUE INDEX icp_profiles_pkey ON public.icp_profiles USING btree (id)`
+- `icp_profiles_project_id_idx`: `CREATE INDEX icp_profiles_project_id_idx ON public.icp_profiles USING btree (project_id)`
 
 ### `public.icp_discovery_runs`
 
@@ -523,13 +734,14 @@ lightweight confidence/size summary for later approval or promotion into segment
 
 ### `public.icp_hypotheses`
 
-**What it is**: hypotheses attached to an ICP profile, with optional discovery/search config and lifecycle
-status.
+**What it is**: hypotheses attached to an ICP profile, now usable both as discovery context and as
+an operational execution preset for campaign waves.
 
 **Key facts**
 - Primary key: `id` (`uuid`, default `gen_random_uuid()`)
 - Foreign keys:
   - `icp_id` → `icp_profiles(id)` (`ON DELETE CASCADE`)
+  - `offer_id` → `offers(id)` (`ON DELETE SET NULL`)
 - Approx rows: `1`
 - RLS: enabled; **no policies found**
 
@@ -539,17 +751,24 @@ status.
 | `id` | `uuid` | no | `gen_random_uuid()` |  |
 | `icp_id` | `uuid` | no |  |  |
 | `hypothesis_label` | `text` | no |  |  |
+| `offer_id` | `uuid` | yes |  | Optional canonical offer linked to this hypothesis preset. |
 | `search_config` | `jsonb` | yes |  |  |
+| `targeting_defaults` | `jsonb` | yes |  | Reusable targeting defaults for campaign creation. |
+| `messaging_angle` | `text` | yes |  | Canonical high-level messaging angle for this preset. |
+| `pattern_defaults` | `jsonb` | yes |  | Optional reusable tone/pattern defaults. |
+| `notes` | `text` | yes |  | Operator notes for reuse and learnings. |
 | `status` | `text` | no | `'draft'::text` |  |
 | `created_at` | `timestamptz` | no | `now()` |  |
 
 **Constraints**
 - `icp_hypotheses_pkey`: `PRIMARY KEY (id)`
 - `icp_hypotheses_icp_id_fkey`: `FOREIGN KEY (icp_id) REFERENCES icp_profiles(id) ON DELETE CASCADE`
+- `icp_hypotheses_offer_id_fkey`: `FOREIGN KEY (offer_id) REFERENCES offers(id) ON DELETE SET NULL`
 - `icp_hypotheses_status_check`: `CHECK (status = ANY (ARRAY['draft','active','deprecated']))`
 
 **Indexes**
 - `icp_hypotheses_pkey`: `CREATE UNIQUE INDEX icp_hypotheses_pkey ON public.icp_hypotheses USING btree (id)`
+- `icp_hypotheses_offer_id_idx`: `CREATE INDEX icp_hypotheses_offer_id_idx ON public.icp_hypotheses USING btree (offer_id)`
 
 ### `public.jobs`
 

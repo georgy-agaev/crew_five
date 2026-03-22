@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { SmartleadMcpClient } from '../integrations/smartleadMcp';
+import { listCampaignAudience } from '../services/campaignAudience';
 
 interface SendOptions {
   dryRun?: boolean;
@@ -10,8 +11,6 @@ interface SendOptions {
   variantLabel?: string;
 }
 
-type CampaignRow = { id: string; segment_id: string | null; metadata: Record<string, unknown> | null };
-type SegmentMemberRow = { contact_id: string };
 type EmployeeRow = { id: string; full_name: string | null; work_email: string | null; company_name?: string | null };
 type DraftRow = { subject: string | null; body: string | null };
 
@@ -42,23 +41,14 @@ export async function smartleadSendCommand(
     throw new Error('smartleadCampaignId is required');
   }
 
-  const campaignRes = await supabase
-    .from('campaigns')
-    .select('id, segment_id, metadata')
-    .eq('id', options.campaignId)
-    .single();
-  if (campaignRes.error) throw campaignRes.error;
-  const campaign = campaignRes.data as CampaignRow;
+  const audience = await listCampaignAudience(supabase, options.campaignId, {
+    limit: batchSize,
+  });
+  const campaign = audience.campaign;
   if (!campaign?.segment_id) throw new Error('Campaign missing segment_id');
-
-  const membersRes = await supabase
-    .from('segment_members')
-    .select('contact_id')
-    .eq('segment_id', campaign.segment_id)
-    .limit(batchSize);
-  if (membersRes.error) throw membersRes.error;
-  const members = (membersRes.data as SegmentMemberRow[]) ?? [];
-  const contactIds = members.map((m) => m.contact_id).filter(Boolean);
+  const contactIds = audience.rows
+    .map((member) => member.contact_id)
+    .filter((contactId): contactId is string => typeof contactId === 'string' && contactId.length > 0);
 
   const employeesRes = contactIds.length
     ? await supabase

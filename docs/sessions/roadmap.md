@@ -1,121 +1,293 @@
-# Sessions Roadmap – AI SDR GTM System
+# Sessions Roadmap – crew_five
 
-> Derived from `docs/AI_SDR_GTM_PRD.md` (v0.1, 2025-11-21) and the versioned
-> system plans in `docs/GMT_system_plan*.md`. Each session should log detailed
-> tasks/outcomes in `docs/sessions/YYYY-MM-DD_<n>_<slug>.md`.
+> Version: v0.9 (2026-03-22)
 
-## Roadmap Docs & Versions
+> This roadmap reflects the current agreed direction for `crew_five` after the
+> recent integration work with `Outreach` and the revised product model. It
+> replaces the older phase-based roadmap as the operational guide for new work.
 
-- `docs/GMT_system_plan.md` – original MVP architecture & staged development
-  plan.
-- `docs/GMT_system_plan_v0.2.md` – status-aware roadmap aligned to PRD v0.2.
-- `docs/GMT_system_plan_v0.3_roadmap.md` – stages A–F mapped to workflows and
-  SIM, used for high-level stage labels.
-- `docs/GMT_system_plan_v0.4_roadmap.md` – near-term execution roadmap focused
-  on W0.v3 (enrichment), W1.v2 (ICP profiles/hypotheses + prompt split), and
-  AN.v2 (prompt/pattern optimization), with W2 kept as contracts-only (Option 2).
+## Purpose
 
-## Phase 0.5 – Foundations
-1. **Supabase Contract Freeze**
-   - Verify existing `companies`/`employees` schema vs. Database Description.
-   - Draft migrations for `segments`, `segment_members`, `campaigns`, `drafts`, `email_outbound`, `email_events`, `fallback_templates`.
-2. **CLI/Repo Setup**
-   - Scaffold TypeScript CLI skeleton with config loader.
-   - Document initial commands (`gtm ingest`, `gtm segment create`, etc.).
-3. **AI SDK Client & Contract Wiring**
-   - Implement shared `generate_email_draft` wrapper with Strict/Express defaults.
-   - Log AI interactions into Supabase stub tables.
+This document should tell a contributor:
 
-## Phase 1 – Outreach MVP
-1. **Segmentation Engine**
-   - Build filter builder (UI + CLI parity) and segment snapshotting.
-2. **Campaign Lifecycle**
-   - Implement campaign creation flow with interaction/data-quality toggles.
-   - Enforce spine contract from segment → email_outbound.
-3. **Draft Generation & Review**
-   - Orchestrator jobs calling AI SDK (Strict + Express default).
-   - Approval UI/CLI plus audit logging.
-4. **SMTP Adapter & Sending**
-   - First-class SMTP integration, throttling, logging.
-5. **Event Ingestion**
-   - IMAP or webhook pipeline populating `email_events` (reply/outcome classification).
+- what `crew_five` is trying to become right now,
+- what should be built next,
+- what should explicitly not dominate the near-term roadmap,
+- how the current and next stages relate to each other.
 
-## Phase 2 – Enrichment & Judge
-1. **Research Integrations**
-   - Wire EXA/Parallels/Anysite adapters; populate `company_insights`/`employee_insights`.
-2. **Graceful Mode Enablement**
-   - Define fallback template catalog; unlock UI/CLI toggles once enrichment validated.
-3. **LLM-as-a-Judge & Analytics**
-   - Integrate evaluation runs, score logging, Pattern Breaker dashboards.
+Detailed strategic discussion lives in private docs, but this file should stay
+accurate enough for general roadmap orientation.
 
-## Phase 3 – Trace Logging & Optimization
-1. **AI Interactions + API Traces**
-   - Capture model/router metadata end-to-end; build trace explorer UI.
-2. **Interaction Mode Telemetry**
-   - Track mode usage/errors, feed insights into product decisions.
-3. **Prompt Experiments**
-   - Automate A/B testing for pattern modes, analyze outcomes in analytics module.
+## Product Direction
 
-## Ongoing
-- Maintain PRD/appendix/changelog sync.
-- Keep session logs updated per working session.
-- Revisit roadmap quarterly as scope evolves.
+`crew_five` is currently being developed as a:
 
-## Session Plan to Completion
+**semi-automated outbound operating assistant**
 
-### Phase 0.5 – Foundations (Completed, newest first)
-- 2025-11-21_4_campaign-snapshot-results: Segment versioning, snapshot enforcement in campaign create, CLI/tests/docs updated.
-- 2025-11-21_3_segment-snapshot-results: Segment snapshot command/services/tests/docs delivered.
-- 2025-11-21_2_cli-spine-implementation: CLI scaffold, env loader, services for segments/campaigns/drafts, AI stub, tests/README/AGENTS/CHANGELOG updated.
-- 2025-11-21_1_initial-prd-and-structure: PRD v0.1, AI contract appendix, README/CHANGELOG, SMTP-first/strict-mode defaults recorded.
+not as:
 
-### Phase 1 – Outreach MVP (Completed, newest first)
-- 2025-12-01_1_current-session-plan: Guarded draft/enrich against finalized segment versions; async-first enrichment CLI with run-now flag; ICP-aware draft flags; email events enriched with analytics FKs and stable idempotency; ICP list CLI added; analytics view updated; tests/README/CHANGELOG/session docs refreshed.
-- 2025-11-24_10_prompt-enrichment-feedback-loop-plan: Documented hooks/telemetry guidance for assume-now and reply pattern usage.
-- 2025-11-24_9_reply-classification-and-patterns-plan: Reply classification/labels, pattern counts helper, tests.
-- 2025-11-24_8_smartlead-outbound-wiring-plan: Smartlead send CLI with dry-run/batch-size, outbound recording, idempotency keys.
-- 2025-11-24_7_smartlead-mcp-error-body-and-telemetry-plan: Capped error snippets, assume-now logging hook, retry cap env override.
-- 2025-11-24_6_smartlead-mcp-final-consistency-pass: Single pull timestamp for assume-now; centralized retry cap; error codes.
-- 2025-11-24_5_smartlead-mcp-retry-and-error-guidance: Retry-After handling with caps, non-mutating error cache, assume-now fallback flag.
-- 2025-11-24_4_smartlead-mcp-polish-and-guardrails: Retry cap override, assume-now flag, improved occurred_at guidance.
-- 2025-11-24_3_smartlead-mcp-idempotency-and-validation: Deterministic idempotency hash, enriched errors, CLI validation.
-- 2025-11-24_2_smartlead-mcp-ingest-hardening: since/limit filters, idempotency guard, summaries.
-- 2025-11-24_1_smartlead-mcp-ingest-plan: Smartlead MCP ingest-first wrapper/CLI and docs.
-- 2025-11-23_10_campaign-status-cli-fix-and-draft-orchestrator: Status CLI guard/dry-run; draft orchestrator with dry-run/fail-fast/limit.
-- 2025-11-23_9_campaign-state-and-draft-orchestrator: Status/validation plan for orchestrator.
-- 2025-11-23_8_event-ingestion-stub: Event ingest stub with validation/dedupe/dry-run.
-- 2025-11-23_7_send-cli-polish: Batch_id/fail-on-error/dry-run options; single summary log.
-- 2025-11-23_6_smtp-send-logging-and-summary: Send summaries, formats, dry-run clarified.
-- 2025-11-23_5_smtp-send-hardening: Throttle/duplicate guard/retry summary logging.
-- 2025-11-23_4_campaign-status-next-steps: Added email send scaffold and documented status applicability.
-- 2025-11-23_3_campaign-status-cli-wrap: Doc/test alignment pass for status/validation behavior.
-- 2025-11-23_2_campaign-status-cli-finalize: Status map centralized, validation CLI formats/code, docs/tests updated.
-- 2025-11-23_1_campaign-status-and-validation-next: Status/validation polish plan and execution.
-- 2025-11-22_4_status-enforcement-and-validation: Status enforcement/validation UX refinements; structured CLI outputs and docs/tests updated.
-- 2025-11-22_3_status-guardrails-and-filter-validation: Campaign status transition map, filter validation CLI/UX, docs/tests updated.
-- 2025-11-22_2_hash-guardrails-and-updates: Snapshot hashing, force-version, guardrails, campaign update safety; docs/tests updated.
-- 2025-11-22_1_next-session-plan: Plan completed for snapshot guardrails and minimal campaign update; DSL tightened; docs/tests updated.
+- a broad GTM platform,
+- a fully autonomous AI SDR,
+- or a replacement for all strategy/runtime systems around it.
 
-### Phase 1 – Outreach MVP (Remaining sessions)
-- None (current phase scope delivered). Use backlog to add top-N/date filters for reply patterns if scale requires.
+The near-term objective is practical:
 
-### Phase 2 – Enrichment & Judge (Completed, newest first)
-- 2025-11-25_4_backlog-hardening-plan: Graceful flag preview, Smartlead send dedupe/batch summary, reply pattern filters, judge validation tweaks, assume-now hook guidance.
-- 2025-11-25_3_llm-judge-and-analytics-plan: Judge stub + CLI `judge:drafts` (dry-run/limit), scoring schema, tests.
-- 2025-11-25_2_graceful-mode-enable-plan: Fallback template catalog/service with guard and tests.
-- 2025-11-25_1_enrichment-integrations-stub-plan: Enrichment adapter registry (mock) and CLI `enrich:run` (dry-run/limit).
+- reduce routine quickly,
+- make the weekly/monthly outbound loop work asynchronously,
+- keep humans on real replies and strategy decisions,
+- and grow sophistication later.
 
-### Phase 3 – Trace Logging & Optimization (future sessions)
-### Phase 3 – Trace Logging & Optimization (Completed, newest first)
-- 2025-11-25_7_prompt-experiments-plan: Deterministic variant assignment/helpers, CLI variant flag for drafts (no UI), tests.
-- 2025-11-25_6_interaction-telemetry-plan: Telemetry service, `--telemetry` opt-in on Smartlead commands, PII validation, tests.
-- 2025-11-25_5_trace-logging-plan: Tracing service, AI + Smartlead MCP instrumentation, `--trace-file` flag, caps, tests.
+## Role Split
 
-### Phase 3 – Web UI Rollout (planned)
-### Phase 3 – Web UI Rollout (Completed, newest first)
-- 2025-11-25_13_web-ui-telemetry-and-ux-polish: Telemetry hook with tests; basic nav. Loading/error polish pending future.
-- 2025-11-25_12_web-ui-settings-and-guardrails: Settings page (retry cap, assume-now, telemetry) with storage/tests.
-- 2025-11-25_11_web-ui-events-and-patterns: Events/patterns mock page with filters.
-- 2025-11-25_10_web-ui-send-control-and-summaries: Send page with dry-run/batch controls and summary (mock).
-- 2025-11-25_9_web-ui-campaigns-and-drafts: Campaigns/Drafts views with mock API actions.
-- 2025-11-25_8_web-ui-scaffold-and-api-bridge: React/Vite scaffold, mock API client, navigation; env/docs pending.
+### Marketing2025
+
+Primary role:
+
+- offer ideas
+- positioning
+- messaging concepts
+- marketing learnings
+
+### Outreach
+
+Primary role:
+
+- runtime execution
+- company processing
+- draft generation/review/send runtime
+- mailbox polling
+- reply classification
+
+### crew_five
+
+Primary role:
+
+- canonical outbound system of record
+- operator workflow
+- campaign waves
+- offers and hypotheses actually used in execution
+- events/outbounds
+- suppression and deliverability state
+- execution analytics
+- async integration contracts around `Outreach`
+
+## Current Product Model
+
+For the current stage, use:
+
+- `Offer` = business proposition
+- `Hypothesis` = targeting + messaging preset
+- `Campaign wave` = frozen execution snapshot
+
+Do **not** switch to fully dynamic campaigns yet.
+
+Frozen campaign waves are still the recommended execution model because they are:
+
+- easier to audit,
+- easier to reason about,
+- safer for early automation,
+- and better matched to the current operator workflow.
+
+## Current Project Position
+
+`crew_five` is already beyond the foundation stage.
+
+The system already has:
+
+- import preview/apply
+- partial apply
+- post-import company processing
+- campaign launch and send preflight
+- mailbox assignment
+- inbox poll trigger and scheduler
+- canonical reply ingestion
+- handled/unhandled inbox queue
+- bounced-email materialization
+- dashboard
+- new operator web surfaces
+
+The main roadmap question is no longer:
+
+- "What other modules should we add?"
+
+It is now:
+
+- "How do we remove more routine from the real outbound loop?"
+
+## Current Stage – Main Goal
+
+The current stage is about making the real operator loop reliably usable:
+
+- import
+- process
+- attach to campaign wave
+- generate drafts
+- review drafts
+- send
+- poll replies
+- work inbox
+
+### Urgent current priority
+
+Because live campaigns already exist and the main pain is manual send
+supervision, the most urgent current block is:
+
+- automatic scheduled sending of approved intro and eligible bump drafts
+
+This should currently outrank broader ergonomics work because it removes
+day-to-day operator babysitting from already live campaigns.
+
+### Current-stage priorities
+
+1. auto-send intro + bump scheduler
+   Status: Completed
+2. processed company -> campaign wave attach
+   Status: Completed
+3. campaign wave composition / eligibility visibility
+   Status: Completed
+4. suppression and deliverability hardening
+   Status: Completed
+5. operator-facing sendability/status UI
+   Status: Completed
+6. minimal offer registry
+   Status: Completed
+7. operational `Hypothesis`
+   Status: Completed
+8. next-wave support
+   Status: Completed
+
+### Current-stage completion snapshot
+
+Completed in the current stage:
+
+- auto-send intro + bump scheduler
+- processed company -> campaign wave attach
+- campaign wave composition / eligibility visibility
+- suppression and deliverability hardening
+- operator-facing sendability/status UI
+- minimal offer registry
+- operational `Hypothesis`
+
+Still open in the current stage:
+
+- none
+
+### Current-stage detailed plan
+
+See:
+
+- [docs/private/2026-03-21_current_stage_action_plan.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_current_stage_action_plan.md)
+- [docs/private/2026-03-21_backend_task_auto_send_scheduler.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_backend_task_auto_send_scheduler.md)
+
+## Next Stage – Main Goal
+
+The next stage starts after the current operator loop is stable enough in real
+use.
+
+Its purpose is:
+
+- make repeated waves easier,
+- make `Offer` and `Hypothesis` first-class operational objects,
+- support next-wave creation,
+- prepare controlled offer rotation later.
+
+### Next-stage priorities
+
+1. offer registry hardening
+   Status: Completed
+2. offer management UI
+   Status: Completed (minimal operator shape)
+3. hypothesis operationalization
+   Status: Completed
+4. hypothesis-aware campaign creation
+   Status: Completed
+5. next-wave backend support
+   Status: Completed
+6. next-wave operator flow
+   Status: Completed
+7. offer history / exposure tracking
+   Status: Completed
+8. offer-aware analytics
+   Status: Completed
+9. controlled rotation groundwork
+   Status: Completed
+10. multi-project foundations
+   Status: Completed
+
+Current next-stage block status:
+
+- Completed through `multi-project foundations`
+- Next backend priority: TBD in the next planning cycle
+
+### Next-stage detailed plan
+
+See:
+
+- [docs/private/2026-03-21_next_stage_action_plan.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_next_stage_action_plan.md)
+
+## Deferred / Lower Priority
+
+The following should not dominate the near-term roadmap:
+
+- fully dynamic campaigns
+- SIM-heavy productization
+- heavy judge / prompt-lab systems
+- broad autonomous reply handling
+- overbuilt analytics dashboards
+- large UI redesigns not tied to routine removal
+- duplicating `Outreach` runtime inside `crew_five`
+
+## Source Adapters / Intake
+
+Keep these as valid options:
+
+- EXA Websets
+- Anysite
+
+But treat them as optional intake channels, especially for non-RF markets, not
+as the main orchestration center of the current stage.
+
+They should plug into the same canonical flow:
+
+- intake -> import/apply -> process -> attach -> draft -> send -> poll -> inbox
+
+## Practical Planning Rule
+
+For the next development window, prioritize any change that:
+
+- removes routine from the real operator loop within 2-8 weeks,
+- strengthens canonical execution state,
+- improves asynchronous operation,
+- wraps `Outreach` cleanly instead of duplicating it.
+
+Deprioritize any change that:
+
+- broadens platform scope without helping live operation,
+- adds abstraction before it removes work,
+- or introduces autonomy faster than the current process can safely absorb.
+
+## Recommended Reading
+
+For implementation planning:
+
+- [docs/private/2026-03-21_outreach_capability_matrix.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_outreach_capability_matrix.md)
+- [docs/private/2026-03-20_backend_roadmap_v1.md](/Users/georgyagaev/crew_five/docs/private/2026-03-20_backend_roadmap_v1.md)
+- [docs/private/2026-03-21_current_stage_action_plan.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_current_stage_action_plan.md)
+- [docs/private/2026-03-21_next_stage_action_plan.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_next_stage_action_plan.md)
+
+For strategy context:
+
+- [docs/private/2026-03-19_outbound_automation_strategy.md](/Users/georgyagaev/crew_five/docs/private/2026-03-19_outbound_automation_strategy.md)
+- [docs/private/2026-03-19_revised_roadmap_discussion.md](/Users/georgyagaev/crew_five/docs/private/2026-03-19_revised_roadmap_discussion.md)
+
+## Historical Note
+
+The older phase-based roadmap was useful during the foundation period, but the
+project has now moved into a different planning mode.
+
+Historical execution details remain in:
+
+- `docs/sessions/YYYY-MM-DD_<n>_<slug>.md`
+
+This roadmap should now be treated as the current navigation layer, not as a
+full historical ledger.

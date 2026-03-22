@@ -1,6 +1,8 @@
 /* eslint-disable security-node/detect-crlf */
 import { test, expect } from '@playwright/test';
 
+import { openLegacyPipeline } from './helpers';
+
 /**
  * T029: Filter-Based Segment → Enrichment Workflow
  *
@@ -13,7 +15,7 @@ import { test, expect } from '@playwright/test';
 test.describe('T029: Filter-Based Segment Creation', () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to web UI
-    await page.goto('/');
+    await openLegacyPipeline(page);
     await page.waitForLoadState('networkidle');
   });
 

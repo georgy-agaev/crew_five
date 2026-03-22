@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { assertCampaignStatusTransition, type CampaignStatus } from '../status';
+import { assertCampaignHasMailboxAssignment } from '../services/campaignMailboxAssignments.js';
 
 export async function campaignStatusHandler(
   client: SupabaseClient,
@@ -13,6 +14,10 @@ export async function campaignStatusHandler(
 
   const current = row.status as CampaignStatus;
   assertCampaignStatusTransition(current, options.status);
+
+  if (options.status === 'sending') {
+    await assertCampaignHasMailboxAssignment(client, options.campaignId);
+  }
 
   if (options.dryRun) {
     return { id: options.campaignId, status: current, nextStatus: options.status, dryRun: true };

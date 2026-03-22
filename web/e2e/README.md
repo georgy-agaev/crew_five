@@ -32,10 +32,10 @@ Start the backend API server:
 
 ```bash
 # From project root
-pnpm cli web:start
+pnpm dev:web:live
 ```
 
-The backend should be running on http://localhost:8787
+The backend should be running on `http://localhost:8787/api`, and the daily Vite UI should stay on `http://localhost:5173`.
 
 ## Running E2E Tests
 
@@ -128,6 +128,7 @@ Tests the complete workflow:
 
 - **Browser**: Chromium (Desktop Chrome)
 - **Base URL**: http://localhost:5173
+- **Validation ports only**: use adapter `8888` + UI `5174` for isolated browser checks, not for daily work
 - **Workers**: 1 (sequential execution to avoid DB conflicts)
 - **Retries**: 0 (local), 2 (CI)
 - **Auto-start dev server**: Yes (pnpm dev)
@@ -216,7 +217,7 @@ pnpm exec playwright install chromium
 Ensure backend is running:
 
 ```bash
-pnpm cli web:start
+pnpm dev:web:live
 ```
 
 ### Issue: "No test data"

@@ -5,6 +5,10 @@ import type { ChatClient } from '../src/services/chatClient';
 import { generateDrafts } from '../src/services/drafts';
 import * as promptRegistry from '../src/services/promptRegistry';
 
+function emptyCampaignExclusionsSelect() {
+  return { select: () => ({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+}
+
 describe('generateDrafts', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -79,6 +83,10 @@ describe('generateDrafts', () => {
           select: () => ({ match: membersMatch }),
         } as any;
       }
+      if (table === 'campaign_member_additions') {
+        return { select: () => ({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      }
+      if (table === 'campaign_member_exclusions') return emptyCampaignExclusionsSelect();
       if (table === 'app_settings')
         return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) } as any;
       if (table === 'companies') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
@@ -206,6 +214,10 @@ describe('generateDrafts', () => {
           select: () => ({ match: membersMatch }),
         } as any;
       }
+      if (table === 'campaign_member_additions') {
+        return { select: () => ({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      }
+      if (table === 'campaign_member_exclusions') return emptyCampaignExclusionsSelect();
       if (table === 'app_settings') return { select: appSettingsSelect } as any;
       if (table === 'companies') return { select: companiesSelect } as any;
       if (table === 'employees') return { select: employeesSelect } as any;
@@ -341,6 +353,9 @@ describe('generateDrafts', () => {
         } as any;
       }
       if (table === 'segment_members') return { select: () => ({ match: membersMatch }) } as any;
+      if (table === 'campaign_member_additions')
+        return { select: () => ({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      if (table === 'campaign_member_exclusions') return emptyCampaignExclusionsSelect();
       if (table === 'app_settings') {
         return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) } as any;
       }
@@ -426,6 +441,9 @@ describe('generateDrafts', () => {
       if (table === 'icp_profiles')
         return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) } as any;
       if (table === 'segment_members') return { select: () => ({ match: membersMatch }) } as any;
+      if (table === 'campaign_member_additions')
+        return { select: () => ({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      if (table === 'campaign_member_exclusions') return emptyCampaignExclusionsSelect();
       if (table === 'app_settings')
         return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) } as any;
       if (table === 'companies') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
@@ -481,6 +499,9 @@ describe('generateDrafts', () => {
         if (table === 'segments')
           return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }) }) }) };
         if (table === 'segment_members') return { select: () => ({ match: membersMatch }) };
+        if (table === 'campaign_member_additions')
+          return { select: () => ({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
+        if (table === 'campaign_member_exclusions') return emptyCampaignExclusionsSelect();
         if (table === 'app_settings') return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) };
         if (table === 'icp_profiles') return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) };
         if (table === 'companies') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
@@ -542,6 +563,9 @@ describe('generateDrafts', () => {
         if (table === 'segments')
           return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }) }) }) };
         if (table === 'segment_members') return { select: () => ({ match: membersMatch }) };
+        if (table === 'campaign_member_additions')
+          return { select: () => ({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
+        if (table === 'campaign_member_exclusions') return emptyCampaignExclusionsSelect();
         if (table === 'app_settings') return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) };
         if (table === 'icp_profiles') return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) };
         if (table === 'companies') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
@@ -597,6 +621,9 @@ describe('generateDrafts', () => {
         if (table === 'segments')
           return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }) }) }) };
         if (table === 'segment_members') return { select: () => ({ match: membersMatch }) };
+        if (table === 'campaign_member_additions')
+          return { select: () => ({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
+        if (table === 'campaign_member_exclusions') return emptyCampaignExclusionsSelect();
         if (table === 'app_settings') return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) };
         if (table === 'icp_profiles') return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) };
         if (table === 'companies') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
@@ -702,6 +729,10 @@ describe('generateDrafts', () => {
           select: () => ({ match: membersMatch }),
         } as any;
       }
+      if (table === 'campaign_member_additions') {
+        return { select: () => ({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      }
+      if (table === 'campaign_member_exclusions') return emptyCampaignExclusionsSelect();
       if (table === 'app_settings') return { select: appSettingsSelect } as any;
       if (table === 'companies') return { select: companiesSelect } as any;
       if (table === 'employees') return { select: employeesSelect } as any;
@@ -827,6 +858,10 @@ describe('generateDrafts', () => {
           select: () => ({ match: membersMatch }),
         } as any;
       }
+      if (table === 'campaign_member_additions') {
+        return { select: () => ({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      }
+      if (table === 'campaign_member_exclusions') return emptyCampaignExclusionsSelect();
       if (table === 'app_settings') return { select: appSettingsSelect } as any;
       if (table === 'companies') return { select: companiesSelect } as any;
       if (table === 'employees') return { select: employeesSelect } as any;
@@ -926,6 +961,9 @@ describe('generateDrafts', () => {
         } as any;
       }
       if (table === 'segment_members') return { select: () => ({ match: membersMatch }) } as any;
+      if (table === 'campaign_member_additions')
+        return { select: () => ({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      if (table === 'campaign_member_exclusions') return emptyCampaignExclusionsSelect();
       if (table === 'app_settings') {
         return {
           select: () => ({
@@ -1013,5 +1051,87 @@ describe('generateDrafts', () => {
     expect(insertedPayload[0]?.metadata?.enrichment_provider).toEqual({ company: 'firecrawl', employee: 'exa' });
     expect(insertedPayload[0]?.metadata?.enrichment_by_provider?.exa?.mode).toBe('primary');
     expect(insertedPayload[0]?.metadata?.enrichment_by_provider?.firecrawl?.mode).toBe('primary');
+  });
+
+  it('includes manually attached campaign audience rows in generation', async () => {
+    const single = vi.fn().mockResolvedValue({
+      data: { id: 'camp', segment_id: 'seg', segment_version: 1, language: 'en', pattern_mode: 'standard' },
+      error: null,
+    });
+    const eq = vi.fn().mockReturnValue({ single });
+
+    const membersMatch = vi.fn().mockResolvedValue({
+      data: [
+        {
+          company_id: 'company-1',
+          contact_id: 'contact-1',
+          snapshot: {
+            contact: { full_name: 'Alice', work_email: 'alice@acme.test', position: 'CEO' },
+            company: { company_name: 'Acme' },
+          },
+        },
+      ],
+      error: null,
+    });
+
+    const additionsEq = vi.fn().mockResolvedValue({
+      data: [
+        {
+          campaign_id: 'camp',
+          company_id: 'company-2',
+          contact_id: 'contact-2',
+          source: 'manual_attach',
+          snapshot: {
+            contact: { full_name: 'Bob', work_email: 'bob@beta.test', position: 'CTO' },
+            company: { company_name: 'Beta' },
+          },
+          attached_at: '2026-03-21T12:00:00Z',
+        },
+      ],
+      error: null,
+    });
+    const additionsSelect = vi.fn().mockReturnValue({ eq: additionsEq });
+
+    const insertSelect = vi.fn().mockResolvedValue({ data: [{ id: 'draft-1' }, { id: 'draft-2' }], error: null });
+    const insert = vi.fn().mockReturnValue({ select: insertSelect });
+
+    const supabase = {
+      from: (table: string) => {
+        if (table === 'campaigns') return { select: () => ({ eq }) };
+        if (table === 'segments')
+          return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }) }) }) };
+        if (table === 'segment_members') return { select: () => ({ match: membersMatch }) };
+        if (table === 'campaign_member_additions') return { select: additionsSelect };
+        if (table === 'campaign_member_exclusions') return emptyCampaignExclusionsSelect();
+        if (table === 'app_settings') return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) };
+        if (table === 'icp_profiles') return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) };
+        if (table === 'companies') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
+        if (table === 'employees') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
+        if (table === 'drafts') return { insert };
+        throw new Error(`Unexpected table ${table}`);
+      },
+    } as any;
+
+    const aiClient = new AiClient({
+      complete: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          subject: 'Hello',
+          body: 'Body',
+          metadata: {
+            model: 'mock',
+            language: 'en',
+            pattern_mode: 'standard',
+            email_type: 'intro',
+            coach_prompt_id: 'intro_v1',
+          },
+        })
+      ),
+    });
+
+    const summary = await generateDrafts(supabase, aiClient, { campaignId: 'camp' });
+
+    expect(summary.generated).toBe(2);
+    const insertedPayload = insert.mock.calls[0]?.[0] as any[];
+    expect(insertedPayload.map((row: any) => row.contact_id)).toEqual(['contact-1', 'contact-2']);
   });
 });

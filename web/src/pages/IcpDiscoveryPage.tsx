@@ -26,7 +26,7 @@ import {
   formatHypothesisSummaryForChat,
   formatIcpSummaryForChat,
   getPersistedDiscoveryRun,
-} from './PipelineWorkspaceWithSidebar';
+} from './legacyWorkspace/legacyWorkspaceCoachHelpers';
 
 type IcpForm = {
   industry: string;

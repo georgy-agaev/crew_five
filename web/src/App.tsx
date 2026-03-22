@@ -4,22 +4,32 @@ import './index.css';
 import PipelineWorkspaceWithSidebar from './pages/PipelineWorkspaceWithSidebar';
 import { fetchMeta, type MetaStatus } from './apiClient';
 import { IcpDiscoveryPage } from './pages/IcpDiscoveryPage';
+import { BuilderWorkspacePage } from './pages/BuilderWorkspacePage';
+import { InboxWorkspacePage } from './pages/InboxWorkspacePage';
+import { ContactsWorkspacePage } from './pages/ContactsWorkspacePage';
+import { MailboxesWorkspacePage } from './pages/MailboxesWorkspacePage';
+import { EnrichmentWorkspacePage } from './pages/EnrichmentWorkspacePage';
+import { ImportWorkspacePage } from './pages/ImportWorkspacePage';
+import { HomeWorkspacePage } from './pages/HomeWorkspacePage';
+import CampaignOperatorDesk from './pages/CampaignOperatorDesk';
+import { AppShell } from './components/AppShell';
+import { usePersistedState } from './hooks/usePersistedState';
+import { resolveViewFromLocation } from './appView';
 
-export function resolveViewFromLocation(loc?: Location | URL): 'pipeline' | 'icp-discovery' {
-  if (!loc) return 'pipeline';
-  const search = loc.search ?? '';
-  if (!search) return 'pipeline';
-  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
-  const view = params.get('view');
-  if (view === 'icp-discovery') return 'icp-discovery';
-  return 'pipeline';
-}
+const LEGACY_VIEWS = new Set(['pipeline', 'campaigns', 'icp-discovery']);
 
 function App() {
   const apiBase = import.meta.env.VITE_API_BASE ?? '/api';
   const adapterMode = import.meta.env.VITE_WEB_ADAPTER_MODE ?? 'live';
   const [meta, setMeta] = useState<MetaStatus | null>(null);
   const [metaError, setMetaError] = useState<string | null>(null);
+  const [isDark, setIsDark] = usePersistedState('c5:shell:dark', false);
+  const [language, setLanguage] = usePersistedState('c5:shell:language', 'en');
+  const [sidebarExpanded, setSidebarExpanded] = usePersistedState('c5:shell:sidebar', true);
+
+  const view = resolveViewFromLocation(
+    typeof window !== 'undefined' && window.location ? window.location : undefined
+  );
 
   useEffect(() => {
     fetchMeta()
@@ -30,28 +40,60 @@ function App() {
   const smartleadReady = meta?.smartleadReady ?? true;
   const modeLabel = meta?.mode ?? adapterMode;
   const supabaseReady = meta?.supabaseReady ?? true;
-  const view = resolveViewFromLocation(
-    typeof window !== 'undefined' && window.location ? window.location : undefined
-  );
 
+  // Legacy views render without new shell
+  if (LEGACY_VIEWS.has(view)) {
+    return (
+      <main className="shell">
+        {view === 'icp-discovery' ? (
+          <IcpDiscoveryPage />
+        ) : (
+          <PipelineWorkspaceWithSidebar
+            apiBase={apiBase}
+            modeLabel={modeLabel}
+            supabaseReady={supabaseReady}
+            smartleadReady={smartleadReady}
+            initialPage={view === 'campaigns' ? 'campaigns' : 'pipeline'}
+          />
+        )}
+      </main>
+    );
+  }
+
+  // New surfaces render inside AppShell
   return (
-    <main className="shell">
+    <AppShell
+      currentView={view}
+      isDark={isDark}
+      language={language}
+      sidebarExpanded={sidebarExpanded}
+      onToggleDark={() => setIsDark((d) => !d)}
+      onSelectLanguage={setLanguage}
+      onToggleSidebar={() => setSidebarExpanded((s) => !s)}
+    >
       {metaError && (
-        <p className="error-text" style={{ marginTop: 4 }}>
+        <p className="error-text" style={{ margin: '8px 16px' }}>
           Failed to load adapter meta: {metaError}
         </p>
       )}
-      {view === 'icp-discovery' ? (
-        <IcpDiscoveryPage />
-      ) : (
-        <PipelineWorkspaceWithSidebar
-          apiBase={apiBase}
-          modeLabel={modeLabel}
-          supabaseReady={supabaseReady}
-          smartleadReady={smartleadReady}
-        />
-      )}
-    </main>
+      {view === 'home' ? (
+        <HomeWorkspacePage isDark={isDark} />
+      ) : view === 'campaign-ops' ? (
+        <CampaignOperatorDesk isDark={isDark} language={language} />
+      ) : view === 'builder-v2' ? (
+        <BuilderWorkspacePage isDark={isDark} language={language} />
+      ) : view === 'inbox-v2' ? (
+        <InboxWorkspacePage isDark={isDark} />
+      ) : view === 'contacts' ? (
+        <ContactsWorkspacePage isDark={isDark} />
+      ) : view === 'mailboxes' ? (
+        <MailboxesWorkspacePage isDark={isDark} />
+      ) : view === 'enrichment' ? (
+        <EnrichmentWorkspacePage isDark={isDark} />
+      ) : view === 'import' ? (
+        <ImportWorkspacePage isDark={isDark} />
+      ) : null}
+    </AppShell>
   );
 }
 

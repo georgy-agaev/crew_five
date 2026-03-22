@@ -15,7 +15,7 @@ describe('smartleadSendCommand', () => {
             select: () => ({
               eq: () => ({
                 single: async () => ({
-                  data: { id: 'camp-1', segment_id: 'seg-1', metadata: {} },
+                  data: { id: 'camp-1', segment_id: 'seg-1', segment_version: 1, metadata: {} },
                   error: null,
                 }),
               }),
@@ -28,11 +28,31 @@ describe('smartleadSendCommand', () => {
         if (table === 'segment_members') {
           return {
             select: () => ({
-              eq: () => ({
+              match: () => ({
                 limit: async () => ({
                   data: [{ contact_id: 'e1' }, { contact_id: 'e2' }],
                   error: null,
                 }),
+              }),
+            }),
+          };
+        }
+        if (table === 'campaign_member_additions') {
+          return {
+            select: () => ({
+              eq: async () => ({
+                data: [],
+                error: null,
+              }),
+            }),
+          };
+        }
+        if (table === 'campaign_member_exclusions') {
+          return {
+            select: () => ({
+              eq: async () => ({
+                data: [],
+                error: null,
               }),
             }),
           };
@@ -110,7 +130,7 @@ describe('smartleadSendCommand', () => {
             select: () => ({
               eq: () => ({
                 single: async () => ({
-                  data: { id: 'camp-1', segment_id: 'seg-1', metadata: {} },
+                  data: { id: 'camp-1', segment_id: 'seg-1', segment_version: 1, metadata: {} },
                   error: null,
                 }),
               }),
@@ -123,11 +143,31 @@ describe('smartleadSendCommand', () => {
         if (table === 'segment_members') {
           return {
             select: () => ({
-              eq: () => ({
+              match: () => ({
                 limit: async () => ({
                   data: [{ contact_id: 'e1' }],
                   error: null,
                 }),
+              }),
+            }),
+          };
+        }
+        if (table === 'campaign_member_additions') {
+          return {
+            select: () => ({
+              eq: async () => ({
+                data: [],
+                error: null,
+              }),
+            }),
+          };
+        }
+        if (table === 'campaign_member_exclusions') {
+          return {
+            select: () => ({
+              eq: async () => ({
+                data: [],
+                error: null,
               }),
             }),
           };
@@ -171,5 +211,120 @@ describe('smartleadSendCommand', () => {
     expect(saveCampaignSequences).not.toHaveBeenCalled();
     expect(summary.dryRun).toBe(true);
     expect(summary.leadsPrepared).toBe(1);
+  });
+
+  it('includes manually attached audience members in send preparation', async () => {
+    const addLeadsToCampaign = vi.fn().mockResolvedValue({ message: 'ok', leadIds: {} });
+    const saveCampaignSequences = vi.fn().mockResolvedValue({ ok: true });
+    const client = { addLeadsToCampaign, saveCampaignSequences } as any;
+
+    const supabase = {
+      from: (table: string) => {
+        if (table === 'campaigns') {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: async () => ({
+                  data: {
+                    id: 'camp-1',
+                    segment_id: 'seg-1',
+                    segment_version: 1,
+                    metadata: {},
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+            update: () => ({
+              eq: async () => ({ error: null }),
+            }),
+          };
+        }
+        if (table === 'segment_members') {
+          return {
+            select: () => ({
+              match: async () => ({
+                data: [{ company_id: 'co-1', contact_id: 'e1', snapshot: null }],
+                error: null,
+              }),
+            }),
+          };
+        }
+        if (table === 'campaign_member_additions') {
+          return {
+            select: () => ({
+              eq: async () => ({
+                data: [
+                  {
+                    campaign_id: 'camp-1',
+                    company_id: 'co-2',
+                    contact_id: 'e2',
+                    source: 'manual_attach',
+                    snapshot: null,
+                    attached_at: '2026-03-21T12:00:00Z',
+                  },
+                ],
+                error: null,
+              }),
+            }),
+          };
+        }
+        if (table === 'campaign_member_exclusions') {
+          return {
+            select: () => ({
+              eq: async () => ({
+                data: [],
+                error: null,
+              }),
+            }),
+          };
+        }
+        if (table === 'employees') {
+          return {
+            select: () => ({
+              in: async () => ({
+                data: [
+                  { id: 'e1', full_name: 'Alice A', work_email: 'lead1@example.com', company_name: 'Acme' },
+                  { id: 'e2', full_name: 'Cara C', work_email: 'lead2@example.com', company_name: 'Beta' },
+                ],
+                error: null,
+              }),
+            }),
+          };
+        }
+        if (table === 'drafts') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  limit: async () => ({
+                    data: [{ subject: 'Hi', body: 'Hello' }],
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        throw new Error(`Unexpected table: ${table}`);
+      },
+    } as any;
+
+    const summary = await smartleadSendCommand(client, supabase, {
+      dryRun: false,
+      batchSize: 10,
+      campaignId: 'camp-1',
+      smartleadCampaignId: 'sl-123',
+    } as any);
+
+    expect(summary.leadsPrepared).toBe(2);
+    expect(addLeadsToCampaign).toHaveBeenCalledWith(
+      expect.objectContaining({
+        leads: expect.arrayContaining([
+          expect.objectContaining({ email: 'lead1@example.com' }),
+          expect.objectContaining({ email: 'lead2@example.com' }),
+        ]),
+      })
+    );
   });
 });

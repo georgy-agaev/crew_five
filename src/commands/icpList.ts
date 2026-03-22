@@ -26,10 +26,15 @@ const allowedHypothesisColumns = [
   'id',
   'icp_id',
   'icp_profile_id',
+  'offer_id',
   'segment_id',
   'status',
   'hypothesis_label',
   'search_config',
+  'targeting_defaults',
+  'messaging_angle',
+  'pattern_defaults',
+  'notes',
   'created_at',
 ];
 
@@ -60,7 +65,8 @@ export async function icpHypothesisListCommand(client: SupabaseClient, options: 
     allowedHypothesisColumns
   );
 
-  const hypothesisSelect = 'id, icp_id, status, hypothesis_label, search_config, created_at';
+  const hypothesisSelect =
+    'id, icp_id, offer_id, status, hypothesis_label, search_config, targeting_defaults, messaging_angle, pattern_defaults, notes, created_at';
   let query: any = client.from('icp_hypotheses').select(hypothesisSelect);
 
   if (options.icpProfileId) {
@@ -125,9 +131,14 @@ export async function icpHypothesisListCommand(client: SupabaseClient, options: 
       id: row.id,
       icp_id: row.icp_id,
       icp_profile_id: row.icp_id,
+      offer_id: row.offer_id,
       status: row.status,
       hypothesis_label: row.hypothesis_label,
       search_config: row.search_config,
+      targeting_defaults: row.targeting_defaults,
+      messaging_angle: row.messaging_angle,
+      pattern_defaults: row.pattern_defaults,
+      notes: row.notes,
       created_at: row.created_at,
       segment_id: segmentIdsByHypothesis.get(String(row.id))?.[0] ?? (options.segmentId ?? null),
     };

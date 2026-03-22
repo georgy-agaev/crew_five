@@ -19,6 +19,20 @@ export function formatGroupKey(groupBy: string, row: Record<string, any>) {
   if (groupBy === 'pattern') {
     return `${row.draft_pattern ?? 'unknown'} [edited=${row.user_edited ?? false}]`;
   }
+  if (groupBy === 'offer') {
+    const title = row.offer_title ?? row.offer_id ?? 'n/a';
+    const project = row.project_name;
+    return project ? `${title} (${project})` : String(title);
+  }
+  if (groupBy === 'hypothesis') {
+    return row.hypothesis_label ?? row.icp_hypothesis_id ?? 'n/a';
+  }
+  if (groupBy === 'recipient_type') {
+    return row.recipient_type ?? 'n/a';
+  }
+  if (groupBy === 'sender_identity') {
+    return row.sender_identity ?? 'n/a';
+  }
   return `${row.icp_profile_id ?? 'n/a'} / ${row.icp_hypothesis_id ?? 'n/a'}`;
 }
 
@@ -29,10 +43,10 @@ export function EventsPage() {
   const [patterns, setPatterns] = useState<PatternRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [groupBy, setGroupBy] = useState<'icp' | 'segment' | 'pattern'>('icp');
+  const [groupBy, setGroupBy] = useState<'icp' | 'segment' | 'pattern' | 'offer' | 'hypothesis' | 'recipient_type' | 'sender_identity'>('icp');
 
   const [analyticsState, runAnalyticsLoad] = useAsyncState(
-    async (group: 'icp' | 'segment' | 'pattern', sinceValue: string) => {
+    async (group: string, sinceValue: string) => {
       const [summary, optimize, registry] = await Promise.all([
         fetchAnalyticsSummary({ groupBy: group, since: sinceValue }),
         fetchAnalyticsOptimize({ since: sinceValue }),
@@ -125,6 +139,10 @@ export function EventsPage() {
               <option value="icp">ICP + Hypothesis</option>
               <option value="segment">Segment + Role</option>
               <option value="pattern">Pattern + Edited</option>
+              <option value="offer">Offer</option>
+              <option value="hypothesis">Hypothesis</option>
+              <option value="recipient_type">Recipient Type</option>
+              <option value="sender_identity">Sender Identity</option>
             </select>
           </label>
           <label>

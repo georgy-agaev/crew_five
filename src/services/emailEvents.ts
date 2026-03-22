@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { normalizeEmailAddress } from './recipientResolver.js';
+
 export interface IngestOptions {
   dryRun?: boolean;
 }
@@ -43,7 +45,6 @@ export function mapProviderEvent(payload: ProviderEventPayload) {
     event_type: payload.event_type,
     outcome_classification: normalizedOutcome,
     reply_label,
-    contact_id: payload.contact_id ?? null,
     outbound_id: payload.outbound_id ?? null,
     draft_id: payload.draft_id ?? null,
     send_job_id: payload.send_job_id ?? null,
@@ -108,6 +109,9 @@ export async function ingestEmailEvent(
   if (error) {
     throw error;
   }
+
+  await maybeMaterializeEmailDeliverability(client, enriched);
+  await maybeMaterializeEmployeeSuppressionFlags(client, enriched);
 
   return { inserted: 1, event: data };
 }
@@ -199,6 +203,125 @@ async function maybeEnrichWithOutboundContext(
   }
 
   return enriched;
+}
+
+async function maybeMaterializeEmailDeliverability(
+  client: SupabaseClient,
+  evt: ReturnType<typeof mapProviderEvent>
+) {
+  if (evt.event_type !== 'bounced') {
+    return;
+  }
+
+  const context = await resolveBouncedRecipientContext(client, evt);
+  if (!context.employeeId || !context.recipientEmail) {
+    return;
+  }
+
+  const { data: employee, error } = await client
+    .from('employees')
+    .select('id,work_email,generic_email')
+    .eq('id', context.employeeId)
+    .single();
+
+  if (error || !employee) {
+    throw error ?? new Error('Employee not found for bounced event materialization');
+  }
+
+  const normalizedRecipient = normalizeEmailAddress(context.recipientEmail);
+  if (!normalizedRecipient) {
+    return;
+  }
+
+  const patch: Record<string, string | boolean> = {
+    reply_bounce: true,
+  };
+  if (normalizeEmailAddress(employee.work_email) === normalizedRecipient) {
+    patch.work_email_status = 'bounced';
+  }
+  if (normalizeEmailAddress(employee.generic_email) === normalizedRecipient) {
+    patch.generic_email_status = 'bounced';
+  }
+
+  if (!('work_email_status' in patch) && !('generic_email_status' in patch)) {
+    return;
+  }
+
+  const { error: updateError } = await client.from('employees').update(patch).eq('id', context.employeeId);
+  if (updateError) {
+    throw updateError;
+  }
+}
+
+async function maybeMaterializeEmployeeSuppressionFlags(
+  client: SupabaseClient,
+  evt: ReturnType<typeof mapProviderEvent>
+) {
+  if (evt.event_type !== 'unsubscribed' && evt.event_type !== 'complaint') {
+    return;
+  }
+
+  const context = await resolveEventEmployeeContext(client, evt);
+  if (!context.employeeId) {
+    return;
+  }
+
+  const { error } = await client
+    .from('employees')
+    .update({ reply_unsubscribe: true })
+    .eq('id', context.employeeId);
+  if (error) {
+    throw error;
+  }
+}
+
+async function resolveBouncedRecipientContext(
+  client: SupabaseClient,
+  evt: ReturnType<typeof mapProviderEvent>
+) {
+  const context = await resolveEventEmployeeContext(client, evt);
+  return {
+    employeeId: context.employeeId,
+    recipientEmail: getRecipientEmailFromPayload(evt.payload) ?? context.recipientEmail,
+  };
+}
+
+async function resolveEventEmployeeContext(
+  client: SupabaseClient,
+  evt: ReturnType<typeof mapProviderEvent>
+) {
+  let employeeId = evt.employee_id ?? null;
+  let recipientEmail: string | null = null;
+
+  if (evt.outbound_id) {
+    const { data: outbound, error } = await client
+      .from('email_outbound')
+      .select('contact_id,metadata')
+      .eq('id', evt.outbound_id)
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    employeeId = employeeId ?? (typeof outbound?.contact_id === 'string' ? outbound.contact_id : null);
+    const metadata =
+      outbound?.metadata && typeof outbound.metadata === 'object'
+        ? (outbound.metadata as Record<string, unknown>)
+        : null;
+    recipientEmail = getRecipientEmailFromPayload(metadata);
+  }
+
+  return { employeeId, recipientEmail };
+}
+
+function getRecipientEmailFromPayload(payload: Record<string, unknown> | null | undefined) {
+  if (!payload) {
+    return null;
+  }
+
+  const candidate = payload.recipient_email;
+  return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate.trim() : null;
 }
 
 export async function getReplyPatterns(

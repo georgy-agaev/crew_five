@@ -44,6 +44,13 @@ export interface DraftUpdateStatusOptions {
   metadata?: Record<string, unknown>;
 }
 
+export interface DraftBatchUpdateStatusOptions {
+  draftIds: string[];
+  status: DraftStatus;
+  reviewer?: string;
+  metadata?: Record<string, unknown>;
+}
+
 function pickFirst<T>(...values: Array<T | undefined>): T | undefined {
   for (const value of values) {
     if (value !== undefined) {
@@ -138,7 +145,7 @@ async function loadDraftsWithRecipientContext(client: SupabaseClient, options: D
     .select(
       [
         '*',
-        'contact:employees(id,full_name,position,work_email,generic_email,company_name)',
+        'contact:employees(id,full_name,position,work_email,work_email_status,generic_email,generic_email_status,company_name)',
         'company:companies(id,company_name,website)',
       ].join(',')
     )
@@ -163,7 +170,9 @@ async function loadDraftsWithRecipientContext(client: SupabaseClient, options: D
     const contact = row.contact ?? null;
     const resolution = resolveRecipientEmail({
       work_email: contact?.work_email,
+      work_email_status: contact?.work_email_status,
       generic_email: contact?.generic_email,
+      generic_email_status: contact?.generic_email_status,
     });
 
     return {
@@ -217,6 +226,58 @@ export async function updateDraftStatus(client: SupabaseClient, options: DraftUp
 
   if (error || !data) {
     throw error ?? new Error('Failed to update draft status');
+  }
+
+  return data;
+}
+
+export async function updateDraftStatuses(
+  client: SupabaseClient,
+  options: DraftBatchUpdateStatusOptions
+) {
+  const draftIds = Array.from(new Set(options.draftIds.map((draftId) => draftId.trim()).filter(Boolean)));
+  if (draftIds.length === 0) {
+    throw new Error('draftIds must contain at least one draft id');
+  }
+
+  const updated = [];
+  for (const draftId of draftIds) {
+    updated.push(
+      await updateDraftStatus(client, {
+        draftId,
+        status: options.status,
+        reviewer: options.reviewer,
+        metadata: options.metadata,
+      })
+    );
+  }
+
+  return {
+    updated,
+    summary: {
+      totalRequested: draftIds.length,
+      updatedCount: updated.length,
+      status: options.status,
+    },
+  };
+}
+
+export interface DraftUpdateContentOptions {
+  draftId: string;
+  subject: string;
+  body: string;
+}
+
+export async function updateDraftContent(client: SupabaseClient, options: DraftUpdateContentOptions) {
+  const { data, error } = await client
+    .from('drafts')
+    .update({ subject: options.subject, body: options.body })
+    .eq('id', options.draftId)
+    .select('*')
+    .single();
+
+  if (error || !data) {
+    throw error ?? new Error('Failed to update draft content');
   }
 
   return data;
