@@ -38,4 +38,20 @@ describe('AiClient', () => {
       /missing subject\/body\/metadata/i
     );
   });
+
+  it('includes per-entity enrichment provider guidance in system prompt', async () => {
+    const complete = vi.fn().mockResolvedValue(
+      JSON.stringify({ subject: 'S', body: 'B', metadata: { model: 'm', language: 'en', coach_prompt_id: 'p', email_type: 'intro', pattern_mode: 'standard' } })
+    );
+    const chatClient: ChatClient = { complete };
+
+    const client = new AiClient(chatClient);
+    await client.generateDraft(baseRequest as any);
+
+    const messages = complete.mock.calls[0]?.[0] as any[];
+    expect(messages?.[0]?.role).toBe('system');
+    expect(String(messages?.[0]?.content)).toContain('brief.context.enrichment_provider');
+    expect(String(messages?.[0]?.content)).toContain('primaryCompanyProvider');
+    expect(String(messages?.[0]?.content)).toContain('primaryEmployeeProvider');
+  });
 });

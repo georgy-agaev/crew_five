@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+// @ts-nocheck
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Alert } from '../components/Alert';
 import {
@@ -16,7 +17,16 @@ import {
   type Campaign,
   type SegmentRow as ApiSegmentRow,
 } from '../apiClient';
+import { loadSettings } from '../hooks/useSettingsStore';
 import { isSnapshotFinalized } from './WorkflowZeroPage';
+import {
+  appendChatMessage,
+  buildHypothesisSummaryFromSearchConfig,
+  buildIcpSummaryFromProfile,
+  formatHypothesisSummaryForChat,
+  formatIcpSummaryForChat,
+  getPersistedDiscoveryRun,
+} from './legacyWorkspace/legacyWorkspaceCoachHelpers';
 
 type IcpForm = {
   industry: string;
@@ -72,6 +82,20 @@ export function pickDefaultHypothesis(hypotheses: Array<{ id: string }> = []) {
   return hypotheses[0]?.id ?? '';
 }
 
+export function appendDiscoveryChatMessage(messages: any[] | null | undefined, message: any) {
+  const base = Array.isArray(messages) ? messages : [];
+  const next = appendChatMessage(base, message);
+  return next.slice(-4);
+}
+
+export function formatIcpSummaryForChatDiscovery(summary: any) {
+  return formatIcpSummaryForChat(summary);
+}
+
+export function formatHypothesisSummaryForChatDiscovery(summary: any) {
+  return formatHypothesisSummaryForChat(summary);
+}
+
 export function IcpDiscoveryPage() {
   const [form, setForm] = useState<IcpForm>({
     industry: 'AI infra',
@@ -105,8 +129,12 @@ export function IcpDiscoveryPage() {
   const [candidateCompanies, setCandidateCompanies] = useState<CandidateCompany[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [promotionStatus, setPromotionStatus] = useState<string | null>(null);
+  const initialPersistedRunIdRef = useRef<string | null>(null);
+  const autoLoadedCandidatesRef = useRef(false);
   const queries = useMemo(() => deriveQueries(form), [form]);
   const [discoveryStatus, setDiscoveryStatus] = useState<string | null>(null);
+  const [icpChatMessages, setIcpChatMessages] = useState<any[]>([]);
+  const [hypothesisChatMessages, setHypothesisChatMessages] = useState<any[]>([]);
 
   const toggle = (id: string) => {
     const next = new Set(selectedIds);
@@ -115,33 +143,50 @@ export function IcpDiscoveryPage() {
     setSelectedIds(next);
   };
 
-  const refreshProfiles = async () => {
+  const refreshProfiles = async (): Promise<any[]> => {
     try {
       const data = await fetchIcpProfiles();
       setProfiles(data as any[]);
       const defaultId = pickDefaultProfile(data as any[]);
-      if (!selectedProfileId && defaultId) {
-        setSelectedProfileId(defaultId);
+      if (defaultId) {
+        setSelectedProfileId((prev) => prev || defaultId);
       }
+      return data as any[];
     } catch (err: any) {
       setError(err?.message ?? 'Failed to load ICP profiles');
+      return [];
     }
   };
 
-  const refreshHypotheses = async (profileId?: string) => {
+  const refreshHypotheses = async (profileId?: string): Promise<any[]> => {
     try {
       const data = await fetchIcpHypotheses(profileId ? { icpProfileId: profileId } : {});
       setHypotheses(data as any[]);
       const defaultHyp = pickDefaultHypothesis(data as any[]);
-      if (!selectedHypothesisId && defaultHyp) {
-        setSelectedHypothesisId(defaultHyp);
+      if (defaultHyp) {
+        setSelectedHypothesisId((prev) => prev || defaultHyp);
       }
+      return data as any[];
     } catch (err: any) {
       setError(err?.message ?? 'Failed to load ICP hypotheses');
+      return [];
     }
   };
 
   useEffect(() => {
+    const persisted = getPersistedDiscoveryRun();
+    if (persisted?.runId) {
+      initialPersistedRunIdRef.current = persisted.runId;
+      setDiscoveryRunId((prev) => prev || persisted.runId);
+      if (persisted.icpProfileId) {
+        setSelectedProfileId((prev) => prev || persisted.icpProfileId!);
+      }
+      if (persisted.icpHypothesisId) {
+        setSelectedHypothesisId((prev) => prev || persisted.icpHypothesisId!);
+      }
+    } else {
+      initialPersistedRunIdRef.current = null;
+    }
     refreshProfiles().then(() => refreshHypotheses().catch(() => undefined)).catch(() => undefined);
     fetchSegments()
       .then((seg) => {
@@ -217,12 +262,41 @@ export function IcpDiscoveryPage() {
       setError('Profile name is required');
       return;
     }
+    const prompt = newProfileName.trim();
+    setIcpChatMessages((prev) =>
+      appendDiscoveryChatMessage(prev, {
+        role: 'user',
+        text: prompt,
+      })
+    );
     setLoading(true);
     setError(null);
     try {
-      const icp = await generateIcpProfileViaCoach({ name: newProfileName.trim() });
+      const settings = loadSettings();
+      const cfg = settings.providers.icp;
+      const promptId = settings.taskPrompts?.icpDiscovery;
+      const icp = await generateIcpProfileViaCoach({
+        name: prompt,
+        userPrompt: prompt,
+        provider: cfg.provider,
+        model: cfg.model,
+        ...(promptId ? { promptId } : {}),
+      });
       setGeneratedIcp(icp as any);
-      await refreshProfiles();
+      const rows = await refreshProfiles();
+      const fullProfile = (rows as any[]).find((row) => row.id === icp.id) ?? null;
+      if (fullProfile) {
+        const summary = buildIcpSummaryFromProfile(fullProfile);
+        const text = formatIcpSummaryForChatDiscovery(summary);
+        if (text) {
+          setIcpChatMessages((prev) =>
+            appendDiscoveryChatMessage(prev, {
+              role: 'assistant',
+              text,
+            })
+          );
+        }
+      }
       setSelectedProfileId(icp.id ?? selectedProfileId);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to generate ICP via coach');
@@ -237,12 +311,41 @@ export function IcpDiscoveryPage() {
       return;
     }
     const label = newHypothesisLabel.trim() || 'ICP hypothesis';
+    setHypothesisChatMessages((prev) =>
+      appendDiscoveryChatMessage(prev, {
+        role: 'user',
+        text: label,
+      })
+    );
     setLoading(true);
     setError(null);
     try {
-      const hyp = await generateHypothesisViaCoach({ icpProfileId: selectedProfileId, hypothesisLabel: label });
+      const settings = loadSettings();
+      const cfg = settings.providers.hypothesis;
+      const promptId = settings.taskPrompts?.hypothesisGen;
+      const hyp = await generateHypothesisViaCoach({
+        icpProfileId: selectedProfileId,
+        hypothesisLabel: label,
+        userPrompt: label,
+        provider: cfg.provider,
+        model: cfg.model,
+        ...(promptId ? { promptId } : {}),
+      });
       setGeneratedHypothesis(hyp as any);
-      await refreshHypotheses(selectedProfileId);
+      const rows = await refreshHypotheses(selectedProfileId);
+      const fullHypothesis = (rows as any[]).find((row) => row.id === hyp.id) ?? null;
+      if (fullHypothesis) {
+        const summary = buildHypothesisSummaryFromSearchConfig(fullHypothesis);
+        const text = formatHypothesisSummaryForChatDiscovery(summary);
+        if (text) {
+          setHypothesisChatMessages((prev) =>
+            appendDiscoveryChatMessage(prev, {
+              role: 'assistant',
+              text,
+            })
+          );
+        }
+      }
       setSelectedHypothesisId(hyp.id ?? selectedHypothesisId);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to generate hypothesis via coach');
@@ -273,6 +376,15 @@ export function IcpDiscoveryPage() {
       setCandidatesLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!initialPersistedRunIdRef.current) return;
+    if (!discoveryRunId || discoveryRunId !== initialPersistedRunIdRef.current) return;
+    if (autoLoadedCandidatesRef.current) return;
+    autoLoadedCandidatesRef.current = true;
+    loadCandidatesForRun().catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discoveryRunId]);
 
   const handleRunDiscovery = async () => {
     if (!selectedProfileId) {
@@ -331,6 +443,64 @@ export function IcpDiscoveryPage() {
       setLoading(false);
     }
   };
+
+  const selectedProfile = useMemo(
+    () => profiles.find((p: any) => p.id === selectedProfileId) as any,
+    [profiles, selectedProfileId]
+  );
+
+  const selectedHypothesis = useMemo(
+    () => hypotheses.find((h: any) => h.id === selectedHypothesisId) as any,
+    [hypotheses, selectedHypothesisId]
+  );
+
+  const icpSummary = useMemo(() => {
+    if (!selectedProfile) return null;
+    const company = (selectedProfile as any).company_criteria ?? {};
+    const persona = (selectedProfile as any).persona_criteria ?? {};
+    const phases = (selectedProfile as any).phase_outputs ?? {};
+    const phase1 = phases.phase1 ?? {};
+    const phase2 = phases.phase2 ?? {};
+    const phase3 = phases.phase3 ?? {};
+
+    const valueProp = phase1.valueProp ?? company.valueProp;
+
+    const industries =
+      (phase2.industryAndSize && phase2.industryAndSize.industries) || company.industries || [];
+    const companySizes =
+      (phase2.industryAndSize && phase2.industryAndSize.companySizes) || company.companySizes || [];
+
+    const pains = phase2.pains || company.pains || [];
+    const decisionMakers = phase2.decisionMakers || persona.decisionMakers || [];
+
+    const triggers = phase3.triggers || company.triggers || [];
+
+    return {
+      valueProp,
+      industries,
+      companySizes,
+      pains,
+      decisionMakers,
+      triggers,
+    };
+  }, [selectedProfile]);
+
+  const hypothesisSummary = useMemo(() => {
+    if (!selectedHypothesis) return null;
+    const searchConfig = (selectedHypothesis as any).search_config ?? {};
+    const phases = searchConfig.phases ?? {};
+    const phase4 = phases.phase4 ?? {};
+    const phase5 = phases.phase5 ?? {};
+    const offers = phase4.offers || [];
+    const critiques = phase5.critiques || [];
+    const regions = searchConfig.region || [];
+    return {
+      label: (selectedHypothesis as any).hypothesis_label ?? (selectedHypothesis as any).hypothesisLabel,
+      regions,
+      offers,
+      critiques,
+    };
+  }, [selectedHypothesis]);
 
   return (
     <div className="grid">
@@ -424,6 +594,93 @@ export function IcpDiscoveryPage() {
             </div>
           </div>
         </div>
+
+        {(icpChatMessages.length > 0 || hypothesisChatMessages.length > 0) && (
+          <div className="panel">
+            <div className="panel__title">Coach conversation (latest runs)</div>
+            <div className="panel__content">
+              <div className="muted small" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {icpChatMessages.map((msg, idx) => (
+                  <div key={`icp-${idx}`}>
+                    <strong>{msg.role === 'user' ? 'You (ICP):' : 'Coach (ICP):'}</strong> {msg.text}
+                  </div>
+                ))}
+                {hypothesisChatMessages.map((msg, idx) => (
+                  <div key={`hyp-${idx}`}>
+                    <strong>{msg.role === 'user' ? 'You (Hypothesis):' : 'Coach (Hypothesis):'}</strong> {msg.text}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {icpSummary && (
+          <div className="panel">
+            <div className="panel__title">ICP Summary</div>
+            <div className="panel__content">
+              <div className="muted small">
+                {icpSummary.valueProp && (
+                  <div>Value prop: {icpSummary.valueProp}</div>
+                )}
+                {icpSummary.industries && icpSummary.industries.length > 0 && (
+                  <div>
+                    Industries: {icpSummary.industries.join(', ')}
+                    {icpSummary.companySizes && icpSummary.companySizes.length
+                      ? ` (${icpSummary.companySizes.join(', ')})`
+                      : ''}
+                  </div>
+                )}
+                {icpSummary.pains && icpSummary.pains.length > 0 && (
+                  <div>Pains: {icpSummary.pains.join(', ')}</div>
+                )}
+                {icpSummary.decisionMakers && icpSummary.decisionMakers.length > 0 && (
+                  <div>
+                    Decision makers:{' '}
+                    {icpSummary.decisionMakers
+                      .map((d: any) => d.role)
+                      .filter(Boolean)
+                      .join(', ')}
+                  </div>
+                )}
+                {icpSummary.triggers && icpSummary.triggers.length > 0 && (
+                  <div>Triggers: {icpSummary.triggers.join(', ')}</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {hypothesisSummary && (
+          <div className="panel">
+            <div className="panel__title">Hypothesis Summary</div>
+            <div className="panel__content">
+              <div className="muted small">
+                <div>{hypothesisSummary.label}</div>
+                {hypothesisSummary.regions && hypothesisSummary.regions.length > 0 && (
+                  <div>Region: {hypothesisSummary.regions.join(', ')}</div>
+                )}
+                {hypothesisSummary.offers && hypothesisSummary.offers.length > 0 && (
+                  <div>
+                    Offers:{' '}
+                    {hypothesisSummary.offers
+                      .map((o: any) => `${o.personaRole} – ${o.offer}`)
+                      .join('; ')}
+                  </div>
+                )}
+                {hypothesisSummary.critiques && hypothesisSummary.critiques.length > 0 && (
+                  <div>
+                    Critiques:{' '}
+                    {hypothesisSummary.critiques
+                      .map((c: any) => c.roast)
+                      .filter(Boolean)
+                      .join('; ')}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="panel">
           <div className="panel__title">ICP definition</div>

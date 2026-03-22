@@ -1,18 +1,51 @@
 import { useEffect, useState } from 'react';
 
-import { fetchCampaigns, fetchDrafts, triggerDraftGenerate, type Campaign } from '../apiClient';
+import { fetchCampaigns, fetchDrafts, triggerDraftGenerate, type Campaign, type DraftRow } from '../apiClient';
 import { Alert } from '../components/Alert';
 import { loadSettings } from '../hooks/useSettingsStore';
 
-export type DraftRow = {
-  id: string;
-  status?: string;
-  contact?: string;
-};
+export type { DraftRow } from '../apiClient';
 
 export function filterDraftsByStatus(drafts: DraftRow[], status: string) {
   if (!status) return drafts;
   return drafts.filter((d) => d.status === status);
+}
+
+export function getEnrichmentPrimaryProvider(metadata: unknown): string | null {
+  const candidate = (metadata as any)?.enrichment_provider;
+  if (typeof candidate === 'string') {
+    const trimmed = candidate.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+    const company = typeof (candidate as any).company === 'string' ? String((candidate as any).company).trim() : '';
+    const employee =
+      typeof (candidate as any).employee === 'string' ? String((candidate as any).employee).trim() : '';
+    if (!company && !employee) return null;
+    if (company && employee && company !== employee) return `${company}/${employee}`;
+    return company || employee || null;
+  }
+  return null;
+}
+
+export function getEnrichmentProviders(metadata: unknown): string[] {
+  const byProvider = (metadata as any)?.enrichment_by_provider;
+  if (byProvider && typeof byProvider === 'object' && !Array.isArray(byProvider)) {
+    return Object.keys(byProvider).sort();
+  }
+  const candidate = (metadata as any)?.enrichment_provider;
+  if (typeof candidate === 'string') {
+    const trimmed = candidate.trim();
+    return trimmed ? [trimmed] : [];
+  }
+  if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+    const values = [
+      typeof (candidate as any).company === 'string' ? String((candidate as any).company).trim() : '',
+      typeof (candidate as any).employee === 'string' ? String((candidate as any).employee).trim() : '',
+    ].filter((value) => value.length > 0);
+    return Array.from(new Set(values)).sort();
+  }
+  return [];
 }
 
 export function DraftsPage() {
@@ -123,6 +156,8 @@ export function DraftsPage() {
             <tr>
               <th>ID</th>
               <th>Status</th>
+              <th>Enrichment (primary)</th>
+              <th>Providers</th>
             </tr>
           </thead>
           <tbody>
@@ -130,11 +165,13 @@ export function DraftsPage() {
               <tr key={d.id}>
                 <td>{d.id}</td>
                 <td>{d.status ?? 'n/a'}</td>
+                <td>{getEnrichmentPrimaryProvider(d.metadata) ?? 'n/a'}</td>
+                <td>{getEnrichmentProviders(d.metadata).join(', ') || 'n/a'}</td>
               </tr>
             ))}
             {drafts.length === 0 && (
               <tr>
-                <td colSpan={2}>No drafts</td>
+                <td colSpan={4}>No drafts</td>
               </tr>
             )}
           </tbody>

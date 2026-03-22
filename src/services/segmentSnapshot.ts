@@ -14,7 +14,13 @@ export interface ContactRow {
   company?: {
     id: string;
     company_name?: string;
+    company_description?: string;
+    website?: string;
+    employee_count?: number;
+    region?: string;
+    office_qualification?: string;
     segment?: string;
+    company_research?: unknown;
   };
 }
 
@@ -50,7 +56,7 @@ export async function createSegmentSnapshot(
         work_email: contact.work_email,
         position: contact.position,
       },
-      company: contact.company ?? null,
+      company: normalizeCompanySnapshot(contact.company),
       filters_hash: filtersHash ?? null,
     },
   }));
@@ -65,5 +71,22 @@ export async function createSegmentSnapshot(
     inserted: data?.length ?? rows.length,
     segmentId: segment.id,
     segmentVersion: segment.version,
+  };
+}
+
+function normalizeCompanySnapshot(company: ContactRow['company']) {
+  if (!company) {
+    return null;
+  }
+
+  return {
+    id: company.id,
+    company_name: company.company_name ?? null,
+    company_description: company.company_description ?? null,
+    website: company.website ?? null,
+    employee_count: company.employee_count ?? null,
+    region: company.region ?? null,
+    office_qualification: company.office_qualification ?? null,
+    company_research: company.company_research ?? null,
   };
 }

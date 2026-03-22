@@ -3,6 +3,12 @@ export type Settings = {
   assumeNow: boolean;
   telemetry: boolean;
   providers: Record<'assistant' | 'icp' | 'hypothesis' | 'draft', { provider: string; model: string }>;
+  taskPrompts?: {
+    icpDiscovery?: string;
+    hypothesisGen?: string;
+    emailDraft?: string;
+    linkedinMsg?: string;
+  };
 };
 
 const defaultSettings: Settings = {
@@ -15,6 +21,7 @@ const defaultSettings: Settings = {
     hypothesis: { provider: 'openai', model: 'gpt-4o-mini' },
     draft: { provider: 'openai', model: 'gpt-4o-mini' },
   },
+  taskPrompts: {},
 };
 
 let memoryStore: Settings | null = null;

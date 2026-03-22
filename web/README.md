@@ -5,19 +5,43 @@ on for destructive actions.
 
 ## Step-by-step: run the Web UI
 1) Install deps (root + web): `pnpm install && pnpm --dir web install`.
-2) Start the adapter from repo root (choose one):
-   - Live Supabase + Smartlead API: `SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... SMARTLEAD_API_BASE=... SMARTLEAD_API_KEY=... pnpm tsx src/web/server.ts`
-   - Mock/in-memory data: `WEB_ADAPTER_MODE=mock pnpm tsx src/web/server.ts`
-   The adapter listens on `http://localhost:8787/api` by default (`PORT` overrides). Live mode needs the
-   Supabase + Smartlead API env vars; Smartlead send stays stubbed.
-3) Start the Vite dev server (web): `VITE_API_BASE=http://localhost:8787/api pnpm --dir web dev`.
-   Omit `VITE_API_BASE` only if the adapter is reverse-proxied to `/api` from the same origin.
-4) Open the UI at `http://localhost:5173` and use the readiness badge to confirm adapter mode/health.
-5) Optional: tests via `pnpm --dir web test` (web) and `pnpm test` (root, includes adapter tests).
+2) Use only these port pairs locally:
+   - Daily work: adapter `8787`, Vite UI `5173`
+   - Isolated browser validation only: adapter `8888`, Vite UI `5174`
+   Avoid ad hoc ports such as `8788`/`8789`; those were temporary debugging ports only.
+3) Start the adapter from repo root (choose one):
+   - Live Supabase + Smartlead API on canonical port: `pnpm dev:web:live`
+   - Mock/in-memory data on canonical port: `pnpm dev:web:mock`
+   - Live validation adapter on isolated port: `pnpm dev:web:validation`
+   - Built dist (Node ESM): `pnpm build && WEB_ADAPTER_MODE=mock pnpm start:web:dist`
+   The adapter listens on `http://localhost:8787/api` by default; validation runs use `http://localhost:8888/api`.
+   Live mode still needs the Supabase + Smartlead API env vars; Smartlead send stays stubbed.
+4) Start the Vite dev server (web):
+   - Daily UI with built-in `/api` proxy to the daily adapter: `pnpm --dir web dev`
+   - Daily UI: `pnpm --dir web dev:canonical`
+   - Validation UI: `pnpm --dir web dev:validation`
+5) Open the UI at `http://localhost:5173` for daily work and use the readiness badge to confirm adapter mode/health.
+6) Optional: tests via `pnpm --dir web test` (web) and `pnpm test` (root, includes adapter tests).
+
+## Port policy
+- Daily work must use `8787` (adapter) + `5173` (Vite UI).
+- Browser validation or isolated repros must use `8888` (adapter) + `5174` (Vite UI).
+- Do not mix the pairs. If the daily UI is on `5173`, either run `pnpm --dir web dev` with the built-in `/api -> http://localhost:8787` proxy or point `VITE_API_BASE` to `http://localhost:8787/api`.
+
+## Troubleshooting
+- If `Campaigns` shows list data but detail routes return `404`, you are usually hitting a stale adapter on `8787`.
+  Stop the old process and restart with `pnpm dev:web:live`.
+- If you need a second adapter for browser validation, start it only on `8888` and point only the validation UI to it
+  via `pnpm --dir web dev:validation`.
 
 ## API endpoints (adapter)
 - `GET /api/campaigns` – list campaigns (mocked in dev server).
-- `GET /api/drafts?campaignId=<id>&status=<status?>` – list drafts.
+- `GET /api/campaigns/<campaignId>/companies` – campaign-bound snapshot companies and enrichment visibility.
+- `GET /api/campaigns/<campaignId>/audit` – campaign audit summary plus drill-down issues for completeness checks.
+- `GET /api/campaigns/<campaignId>/outbounds` – campaign-bound outbound ledger.
+- `GET /api/campaigns/<campaignId>/events` – campaign-bound event ledger (replies, bounces, unsubscribes, etc.).
+- `GET /api/drafts?campaignId=<id>&status=<status?>&includeRecipientContext=true` – list drafts, optionally with recipient context for review.
+- `POST /api/drafts/<draftId>/status` – `{ status, reviewer?, metadata? }`.
 - `POST /api/drafts/generate` – `{ campaignId, dryRun?, limit? }`.
 - `POST /api/smartlead/send` – `{ dryRun?, batchSize? }`.
 - `GET /api/events?since&limit` – list event rows.

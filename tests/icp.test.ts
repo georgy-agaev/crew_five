@@ -14,6 +14,7 @@ describe('icp service', () => {
     const client = { from } as any;
 
     const profile = await createIcpProfile(client, {
+      projectId: 'project-1',
       name: 'Fintech ICP',
       description: 'Fintech companies, mid-market, EU/US',
       companyCriteria: { industry: 'fintech' },
@@ -25,18 +26,54 @@ describe('icp service', () => {
     expect(insert).toHaveBeenCalledWith([
       expect.objectContaining({
         name: 'Fintech ICP',
+        project_id: 'project-1',
         description: 'Fintech companies, mid-market, EU/US',
         company_criteria: { industry: 'fintech' },
         persona_criteria: { roles: ['CTO'] },
         created_by: 'cli-user',
+        phase_outputs: null,
       }),
     ]);
     expect(profile.id).toBe('icp-1');
   });
 
+  it('icp_profile_create_retries_without_phase_outputs_when_column_missing', async () => {
+    const single = vi
+      .fn()
+      // First insert fails because phase_outputs column is missing
+      .mockResolvedValueOnce({
+        data: null,
+        error: new Error('column "phase_outputs" of relation "icp_profiles" does not exist'),
+      })
+      // Second insert succeeds without phase_outputs
+      .mockResolvedValueOnce({
+        data: { id: 'icp-2', name: 'Fintech ICP' },
+        error: null,
+      });
+    const select = vi.fn().mockReturnValue({ single });
+    const insert = vi.fn().mockReturnValue({ select });
+    const from = vi.fn().mockReturnValue({ insert });
+    const client = { from } as any;
+
+    const profile = await createIcpProfile(client, {
+      projectId: 'project-1',
+      name: 'Fintech ICP',
+      description: 'Fintech companies, mid-market, EU/US',
+    });
+
+    // Should attempt insert twice: first with phase_outputs, then without
+    expect(insert).toHaveBeenCalledTimes(2);
+    const firstPayload = insert.mock.calls[0][0][0];
+    const secondPayload = insert.mock.calls[1][0][0];
+
+    expect(firstPayload).toHaveProperty('phase_outputs');
+    expect(secondPayload).not.toHaveProperty('phase_outputs');
+    expect(profile.id).toBe('icp-2');
+  });
+
   it('icp_hypothesis_create_links_to_profile_and_optional_segment', async () => {
     const singleHypo = vi.fn().mockResolvedValue({
-      data: { id: 'hypo-1', icp_id: 'icp-1' },
+      data: { id: 'hypo-1', icp_id: 'icp-1', offer_id: 'offer-1' },
       error: null,
     });
     const selectHypo = vi.fn().mockReturnValue({ single: singleHypo });
@@ -44,9 +81,24 @@ describe('icp service', () => {
 
     const updateSeg = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) });
 
+    const hypothesisProfileSingle = vi.fn().mockResolvedValue({
+      data: { id: 'icp-1', project_id: 'project-1' },
+      error: null,
+    });
+    const offerSingle = vi.fn().mockResolvedValue({
+      data: { id: 'offer-1', project_id: 'project-1' },
+      error: null,
+    });
+
     const from = vi.fn((table: string) => {
       if (table === 'icp_hypotheses') return { insert: insertHypo };
       if (table === 'segments') return { update: updateSeg };
+      if (table === 'icp_profiles') {
+        return { select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: hypothesisProfileSingle }) }) };
+      }
+      if (table === 'offers') {
+        return { select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: offerSingle }) }) };
+      }
       throw new Error(`Unexpected table ${table}`);
     });
     const client = { from } as any;
@@ -54,7 +106,12 @@ describe('icp service', () => {
     const hypothesis = await createIcpHypothesis(client, {
       icpProfileId: 'icp-1',
       hypothesisLabel: 'Mid-market fintech EU',
+      offerId: 'offer-1',
       searchConfig: { region: ['EU'] },
+      targetingDefaults: { regions: ['EU'], companySizes: ['mid-market'] },
+      messagingAngle: 'Negotiation room refresh for audit-heavy teams',
+      patternDefaults: { introPattern: 'standard', tone: 'direct' },
+      notes: 'Use for Q2 audit-market waves',
       status: 'draft',
       segmentId: 'segment-1',
     });
@@ -64,12 +121,51 @@ describe('icp service', () => {
       expect.objectContaining({
         icp_id: 'icp-1',
         hypothesis_label: 'Mid-market fintech EU',
+        offer_id: 'offer-1',
         search_config: { region: ['EU'] },
+        targeting_defaults: { regions: ['EU'], companySizes: ['mid-market'] },
+        messaging_angle: 'Negotiation room refresh for audit-heavy teams',
+        pattern_defaults: { introPattern: 'standard', tone: 'direct' },
+        notes: 'Use for Q2 audit-market waves',
         status: 'draft',
       }),
     ]);
     expect(from).toHaveBeenCalledWith('segments');
     expect(hypothesis.id).toBe('hypo-1');
+  });
+
+  it('rejects hypothesis creation when ICP profile project and offer project mismatch', async () => {
+    const hypothesisProfileSingle = vi.fn().mockResolvedValue({
+      data: { id: 'icp-1', project_id: 'project-1' },
+      error: null,
+    });
+    const offerSingle = vi.fn().mockResolvedValue({
+      data: { id: 'offer-1', project_id: 'project-2' },
+      error: null,
+    });
+
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table === 'icp_profiles') {
+          return { select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: hypothesisProfileSingle }) }) };
+        }
+        if (table === 'offers') {
+          return { select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: offerSingle }) }) };
+        }
+        if (table === 'icp_hypotheses') {
+          return { insert: vi.fn() };
+        }
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    } as any;
+
+    await expect(
+      createIcpHypothesis(client, {
+        icpProfileId: 'icp-1',
+        hypothesisLabel: 'Mismatch hypothesis',
+        offerId: 'offer-1',
+      })
+    ).rejects.toMatchObject({ code: 'ICP_HYPOTHESIS_OFFER_PROJECT_MISMATCH' });
   });
 
   it('attach_icp_to_segment_updates_segment_foreign_keys', async () => {
@@ -88,4 +184,3 @@ describe('icp service', () => {
     expect(eq).toHaveBeenCalledWith('id', 'segment-1');
   });
 });
-

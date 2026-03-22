@@ -19,6 +19,241 @@ describe('web api client (live adapter)', () => {
     expect(data[0].id).toBe('c1');
   });
 
+  it('fetchCampaignCompanies hits campaign companies endpoint', async () => {
+    const { fetchCampaignCompanies } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        campaign: { id: 'c1', name: 'C', segment_id: 's1', segment_version: 2 },
+        companies: [
+          {
+            company_id: 'comp-1',
+            company_name: 'Example Co',
+            contact_count: 2,
+            enrichment: {
+              status: 'fresh',
+              last_updated_at: '2026-03-15T10:00:00Z',
+              provider_hint: 'exa',
+            },
+          },
+        ],
+      }),
+    });
+    const data = await fetchCampaignCompanies('c1');
+    expect(fetch).toHaveBeenCalledWith('/api/campaigns/c1/companies', expect.any(Object));
+    expect(data.campaign.id).toBe('c1');
+    expect(data.companies[0].company_id).toBe('comp-1');
+  });
+
+  it('fetchCampaignDetail hits campaign detail endpoint', async () => {
+    const { fetchCampaignDetail } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        campaign: { id: 'c1', name: 'C', segment_id: 's1', segment_version: 2 },
+        segment: null,
+        icp_profile: null,
+        icp_hypothesis: null,
+        companies: [
+          {
+            company_id: 'comp-1',
+            company_name: 'Example Co',
+            contact_count: 2,
+            enrichment: {
+              status: 'fresh',
+              last_updated_at: '2026-03-15T10:00:00Z',
+              provider_hint: 'exa',
+            },
+            employees: [
+              {
+                contact_id: 'contact-1',
+                full_name: 'Alice',
+                position: 'CEO',
+                work_email: 'alice@example.com',
+                generic_email: null,
+                draft_counts: {
+                  total: 0,
+                  intro: 0,
+                  bump: 0,
+                  generated: 0,
+                  approved: 0,
+                  rejected: 0,
+                  sent: 0,
+                },
+                outbound_count: 0,
+                sent_count: 0,
+                replied: false,
+                reply_count: 0,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const data = await fetchCampaignDetail('c1');
+    expect(fetch).toHaveBeenCalledWith('/api/campaigns/c1/detail', expect.any(Object));
+    expect(data.companies[0].employees[0].contact_id).toBe('contact-1');
+  });
+
+  it('fetchCampaignAudit hits campaign audit endpoint', async () => {
+    const { fetchCampaignAudit } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        campaign: { id: 'c1', name: 'C', segment_id: 's1', segment_version: 2 },
+        summary: { snapshot_contact_count: 7 },
+        issues: { snapshot_contacts_without_draft: [] },
+      }),
+    });
+    const data = await fetchCampaignAudit('c1');
+    expect(fetch).toHaveBeenCalledWith('/api/campaigns/c1/audit', expect.any(Object));
+    expect(data.summary.snapshot_contact_count).toBe(7);
+  });
+
+  it('fetchCampaignOutbounds hits campaign outbounds endpoint', async () => {
+    const { fetchCampaignOutbounds } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        campaign: { id: 'c1', name: 'C', segment_id: 's1', segment_version: 2 },
+        outbounds: [
+          {
+            id: 'out-1',
+            status: 'sent',
+            provider: 'imap_mcp',
+            recipient_email: 'buyer@example.com',
+          },
+        ],
+      }),
+    });
+    const data = await fetchCampaignOutbounds('c1');
+    expect(fetch).toHaveBeenCalledWith('/api/campaigns/c1/outbounds', expect.any(Object));
+    expect(data.outbounds[0].id).toBe('out-1');
+  });
+
+  it('fetchCampaignEvents hits campaign events endpoint', async () => {
+    const { fetchCampaignEvents } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        campaign: { id: 'c1', name: 'C', segment_id: 's1', segment_version: 2 },
+        events: [
+          {
+            id: 'evt-1',
+            outbound_id: 'out-1',
+            event_type: 'replied',
+            recipient_email: 'buyer@example.com',
+          },
+        ],
+      }),
+    });
+    const data = await fetchCampaignEvents('c1');
+    expect(fetch).toHaveBeenCalledWith('/api/campaigns/c1/events', expect.any(Object));
+    expect(data.events[0].id).toBe('evt-1');
+  });
+
+  it('fetchCampaignStatusTransitions hits campaign status transitions endpoint', async () => {
+    const { fetchCampaignStatusTransitions } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        campaignId: 'c1',
+        currentStatus: 'draft',
+        allowedTransitions: ['ready', 'review'],
+      }),
+    });
+    const data = await fetchCampaignStatusTransitions('c1');
+    expect(fetch).toHaveBeenCalledWith('/api/campaigns/c1/status-transitions', expect.any(Object));
+    expect(data.allowedTransitions).toEqual(['ready', 'review']);
+  });
+
+  it('updateCampaignStatus posts next status payload', async () => {
+    const { updateCampaignStatus } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'c1', status: 'ready' }),
+    });
+    await updateCampaignStatus('c1', 'ready');
+    const call = (fetch as any).mock.calls[0];
+    expect(call[0]).toBe('/api/campaigns/c1/status');
+    expect(call[1].method).toBe('POST');
+    expect(JSON.parse(call[1].body)).toEqual({ status: 'ready' });
+  });
+
+  it('fetchCampaignFollowupCandidates hits followup candidates endpoint', async () => {
+    const { fetchCampaignFollowupCandidates } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [{ contact_id: 'contact-1', eligible: false }],
+        summary: { total: 1, eligible: 0, ineligible: 1 },
+      }),
+    });
+    const data = await fetchCampaignFollowupCandidates('c1');
+    expect(fetch).toHaveBeenCalledWith('/api/campaigns/c1/followup-candidates', expect.any(Object));
+    expect(data.summary.ineligible).toBe(1);
+  });
+
+  it('createCampaign posts name + segment fields', async () => {
+    const { createCampaign } = await loadClient();
+    (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ id: 'c1' }) });
+    await createCampaign({ name: 'New', segmentId: 'seg-1', segmentVersion: 2 });
+    const call = (fetch as any).mock.calls[0];
+    expect(call[0]).toBe('/api/campaigns');
+    expect(call[1].method).toBe('POST');
+    const body = JSON.parse(call[1].body);
+    expect(body.name).toBe('New');
+    expect(body.segmentId).toBe('seg-1');
+    expect(body.segmentVersion).toBe(2);
+  });
+
+  it('fetchDrafts can request recipient context for review surfaces', async () => {
+    const { fetchDrafts } = await loadClient();
+    (fetch as any).mockResolvedValue({ ok: true, json: async () => [] });
+    await fetchDrafts('camp-1', 'generated', true);
+    const url = (fetch as any).mock.calls[0][0] as string;
+    expect(url).toContain('/drafts?');
+    expect(url).toContain('campaignId=camp-1');
+    expect(url).toContain('status=generated');
+    expect(url).toContain('includeRecipientContext=true');
+  });
+
+  it('reviewDraftStatus posts review payload', async () => {
+    const { reviewDraftStatus } = await loadClient();
+    (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ id: 'draft-1', status: 'approved' }) });
+    await reviewDraftStatus('draft-1', {
+      status: 'approved',
+      reviewer: 'operator-ui',
+      metadata: { channel: 'campaigns' },
+    });
+    const call = (fetch as any).mock.calls[0];
+    expect(call[0]).toBe('/api/drafts/draft-1/status');
+    expect(call[1].method).toBe('POST');
+    const body = JSON.parse(call[1].body);
+    expect(body.status).toBe('approved');
+    expect(body.reviewer).toBe('operator-ui');
+    expect(body.metadata.channel).toBe('campaigns');
+  });
+
+  it('updateDraftContent posts subject/body payload', async () => {
+    const { updateDraftContent } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'draft-1', subject: 'Updated subject', body: 'Updated body' }),
+    });
+    await updateDraftContent('draft-1', {
+      subject: 'Updated subject',
+      body: 'Updated body',
+    });
+    const call = (fetch as any).mock.calls[0];
+    expect(call[0]).toBe('/api/drafts/draft-1/content');
+    expect(call[1].method).toBe('POST');
+    expect(JSON.parse(call[1].body)).toEqual({
+      subject: 'Updated subject',
+      body: 'Updated body',
+    });
+  });
+
   it('triggerDraftGenerate sends dry-run by default', async () => {
     const { triggerDraftGenerate } = await loadClient();
     (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ generated: 0, dryRun: true }) });
@@ -60,13 +295,18 @@ describe('web api client (live adapter)', () => {
     expect(body.explicitCoachPromptId).toBe('draft_intro_v1');
   });
 
-  it('triggerSmartleadSend passes batch size and dry-run', async () => {
+  it('triggerSmartleadSend passes ids, batch size and dry-run', async () => {
     const { triggerSmartleadSend } = await loadClient();
-    (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ sent: 0, skipped: 1, failed: 0, fetched: 5 }) });
-    await triggerSmartleadSend({ batchSize: 5, dryRun: true });
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({ dryRun: true, campaignId: 'camp-1', smartleadCampaignId: 'sl-1' }),
+    });
+    await triggerSmartleadSend({ campaignId: 'camp-1', smartleadCampaignId: 'sl-1', batchSize: 5, dryRun: true });
     const body = JSON.parse((fetch as any).mock.calls[0][1].body);
     expect(body.batchSize).toBe(5);
     expect(body.dryRun).toBe(true);
+    expect(body.campaignId).toBe('camp-1');
+    expect(body.smartleadCampaignId).toBe('sl-1');
   });
 
   it('fetchEvents uses since/limit', async () => {
@@ -87,6 +327,27 @@ describe('web api client (live adapter)', () => {
     expect(url).toContain('since=2025-01-01');
   });
 
+  it('fetchInboxMessages builds inbox query params', async () => {
+    const { fetchInboxMessages } = await loadClient();
+    (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ messages: [], total: 0 }) });
+    await fetchInboxMessages({ status: 'unread', limit: 25 });
+    const url = (fetch as any).mock.calls[0][0] as string;
+    expect(url).toContain('/inbox/messages?');
+    expect(url).toContain('status=unread');
+    expect(url).toContain('limit=25');
+  });
+
+  it('fetchInboxReplies builds reply inbox query params', async () => {
+    const { fetchInboxReplies } = await loadClient();
+    (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ replies: [], total: 0 }) });
+    await fetchInboxReplies({ campaignId: 'c1', replyLabel: 'positive', limit: 10 });
+    const url = (fetch as any).mock.calls[0][0] as string;
+    expect(url).toContain('/inbox/replies?');
+    expect(url).toContain('campaignId=c1');
+    expect(url).toContain('replyLabel=positive');
+    expect(url).toContain('limit=10');
+  });
+
   it('fetchCompanies builds query params', async () => {
     const { fetchCompanies } = await loadClient();
     (fetch as any).mockResolvedValue({ ok: true, json: async () => [] });
@@ -105,13 +366,14 @@ describe('web api client (live adapter)', () => {
     expect(url).toContain('companyIds=c1%2Cc2');
   });
 
-  it('triggerSmartleadPreview defaults dry-run', async () => {
+  it('triggerSmartleadPreview defaults dry-run and includes ids', async () => {
     const { triggerSmartleadPreview } = await loadClient();
     (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ dryRun: true }) });
-    await triggerSmartleadPreview({ batchSize: 5, leadIds: ['a'] });
+    await triggerSmartleadPreview({ campaignId: 'camp-1', smartleadCampaignId: 'sl-1', batchSize: 5 });
     const body = JSON.parse((fetch as any).mock.calls[0][1].body);
     expect(body.dryRun).toBe(true);
-    expect(body.leadIds).toEqual(['a']);
+    expect(body.campaignId).toBe('camp-1');
+    expect(body.smartleadCampaignId).toBe('sl-1');
   });
 
   it('fetchSmartleadCampaigns hits smartlead campaigns endpoint', async () => {
@@ -148,7 +410,37 @@ describe('web api client (live adapter)', () => {
       status: 500,
       json: async () => ({ error: 'boom' }),
     });
-    await expect(triggerDraftGenerate('c1')).rejects.toThrow('API error 500: boom');
+    let thrown: any = null;
+    try {
+      await triggerDraftGenerate('c1');
+    } catch (err: any) {
+      thrown = err;
+    }
+    expect(thrown).toBeTruthy();
+    expect(thrown.message).toBe('Server error. Please try again later.');
+    expect(thrown.apiError?.message).toBe('API error 500: boom');
+  });
+
+  it('preserves rotation preview domain errors on 400 responses', async () => {
+    const { fetchRotationPreview } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: 'Campaign rotation preview requires a sent source wave' }),
+    });
+
+    let thrown: any = null;
+    try {
+      await fetchRotationPreview('camp-draft');
+    } catch (err: any) {
+      thrown = err;
+    }
+
+    expect(thrown).toBeTruthy();
+    expect(thrown.message).toBe('Campaign rotation preview requires a sent source wave');
+    expect(thrown.apiError?.message).toBe(
+      'API error 400: Campaign rotation preview requires a sent source wave'
+    );
   });
 
   it('fetchMeta returns readiness status', async () => {
@@ -178,8 +470,14 @@ describe('web api client (live adapter)', () => {
     expect(body.finalize).toBe(true);
   });
 
-  it('enqueueSegmentEnrichment and fetchEnrichmentStatus use enrich routes', async () => {
-    const { enqueueSegmentEnrichment, fetchEnrichmentStatus } = await loadClient();
+  it('enrich routes include single, multi, and settings', async () => {
+    const {
+      enqueueSegmentEnrichment,
+      enqueueSegmentEnrichmentMulti,
+      fetchEnrichmentStatus,
+      fetchEnrichmentSettings,
+      saveEnrichmentSettings,
+    } = await loadClient();
     (fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'queued', jobId: 'j1' }) });
     await enqueueSegmentEnrichment({ segmentId: 's1', adapter: 'mock', runNow: false });
     const enrichCall = (fetch as any).mock.calls.at(-1);
@@ -188,11 +486,52 @@ describe('web api client (live adapter)', () => {
     expect(enrichBody.segmentId).toBe('s1');
     expect(enrichBody.adapter).toBe('mock');
 
+    (fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ results: [] }) });
+    await enqueueSegmentEnrichmentMulti({ segmentId: 's1', providers: ['exa', 'parallel'], runNow: true });
+    const multiCall = (fetch as any).mock.calls.at(-1);
+    expect(multiCall[0]).toBe('/api/enrich/segment/multi');
+    const multiBody = JSON.parse(multiCall[1].body);
+    expect(multiBody.segmentId).toBe('s1');
+    expect(multiBody.providers).toEqual(['exa', 'parallel']);
+
     (fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed', jobId: 'j1' }) });
     await fetchEnrichmentStatus('s1');
     const statusUrl = (fetch as any).mock.calls.at(-1)[0] as string;
     expect(statusUrl).toContain('/api/enrich/status');
     expect(statusUrl).toContain('segmentId=s1');
+
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        version: 2,
+        defaultProviders: ['mock'],
+        primaryCompanyProvider: 'mock',
+        primaryEmployeeProvider: 'mock',
+      }),
+    });
+    await fetchEnrichmentSettings();
+    expect((fetch as any).mock.calls.at(-1)[0]).toBe('/api/settings/enrichment');
+
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        version: 2,
+        defaultProviders: ['exa', 'firecrawl'],
+        primaryCompanyProvider: 'firecrawl',
+        primaryEmployeeProvider: 'exa',
+      }),
+    });
+    await saveEnrichmentSettings({
+      defaultProviders: ['exa', 'firecrawl'],
+      primaryCompanyProvider: 'firecrawl',
+      primaryEmployeeProvider: 'exa',
+    });
+    const settingsCall = (fetch as any).mock.calls.at(-1);
+    expect(settingsCall[0]).toBe('/api/settings/enrichment');
+    const settingsBody = JSON.parse(settingsCall[1].body);
+    expect(settingsBody.defaultProviders).toEqual(['exa', 'firecrawl']);
+    expect(settingsBody.primaryCompanyProvider).toBe('firecrawl');
+    expect(settingsBody.primaryEmployeeProvider).toBe('exa');
   });
 
   it('ICP profile/hypothesis CRUD hits expected endpoints', async () => {
@@ -213,10 +552,58 @@ describe('web api client (live adapter)', () => {
     expect(hypUrl).toContain('icpProfileId=p1');
 
     (fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'h2' }) });
-    await createIcpHypothesis({ icpProfileId: 'p1', hypothesisLabel: 'H1' });
+    await createIcpHypothesis({
+      icpProfileId: 'p1',
+      hypothesisLabel: 'H1',
+      offerId: 'offer-1',
+      messagingAngle: 'Negotiation room refresh',
+    });
     const hypBody = JSON.parse((fetch as any).mock.calls.at(-1)[1].body);
     expect(hypBody.icpProfileId).toBe('p1');
     expect(hypBody.hypothesisLabel).toBe('H1');
+    expect(hypBody.offerId).toBe('offer-1');
+    expect(hypBody.messagingAngle).toBe('Negotiation room refresh');
+  });
+
+  it('generateIcpProfileViaCoach forwards promptId and model metadata', async () => {
+    const { generateIcpProfileViaCoach } = await loadClient();
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ jobId: 'job-icp', profile: { id: 'p1', name: 'ICP' } }),
+    });
+    await generateIcpProfileViaCoach({
+      name: 'ICP',
+      promptId: 'icp_profile_v1',
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+    });
+    const call = (fetch as any).mock.calls.at(-1);
+    expect(call[0]).toBe('/api/coach/icp');
+    const body = JSON.parse(call[1].body);
+    expect(body.promptId).toBe('icp_profile_v1');
+    expect(body.provider).toBe('openai');
+    expect(body.model).toBe('gpt-4o-mini');
+  });
+
+  it('generateHypothesisViaCoach forwards promptId when provided', async () => {
+    const { generateHypothesisViaCoach } = await loadClient();
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ jobId: 'job-h', hypothesis: { id: 'h1', hypothesis_label: 'H1' } }),
+    });
+    await generateHypothesisViaCoach({
+      icpProfileId: 'p1',
+      hypothesisLabel: 'H1',
+      promptId: 'icp_hypothesis_v1',
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+    });
+    const call = (fetch as any).mock.calls.at(-1);
+    expect(call[0]).toBe('/api/coach/hypothesis');
+    const body = JSON.parse(call[1].body);
+    expect(body.promptId).toBe('icp_hypothesis_v1');
+    expect(body.provider).toBe('openai');
+    expect(body.model).toBe('gpt-4o-mini');
   });
 
   it('analytics summary/optimize and prompt registry endpoints are called', async () => {
@@ -253,7 +640,6 @@ describe('web api client (live adapter)', () => {
     (fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'draft_intro_v4' }) });
     await createPromptRegistryEntry({
       id: 'draft_intro_v4',
-      step: 'draft',
       version: 'v4',
       rollout_status: 'pilot',
       description: 'New intro prompt',
@@ -262,7 +648,7 @@ describe('web api client (live adapter)', () => {
     expect(createCall[0]).toBe('/api/prompt-registry');
     const createBody = JSON.parse(createCall[1].body);
     expect(createBody.id).toBe('draft_intro_v4');
-    expect(createBody.step).toBe('draft');
+    expect(createBody.step).toBeUndefined();
 
     (fetch as any).mockResolvedValueOnce({
       ok: true,
@@ -298,6 +684,17 @@ describe('web api client (live adapter)', () => {
     expect(coachHypoCall[0]).toBe('/api/coach/hypothesis');
     expect(coachHypo.id).toBe('h1');
     expect(coachHypo.jobId).toBe('job-2');
+  });
+
+  it('services endpoint is called for workspace settings', async () => {
+    const { fetchServices } = await loadClient();
+    (fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ services: [{ name: 'Supabase', category: 'database', status: 'connected', hasApiKey: true }] }),
+    });
+    const result = await fetchServices();
+    expect((fetch as any).mock.calls.at(-1)[0]).toBe('/api/services');
+    expect(result.services[0].name).toBe('Supabase');
   });
 
   it('createSimJob posts payload to /api/sim', async () => {
@@ -337,5 +734,56 @@ describe('web api client (live adapter)', () => {
     expect(candidatesCall[0]).toContain('/api/icp/discovery/candidates?');
     expect(candidatesCall[0]).toContain('runId=run-1');
     expect(candidatesCall[0]).toContain('icpProfileId=icp-1');
+  });
+
+  it('startCompanyImportProcess posts companyIds and mode', async () => {
+    const { startCompanyImportProcess } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        jobId: 'job-1',
+        status: 'created',
+        mode: 'full',
+        totalCompanies: 2,
+        batchSize: 2,
+        source: 'xlsx-import',
+      }),
+    });
+    const result = await startCompanyImportProcess(['uuid-1', 'uuid-2']);
+    const call = (fetch as any).mock.calls[0];
+    expect(call[0]).toBe('/api/company-import/process');
+    expect(call[1].method).toBe('POST');
+    const body = JSON.parse(call[1].body);
+    expect(body.companyIds).toEqual(['uuid-1', 'uuid-2']);
+    expect(body.mode).toBe('full');
+    expect(body.source).toBe('xlsx-import');
+    expect(result.jobId).toBe('job-1');
+    expect(result.totalCompanies).toBe(2);
+  });
+
+  it('fetchCompanyImportProcessStatus fetches job status', async () => {
+    const { fetchCompanyImportProcessStatus } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        jobId: 'job-1',
+        status: 'running',
+        mode: 'full',
+        totalCompanies: 2,
+        batchSize: 2,
+        source: 'xlsx-import',
+        processedCompanies: 1,
+        completedCompanies: 1,
+        failedCompanies: 0,
+        skippedCompanies: 0,
+        results: [{ companyId: 'uuid-1', status: 'completed', company_name: 'Acme AI' }],
+        errors: [],
+      }),
+    });
+    const result = await fetchCompanyImportProcessStatus('job-1');
+    expect(fetch).toHaveBeenCalledWith('/api/company-import/process/job-1', expect.any(Object));
+    expect(result.status).toBe('running');
+    expect(result.processedCompanies).toBe(1);
+    expect(result.results?.[0].companyId).toBe('uuid-1');
   });
 });

@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { ensureFinalSegmentSnapshot } from '../services/segmentSnapshotWorkflow';
 import { getEnrichmentAdapter } from '../services/enrichment/registry';
-import { enqueueSegmentEnrichment, runSegmentEnrichmentOnce } from '../services/enrichSegment';
+import { enqueueSegmentEnrichment, planSegmentEnrichment, runSegmentEnrichmentOnce } from '../services/enrichSegment';
 
 interface EnrichOptions {
   segmentId: string;
@@ -12,10 +12,30 @@ interface EnrichOptions {
   limit?: number;
   runNow?: boolean;
   legacySync?: boolean;
+  maxAgeDays?: number;
+  forceRefresh?: boolean;
+}
+
+function parseSelectedProviders(options: EnrichOptions): string[] {
+  const raw = options.provider ?? options.adapter ?? 'mock';
+  return Array.from(
+    new Set(
+      String(raw)
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean)
+    )
+  );
 }
 
 async function runLegacyEnrichment(client: SupabaseClient, options: EnrichOptions) {
-  const adapterName = options.adapter ?? 'mock';
+  const selectedProviders = parseSelectedProviders(options);
+  if (selectedProviders.length !== 1) {
+    const err: any = new Error('Legacy enrichment does not support multiple providers; use async job flow instead.');
+    err.code = 'ENRICHMENT_LEGACY_MULTI_PROVIDER_UNSUPPORTED';
+    throw err;
+  }
+  const adapterName = selectedProviders[0] ?? 'mock';
   if (adapterName === 'exa') {
     const err: any = new Error('Exa adapter does not support legacy synchronous enrichment; use async job flow instead.');
     err.code = 'EXA_ENRICHMENT_LEGACY_UNSUPPORTED';
@@ -63,23 +83,73 @@ export async function enrichCommand(client: SupabaseClient, options: EnrichOptio
     return { ...legacy, mode };
   }
 
-  const adapterName = options.provider ?? options.adapter ?? 'mock';
+  const selectedProviders = parseSelectedProviders(options);
   // Pre-validate adapter/provider so unknown or misconfigured providers
   // surface immediately (and can be formatted consistently by the CLI).
-  getEnrichmentAdapter(adapterName, client);
+  selectedProviders.forEach((provider) => getEnrichmentAdapter(provider, client));
 
   await ensureFinalSegmentSnapshot(client, options.segmentId);
+  const plan = await planSegmentEnrichment(client, {
+    segmentId: options.segmentId,
+    providers: selectedProviders,
+    limit: options.limit,
+    maxAgeDays: options.maxAgeDays,
+    forceRefresh: options.forceRefresh,
+  });
+
+  if (options.dryRun) {
+    return {
+      status: 'preview',
+      mode,
+      dryRun: true,
+      segmentId: plan.segmentId,
+      segmentVersion: plan.segmentVersion,
+      providers: selectedProviders,
+      refreshPolicy: plan.refreshPolicy,
+      counts: plan.counts,
+      estimate: {
+        costModel: 'none',
+        estimatedCredits: null,
+        estimatedUsd: null,
+      },
+    };
+  }
+
+  if (plan.plannedCompanyIds.length === 0 && plan.plannedContactIds.length === 0) {
+    return {
+      status: 'noop',
+      mode,
+      segmentId: plan.segmentId,
+      segmentVersion: plan.segmentVersion,
+      providers: selectedProviders,
+      refreshPolicy: plan.refreshPolicy,
+      counts: plan.counts,
+    };
+  }
+
   const job = await enqueueSegmentEnrichment(client, {
     segmentId: options.segmentId,
-    adapter: adapterName,
+    adapter: selectedProviders[0],
+    providers: selectedProviders,
+    memberCompanyIds: plan.plannedCompanyIds,
+    memberContactIds: plan.plannedContactIds,
     limit: options.limit,
-    dryRun: options.dryRun,
+    dryRun: false,
+    maxAgeDays: plan.refreshPolicy.maxAgeDays,
+    forceRefresh: plan.refreshPolicy.forceRefresh,
   });
 
   if (options.runNow) {
     const summary = await runSegmentEnrichmentOnce(client, job, { dryRun: options.dryRun });
-    return { status: 'completed', jobId: job.id, summary, mode };
+    return { status: 'completed', jobId: job.id, summary, mode, counts: plan.counts, refreshPolicy: plan.refreshPolicy };
   }
 
-  return { status: 'queued', jobId: job.id, mode };
+  return {
+    status: 'queued',
+    jobId: job.id,
+    mode,
+    providers: selectedProviders,
+    counts: plan.counts,
+    refreshPolicy: plan.refreshPolicy,
+  };
 }

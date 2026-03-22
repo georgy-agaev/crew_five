@@ -5,9 +5,11 @@ import { createIcpProfile } from '../services/icp';
 
 interface IcpCreateOptions {
   name: string;
+  projectId?: string;
   description?: string;
   companyCriteria?: string;
   personaCriteria?: string;
+  offeringDomain?: string;
   createdBy?: string;
 }
 
@@ -17,9 +19,11 @@ export async function icpCreateCommand(client: SupabaseClient, options: IcpCreat
 
   const profile = await createIcpProfile(client, {
     name: options.name,
+    projectId: options.projectId,
     description: options.description,
     companyCriteria,
     personaCriteria,
+    offeringDomain: options.offeringDomain,
     createdBy: options.createdBy,
   });
 

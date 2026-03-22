@@ -64,8 +64,14 @@ export function resolveModelConfig(input: {
 }): { provider: Provider; model: string } {
   const task = input.task ?? 'draft';
   if (input.provider && input.model) {
-    assertSupportedModel(input.provider, input.model);
-    return { provider: input.provider as Provider, model: input.model };
+    const provider = input.provider as Provider;
+    if (provider !== 'openai' && provider !== 'anthropic' && provider !== 'gemini') {
+      throw new Error(`Unsupported provider: ${input.provider}`);
+    }
+    // When both provider and model are supplied, trust the caller and let the
+    // upstream API validate the model. The catalog is only used for sensible
+    // defaults when options are omitted.
+    return { provider, model: input.model };
   }
 
   const provider = (input.provider as Provider) ?? defaultProviderForTask(task);

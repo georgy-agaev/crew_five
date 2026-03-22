@@ -1,5 +1,5 @@
-import type { ChatClient, ChatMessage } from './chatClient';
-import { emitTrace, finishTrace, isTracingEnabled, startTrace } from './tracing';
+import type { ChatClient, ChatMessage } from './chatClient.js';
+import { emitTrace, finishTrace, isTracingEnabled, startTrace } from './tracing.js';
 
 export type EmailType = 'intro' | 'bump';
 export type PatternMode =
@@ -57,6 +57,9 @@ export class AiClient {
       role: 'system',
       content:
         'You are an email draft generator. You receive a JSON payload describing the prospect, company, context, and offer. ' +
+        'If `brief.context.enrichment_provider` is present, it is an object like { primaryCompanyProvider, primaryEmployeeProvider }. ' +
+        'Treat company data as authoritative from primaryCompanyProvider and lead/person data as authoritative from primaryEmployeeProvider when sources conflict. ' +
+        'If `brief.context.enrichment_by_provider` is present, it contains supplemental provider summaries to fill gaps or validate; do not override the primary providers. ' +
         'Respond with a single JSON object containing {subject, body, metadata} only. Do not include any extra text.',
     };
 

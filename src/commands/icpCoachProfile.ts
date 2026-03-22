@@ -8,6 +8,7 @@ export interface IcpCoachProfileOptions {
   description?: string;
   websiteUrl?: string;
   valueProp?: string;
+  offeringDomain?: string;
 }
 
 export async function icpCoachProfileCommand(
@@ -20,6 +21,7 @@ export async function icpCoachProfileCommand(
     description: options.description,
     websiteUrl: options.websiteUrl,
     valueProp: options.valueProp,
+    offeringDomain: options.offeringDomain,
   });
 
   // JSON-first output for scripting.

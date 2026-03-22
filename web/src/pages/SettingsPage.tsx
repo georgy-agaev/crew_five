@@ -3,13 +3,8 @@ import { useEffect, useState } from 'react';
 import { loadSettings, saveSettings, validateSettings, type Settings } from '../hooks/useSettingsStore';
 import { useTelemetry } from '../hooks/useTelemetry';
 import { Alert } from '../components/Alert';
-
-const modelOptions = [
-  { provider: 'openai', model: 'gpt-4o', label: 'OpenAI gpt-4o (assistant)' },
-  { provider: 'openai', model: 'gpt-4o-mini', label: 'OpenAI gpt-4o-mini (drafts/ICP/hypothesis)' },
-  { provider: 'anthropic', model: 'claude-3-5-sonnet', label: 'Anthropic Claude 3.5 Sonnet' },
-  { provider: 'gemini', model: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
-];
+import { getRecommendedModels, type ModelEntry } from '../../../src/config/modelCatalog';
+import { fetchLlmModels } from '../apiClient';
 
 const tasks: Array<{ key: 'assistant' | 'icp' | 'hypothesis' | 'draft'; label: string }> = [
   { key: 'assistant', label: 'AI Assistant' },
@@ -18,14 +13,53 @@ const tasks: Array<{ key: 'assistant' | 'icp' | 'hypothesis' | 'draft'; label: s
   { key: 'draft', label: 'Message Draft' },
 ];
 
+const catalog: ModelEntry[] = getRecommendedModels();
+
+function getTaskModels(
+  task: 'assistant' | 'icp' | 'hypothesis' | 'draft',
+  provider: string,
+  llmModels: Record<string, string[] | undefined>
+) {
+  const live = llmModels[provider];
+  if (live && live.length) {
+    const unique = Array.from(new Set(live));
+    return unique.map((id) => ({
+      provider,
+      model: id,
+      tasks: [task],
+      cost: 'medium',
+      latency: 'medium',
+      recommended: catalog.some((entry) => entry.provider === provider && entry.model === id && entry.recommended),
+    }));
+  }
+
+  return catalog.filter((entry) => entry.provider === provider);
+}
+
 export function SettingsPage() {
   const [settings, setSettings] = useState<Settings>(loadSettings());
   const [error, setError] = useState<string | null>(null);
+  const [llmModels, setLlmModels] = useState<Record<string, string[] | undefined>>({});
   const telemetry = useTelemetry(settings.telemetry);
 
   useEffect(() => {
     saveSettings(settings);
   }, [settings]);
+
+  useEffect(() => {
+    const providers: Array<'openai' | 'anthropic'> = ['openai', 'anthropic'];
+    providers.forEach((provider) => {
+      if (llmModels[provider]) return;
+      fetchLlmModels(provider)
+        .then((models) => {
+          const ids = (models ?? []).map((m) => m.id).filter(Boolean);
+          setLlmModels((prev) => ({ ...prev, [provider]: ids }));
+        })
+        .catch(() => {
+          // Swallow here; Settings will fall back to catalog entries.
+        });
+    });
+  }, [llmModels]);
 
   const onChange = (patch: Partial<Settings>) => {
     setError(null);
@@ -92,25 +126,48 @@ export function SettingsPage() {
           <div key={task.key} style={{ marginBottom: 8 }}>
             <label>
               {task.label}
-              <select
-                style={{ marginLeft: 8, minWidth: 240 }}
-                value={`${settings.providers[task.key].provider}:${settings.providers[task.key].model}`}
-                onChange={(e) => {
-                  const [provider, model] = e.target.value.split(':');
-                  onChange({
-                    providers: {
-                      ...settings.providers,
-                      [task.key]: { provider, model },
-                    },
-                  });
-                }}
-              >
-                {modelOptions.map((opt) => (
-                  <option key={`${opt.provider}:${opt.model}`} value={`${opt.provider}:${opt.model}`}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+              {(() => {
+                const current = settings.providers[task.key];
+                const options = getTaskModels(task.key, current.provider, llmModels);
+                const currentKey = `${current.provider}:${current.model}`;
+                const hasCurrent = options.some(
+                  (opt) => `${opt.provider}:${opt.model}` === currentKey
+                );
+                const effective = hasCurrent
+                  ? currentKey
+                  : options.length
+                  ? `${options[0].provider}:${options[0].model}`
+                  : currentKey;
+                if (!hasCurrent && options.length) {
+                  const [provider, model] = effective.split(':');
+                  settings.providers[task.key] = { provider, model };
+                  saveSettings(settings);
+                }
+                return (
+                  <select
+                    style={{ marginLeft: 8, minWidth: 240 }}
+                    value={effective}
+                    onChange={(e) => {
+                      const [provider, model] = e.target.value.split(':');
+                      onChange({
+                        providers: {
+                          ...settings.providers,
+                          [task.key]: { provider, model },
+                        },
+                      });
+                    }}
+                  >
+                    {options.map((opt) => (
+                      <option
+                        key={`${opt.provider}:${opt.model}`}
+                        value={`${opt.provider}:${opt.model}`}
+                      >
+                        {opt.provider}/{opt.model}
+                      </option>
+                    ))}
+                  </select>
+                );
+              })()}
             </label>
           </div>
         ))}

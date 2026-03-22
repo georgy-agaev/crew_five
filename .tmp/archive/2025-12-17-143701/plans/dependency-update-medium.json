@@ -1,0 +1,120 @@
+{
+  "workflow": "dependency-management",
+  "phase": "update",
+  "phaseNumber": 3,
+  "config": {
+    "priority": "medium",
+    "maxDependenciesPerRun": 50,
+    "sourceReport": "dependency-scan-report.md",
+    "updateStrategy": "conservative",
+    "dependencies": [
+      {
+        "package": "@supabase/supabase-js",
+        "currentVersion": "2.48.1",
+        "targetVersion": "2.48.2",
+        "updateType": "patch",
+        "workspace": "root",
+        "requiresTesting": true,
+        "breakingChanges": false,
+        "notes": "Patch update, minimal risk"
+      },
+      {
+        "package": "autoprefixer",
+        "currentVersion": "10.4.20",
+        "targetVersion": "10.4.21",
+        "updateType": "patch",
+        "workspace": "web",
+        "requiresTesting": false,
+        "breakingChanges": false,
+        "notes": "CSS post-processor, low impact"
+      },
+      {
+        "package": "postcss",
+        "currentVersion": "8.4.49",
+        "targetVersion": "8.4.50",
+        "updateType": "patch",
+        "workspace": "web",
+        "requiresTesting": false,
+        "breakingChanges": false,
+        "notes": "CSS processing, low impact"
+      },
+      {
+        "package": "tailwindcss",
+        "currentVersion": "3.4.17",
+        "targetVersion": "3.4.18",
+        "updateType": "patch",
+        "workspace": "web",
+        "requiresTesting": false,
+        "breakingChanges": false,
+        "notes": "CSS framework, patch update"
+      },
+      {
+        "package": "vitest-fail-on-console",
+        "currentVersion": "0.7.1",
+        "targetVersion": "0.7.2",
+        "updateType": "patch",
+        "workspace": "root",
+        "requiresTesting": true,
+        "breakingChanges": false,
+        "notes": "Test utility, must verify compatibility with vitest 4.x"
+      },
+      {
+        "package": "@types/node",
+        "currentVersion": "22.10.1",
+        "targetVersion": "22.10.6",
+        "updateType": "patch",
+        "workspace": "root",
+        "requiresTesting": false,
+        "breakingChanges": false,
+        "notes": "Type definitions, no runtime impact"
+      },
+      {
+        "package": "@types/supertest",
+        "currentVersion": "6.0.2",
+        "targetVersion": "6.0.3",
+        "updateType": "patch",
+        "workspace": "root",
+        "requiresTesting": false,
+        "breakingChanges": false,
+        "notes": "Type definitions, no runtime impact"
+      },
+      {
+        "package": "eslint-plugin-security",
+        "currentVersion": "3.0.1",
+        "targetVersion": "3.1.0",
+        "updateType": "minor",
+        "workspace": "root",
+        "requiresTesting": false,
+        "breakingChanges": false,
+        "notes": "Linting rules, may add new checks"
+      },
+      {
+        "package": "tsx",
+        "currentVersion": "4.19.2",
+        "targetVersion": "4.19.3",
+        "updateType": "patch",
+        "workspace": "root",
+        "requiresTesting": false,
+        "breakingChanges": false,
+        "notes": "TypeScript execution, minimal risk"
+      }
+    ]
+  },
+  "validation": {
+    "required": ["report-exists", "build"],
+    "optional": ["tests"]
+  },
+  "nextAgent": "dependency-updater",
+  "timestamp": "2025-12-17T14:12:00Z",
+  "metadata": {
+    "createdBy": "dependency-orchestrator",
+    "iteration": 1,
+    "maxIterations": 3,
+    "stage": "medium",
+    "attempt": 1,
+    "maxAttempts": 3,
+    "previousStage": "high",
+    "previousStageStatus": "passed-with-warnings",
+    "knownIssues": ["vitest 4.x jsdom globals configuration pending"]
+  }
+}

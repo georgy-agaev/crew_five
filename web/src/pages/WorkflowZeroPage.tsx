@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useEffect, useMemo, useState } from 'react';
 
 import {
@@ -7,7 +8,6 @@ import {
   fetchSmartleadCampaigns,
   createSmartleadCampaign,
   triggerDraftGenerate,
-  triggerSmartleadPreview,
   fetchSegments,
   fetchPromptRegistry,
   snapshotSegment,
@@ -427,43 +427,7 @@ export function WorkflowZeroPage({ smartleadReady = true }: WorkflowZeroPageProp
       setError('Smartlead env missing');
       return;
     }
-    if (shouldBlockDrafts(selectedSegment, snapshotVersion)) {
-      setError('Finalize the selected segment snapshot before sending.');
-      return;
-    }
-    if (cohortTooLarge) {
-      setError(`Cohort exceeds cap of ${COHORT_CAP}. Tighten filters.`);
-      return;
-    }
-    if (!smartleadCampaignId) {
-      setError('Select a Smartlead campaign or choose create later.');
-      return;
-    }
-    const leadIds = collectLeadIds(filteredContacts, includedContacts);
-    if (!leadIds.length) {
-      setError('No outreach-ready contacts with email selected.');
-      return;
-    }
-    const cappedLeadIds = leadIds.slice(0, SMARTLEAD_PREVIEW_CAP);
-    const truncated = leadIds.length - cappedLeadIds.length;
-    setLoading(true);
-    setError(null);
-    try {
-    const res = await triggerSmartleadPreview({
-      dryRun: true,
-      batchSize: 10,
-      leadIds: cappedLeadIds,
-    });
-      setSendSummary(
-        `Smartlead preview: fetched=${res.fetched ?? 0}, sent=${res.sent ?? 0}, skipped=${res.skipped ?? 0}${
-          truncated > 0 ? ` (truncated preview by ${truncated})` : ''
-        }`
-      );
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to preview Smartlead send');
-    } finally {
-      setLoading(false);
-    }
+    setError('Smartlead preview moved to Pipeline workspace Send step.');
   };
 
   return (

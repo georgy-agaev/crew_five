@@ -23,9 +23,26 @@ interface DraftRow {
   metadata: Record<string, unknown> | null;
 }
 
+interface EmailSendPayload {
+  to: string;
+  subject: string;
+  body: string;
+  metadata: Record<string, unknown>;
+  provider: string;
+  senderIdentity?: string;
+}
+
+interface EmailSendResult {
+  providerId: string;
+}
+
+interface SmtpClient {
+  send: (payload: EmailSendPayload) => Promise<EmailSendResult>;
+}
+
 export async function sendQueuedDrafts(
   client: SupabaseClient,
-  smtpClient: { send: (payload: any) => Promise<{ providerId: string }> },
+  smtpClient: SmtpClient,
   options: SendOptions = {}
 ) {
   const throttle = options.throttlePerMinute ?? 50;
@@ -90,7 +107,7 @@ export async function sendQueuedDrafts(
         provider_message_id: result.providerId,
         status: 'sent',
         sent_at: new Date().toISOString(),
-        metadata: { sendPayload },
+        metadata: { ...(draft.metadata ?? {}), sendPayload },
       };
       outboundRecords.push(outboundRecord);
       if (options.logger) {
@@ -110,7 +127,7 @@ export async function sendQueuedDrafts(
             provider_message_id: retryResult.providerId,
             status: 'sent',
             sent_at: new Date().toISOString(),
-            metadata: { sendPayload, retry: true },
+            metadata: { ...(draft.metadata ?? {}), sendPayload, retry: true },
           };
           outboundRecords.push(retryRecord);
           if (options.logger) {
@@ -121,12 +138,13 @@ export async function sendQueuedDrafts(
         } catch (retryError) {
           summary.failed += 1;
           await client.from('drafts').update({ status: 'generated' }).eq('id', draft.id);
+          const errorMessage = retryError instanceof Error ? retryError.message : 'send failed';
           if (options.logJson) {
             console.log(
               JSON.stringify({
                 level: 'error',
                 draftId: draft.id,
-                error: (retryError as any)?.message ?? 'send failed',
+                error: errorMessage,
                 batchId,
               })
             );
@@ -136,7 +154,7 @@ export async function sendQueuedDrafts(
               level: 'error',
               batchId,
               draftId: draft.id,
-              error: (retryError as any)?.message ?? 'send failed',
+              error: errorMessage,
               retry: true,
             });
           }
@@ -146,12 +164,13 @@ export async function sendQueuedDrafts(
 
       summary.failed += 1;
       await client.from('drafts').update({ status: 'generated' }).eq('id', draft.id);
+      const errorMessage = sendError instanceof Error ? sendError.message : 'send failed';
       if (options.logJson) {
         console.log(
           JSON.stringify({
             level: 'error',
             draftId: draft.id,
-            error: (sendError as any)?.message ?? 'send failed',
+            error: errorMessage,
             batchId,
           })
         );
@@ -161,7 +180,7 @@ export async function sendQueuedDrafts(
           level: 'error',
           batchId,
           draftId: draft.id,
-          error: (sendError as any)?.message ?? 'send failed',
+          error: errorMessage,
         });
       }
     }
@@ -190,8 +209,8 @@ export async function sendQueuedDrafts(
   }
 
   if (options.failOnError && summary.failed > 0) {
-    const err = new Error('Send batch failed');
-    (err as any).summary = summary;
+    const err = new Error('Send batch failed') as Error & { summary: typeof summary };
+    err.summary = summary;
     throw err;
   }
 

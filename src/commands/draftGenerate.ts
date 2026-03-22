@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { AiClient } from '../services/aiClient';
-import { resolveModelConfig } from '../config/modelCatalog';
+import { resolveModelConfig } from '../config/modelCatalog.js';
 import { getCampaignSpineContext } from '../services/campaigns';
 import { generateDrafts } from '../services/drafts';
 import { generateDraftsForSegmentWithIcp } from '../services/coach';

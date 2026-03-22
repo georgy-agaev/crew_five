@@ -3,10 +3,11 @@ prompts/*
 !prompts/.gitkeep
 !prompts/template.md
 
-# Internal-only docs and agent configs (keep local, not pushed)
-docs/
+# Internal-only agent configs (keep local, not pushed)
 AGENTS.md
+CLAUDE.md
 .github/agents/
+.agents/
 
 # Dependencies
 node_modules
@@ -38,3 +39,13 @@ supabase/.temp
 
 # Coverage and test artifacts
 coverage
+
+# Local scratch / run artifacts
+.tmp
+web/playwright-report
+web/test-results
+
+# Internal planning / session notes
+docs/private/
+docs/sessions/*
+!docs/sessions/roadmap.md

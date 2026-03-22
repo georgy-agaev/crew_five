@@ -1,9 +1,84 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { buildExaResearchClientFromEnv, type ExaResearchClient } from '../../integrations/exa';
-import { buildParallelClientFromEnv, type ParallelClient } from '../../integrations/parallel';
-import { buildFirecrawlClientFromEnv, type FirecrawlClient } from '../../integrations/firecrawl';
-import { buildAnySiteClientFromEnv, type AnySiteClient } from '../../integrations/anysite';
+import { buildExaResearchClientFromEnv, type ExaResearchClient } from '../../integrations/exa.js';
+import { buildParallelClientFromEnv, type ParallelClient } from '../../integrations/parallel.js';
+import { buildFirecrawlClientFromEnv, type FirecrawlClient } from '../../integrations/firecrawl.js';
+import { buildAnySiteClientFromEnv, type AnySiteClient } from '../../integrations/anysite.js';
+
+function normalizeWebsiteUrl(website: unknown): string | null {
+  const raw = typeof website === 'string' ? website.trim() : '';
+  if (!raw) return null;
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+  return `https://${raw}`;
+}
+
+function extractHostname(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.hostname || null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeUrlForDedupe(url: string): string {
+  try {
+    const u = new URL(url);
+    u.hash = '';
+    // Keep query (can be meaningful for CMS pages).
+    if (u.pathname !== '/' && u.pathname.endsWith('/')) {
+      u.pathname = u.pathname.slice(0, -1);
+    }
+    return u.toString();
+  } catch {
+    return url.trim();
+  }
+}
+
+function pickFirecrawlPages(params: { homepage: string; search: Array<{ url: string }> }): string[] {
+  const homepage = normalizeUrlForDedupe(params.homepage);
+  const scored = params.search
+    .map((it) => normalizeUrlForDedupe(it.url))
+    .filter((u) => u && u !== homepage)
+    .map((u) => {
+      const lower = u.toLowerCase();
+      const score =
+        (/(about|о-нас|company)/.test(lower) ? 5 : 0) +
+        (/(services|услуг|solutions)/.test(lower) ? 4 : 0) +
+        (/(pricing|price|тариф|стоим)/.test(lower) ? 3 : 0) +
+        (/(case|customers|кейсы|клиенты)/.test(lower) ? 2 : 0) +
+        (/(contact|контакт)/.test(lower) ? 2 : 0);
+      return { url: u, score };
+    })
+    .sort((a, b) => b.score - a.score || a.url.localeCompare(b.url));
+
+  const picked = [homepage, ...scored.slice(0, 3).map((x) => x.url)];
+  return Array.from(new Set(picked));
+}
+
+function buildFirecrawlSummary(snippets: Array<{ title?: string; description?: string; markdown?: string }>): string {
+  const parts: string[] = [];
+  for (const s of snippets) {
+    const title = typeof s.title === 'string' && s.title.trim().length ? s.title.trim() : null;
+    const desc = typeof s.description === 'string' && s.description.trim().length ? s.description.trim() : null;
+
+    let md = typeof s.markdown === 'string' ? s.markdown : '';
+    if (md) {
+      md = md
+        .split('\n')
+        .filter((line) => !line.trim().startsWith('!['))
+        .join('\n')
+        .trim();
+    }
+
+    const mdExcerpt = md ? md.slice(0, 400).replace(/\s+/g, ' ').trim() : null;
+    const chunk = [title, desc, mdExcerpt].filter(Boolean).join(' — ');
+    if (chunk) parts.push(chunk);
+  }
+
+  const joined = parts.join('\n');
+  return joined.length > 1500 ? `${joined.slice(0, 1499)}…` : joined;
+}
 
 export interface EnrichmentResult {
   summary?: string;
@@ -96,11 +171,15 @@ function createParallelEnrichmentAdapter(_supabase: SupabaseClient, parallel: Pa
     async fetchCompanyInsights(input) {
       const research = await parallel.researchCompany({
         companyName: input.company_id,
+        website: null,
+        country: null,
       });
       return {
         provider: 'parallel',
         entity: 'company',
         company_id: input.company_id,
+        summary: (research as any)?.summary,
+        sources: (research as any)?.sources ?? [],
         payload: research,
       };
     },
@@ -112,6 +191,8 @@ function createParallelEnrichmentAdapter(_supabase: SupabaseClient, parallel: Pa
         provider: 'parallel',
         entity: 'employee',
         contact_id: input.contact_id,
+        summary: (research as any)?.summary,
+        sources: (research as any)?.sources ?? [],
         payload: research,
       };
     },
@@ -121,12 +202,55 @@ function createParallelEnrichmentAdapter(_supabase: SupabaseClient, parallel: Pa
 function createFirecrawlEnrichmentAdapter(_supabase: SupabaseClient, firecrawl: FirecrawlClient): EnrichmentAdapter {
   return {
     async fetchCompanyInsights(input) {
-      const research = await firecrawl.crawlUrl({ url: input.company_id });
+      const { data } = await _supabase
+        .from('companies')
+        .select('company_name, website')
+        .eq('id', input.company_id)
+        .maybeSingle();
+
+      const companyName = (data as any)?.company_name ?? null;
+      const homepage = normalizeWebsiteUrl((data as any)?.website) ?? null;
+
+      if (!homepage) {
+        return {
+          provider: 'firecrawl',
+          entity: 'company',
+          company_id: input.company_id,
+          summary: 'No website available for Firecrawl enrichment.',
+          sources: [],
+          meta: { warnings: ['missing_website'] },
+        };
+      }
+
+      const hostname = extractHostname(homepage);
+      const query = hostname ? `site:${hostname} ${companyName ?? hostname}` : String(companyName ?? homepage);
+      const search = await firecrawl.search({ query, limit: 6 });
+
+      const pages = pickFirecrawlPages({ homepage, search });
+      const scraped = await Promise.all(pages.map((url) => firecrawl.scrape({ url })));
+
+      const sources = Array.from(
+        new Map(
+          [
+            ...search.map((s) => ({ url: s.url, title: s.title })),
+            ...scraped.map((s) => ({ url: s.url, title: s.title })),
+          ]
+            .filter((s) => s.url)
+            .map((s) => [s.url, s])
+        ).values()
+      );
+
+      const summary = buildFirecrawlSummary(scraped);
+
       return {
         provider: 'firecrawl',
         entity: 'company',
         company_id: input.company_id,
-        payload: research,
+        summary,
+        sources,
+        meta: {
+          pagesScraped: pages.length,
+        },
       };
     },
     async fetchEmployeeInsights(input) {
@@ -134,7 +258,9 @@ function createFirecrawlEnrichmentAdapter(_supabase: SupabaseClient, firecrawl: 
         provider: 'firecrawl',
         entity: 'employee',
         contact_id: input.contact_id,
-        payload: null,
+        summary: 'Firecrawl does not support employee-level enrichment in this workflow.',
+        sources: [],
+        meta: { warnings: ['employee_enrichment_not_supported'] },
       };
     },
   };

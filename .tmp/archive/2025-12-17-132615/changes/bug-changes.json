@@ -1,0 +1,49 @@
+{
+  "phase": "bug-fixing-medium",
+  "timestamp": "2025-12-17T12:00:00.000Z",
+  "files_modified": [
+    {
+      "path": "src/services/icp.ts",
+      "backup": ".tmp/current/backups/.rollback/src-services-icp.ts.backup",
+      "timestamp": "2025-12-17T12:05:00.000Z",
+      "bug_id": "MEDIUM-1",
+      "reason": "Replace any types with proper ICP interfaces"
+    },
+    {
+      "path": "src/services/emailOutbound.ts",
+      "backup": ".tmp/current/backups/.rollback/src-services-emailOutbound.ts.backup",
+      "timestamp": "2025-12-17T12:05:00.000Z",
+      "bug_id": "MEDIUM-1",
+      "reason": "Replace any types with proper SMTP and error interfaces"
+    },
+    {
+      "path": "src/services/coach.ts",
+      "backup": ".tmp/current/backups/.rollback/src-services-coach.ts.backup",
+      "timestamp": "2025-12-17T12:05:00.000Z",
+      "bug_id": "MEDIUM-1",
+      "reason": "Replace any types with proper error handling types"
+    },
+    {
+      "path": "bug-hunting-report.md",
+      "backup": ".tmp/current/backups/.rollback/bug-hunting-report.md.backup",
+      "timestamp": "2025-12-17T12:30:00.000Z",
+      "bug_id": "MEDIUM-1",
+      "reason": "Mark MEDIUM-1 as completed in bug report"
+    },
+    {
+      "path": "bug-fixes-implemented.md",
+      "backup": ".tmp/current/backups/.rollback/bug-fixes-implemented.md.backup",
+      "timestamp": "2025-12-17T12:30:00.000Z",
+      "bug_id": "MEDIUM-1",
+      "reason": "Add MEDIUM-1 fix documentation"
+    }
+  ],
+  "files_created": [
+    {
+      "path": "bug-fix-medium-completion.md",
+      "timestamp": "2025-12-17T12:30:00.000Z",
+      "bug_id": "MEDIUM-1",
+      "reason": "Completion report for MEDIUM-1 task"
+    }
+  ]
+}
