@@ -5,6 +5,15 @@ Supabase schema for running outbound campaigns along a single GTM spine. The
 public code is designed to be extended with private or commercial connectors
 without changing the core APIs.
 
+## License
+
+This repository is licensed under the Apache License 2.0.
+
+- Canonical license text: [LICENSE](/Users/georgyagaev/crew_five/LICENSE)
+- The public open-core surface remains reusable under `Apache-2.0`
+- Private/commercial extensions should continue to live outside this repository
+  and integrate through the documented public interfaces
+
 Product requirements, detailed roadmaps, and internal working notes are kept in
 private docs outside this public repository. Public-facing usage and
 architecture docs live in `public-docs/`.

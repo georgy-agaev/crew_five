@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.47] - 2026-03-22
+### Added
+- Added explicit repository licensing under Apache License 2.0:
+  - root [LICENSE](/Users/georgyagaev/crew_five/LICENSE)
+  - `license: "Apache-2.0"` in [package.json](/Users/georgyagaev/crew_five/package.json)
+    and [web/package.json](/Users/georgyagaev/crew_five/web/package.json)
+  - licensing section in [README.md](/Users/georgyagaev/crew_five/README.md)
+
 ## [0.2.46] - 2026-03-22
 ### Fixed
 - Rotation preview no longer falls back to a generic `Server error` for invalid source campaigns.
