@@ -53,10 +53,15 @@ brand language.
   - added `.mobile-menu[hidden] { display: none; }`
 - Captured a full-page screenshot artifact:
   [2026-04-01_landing_page.png](/Users/georgyagaev/crew_five/docs/sessions/assets/2026-04-01_landing_page.png)
+- When GitHub Pages was first enabled from `main /` using the legacy branch build, publication
+  failed at the Pages layer even though the static files were valid.
+- Added a dedicated Pages deployment workflow
+  [pages.yml](/Users/georgyagaev/crew_five/.github/workflows/pages.yml) so GitHub deploys only the
+  landing-page artifact instead of trying to process the full repository through legacy Pages.
 
 ## To Do
 
-- Enable or confirm GitHub Pages publication from repository root if it is not already configured in
-  repo settings.
+- Confirm that the repository Pages source is switched to `GitHub Actions` and that the workflow
+  deployment completes successfully.
 - If the public site expands beyond a single page, split the static landing from deeper public docs
   instead of pushing more product internals into one page.

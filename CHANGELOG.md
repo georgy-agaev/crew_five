@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.
 - Linked the public landing page from [README.md](/Users/georgyagaev/crew_five/README.md).
 - Added session note
   [2026-04-01_2_public_landing_page.md](/Users/georgyagaev/crew_five/docs/sessions/2026-04-01_2_public_landing_page.md).
+### Fixed
+- Replaced the failing legacy branch-based GitHub Pages publication with a dedicated workflow
+  [pages.yml](/Users/georgyagaev/crew_five/.github/workflows/pages.yml) that deploys only the
+  landing-page artifact (`index.html`, `style.css`, `script.js`, `.nojekyll`, `assets/`).
 
 ## [0.2.61] - 2026-04-01
 ### Changed
