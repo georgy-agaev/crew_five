@@ -1,12 +1,37 @@
 # Outreach <> crew_five CLI Contract
 
-> Version: v0.13 (2026-03-22)
+> Version: v0.14 (2026-04-01)
 
 ## Goal
 
 Use `crew_five` as the execution/runtime layer and shared GTM spine, while `Outreach`
 acts as the AI agent / orchestrator that decides what to do next and invokes `crew_five`
 via CLI against the same Supabase project.
+
+## Current Operational Split
+
+### `crew_five` owns now
+
+- campaign launch / attach / next-wave / rotation primitives
+- mailbox assignment, send preflight, and business-day send policy
+- direct send execution (`crew_five -> imap-mcp`)
+- auto-send scheduling for intro + bump
+- direct inbox polling / `Poll now`
+- obvious reply ingestion into canonical `email_events`
+
+### `Outreach` still owns
+
+- company processing and enrichment orchestration around its own runtime
+- draft generation / review runtime
+- ambiguous reply interpretation
+- follow-up content drafting after canonical events already exist in `crew_five`
+
+### Explicit boundaries
+
+- Do not reintroduce a parallel `send-campaign` runtime in `Outreach`.
+- Do not reintroduce a parallel `process-replies` mailbox loop in `Outreach`.
+- Do not rebuild recipient resolution or campaign composition rules from sparse local defaults when
+  `crew_five` already exposes canonical read models.
 
 ## Recommended Topology
 
@@ -694,6 +719,12 @@ Canonical blocked reasons:
 - `already_in_target_wave`
 - `already_used_in_source_wave`
 
+Important semantic note:
+
+- `already_used_in_source_wave` now means the company/contact is already present in the source
+  campaign audience itself, not only that an outbound was previously sent. This prevents “Wave 2
+  duplicates Wave 1” when the source wave is still early in execution.
+
 ### `campaign:next-wave:create`
 
 ```bash
@@ -907,6 +938,9 @@ Use this read model when `Outreach` or the operator UI needs one canonical campa
 instead of stitching together `campaign -> companies -> employees -> drafts -> outbounds -> events`
 on its own.
 
+This is the preferred source for generation context. `Outreach` should not rebuild campaign
+context from local defaults when `campaign:detail` is available.
+
 ```bash
 pnpm cli campaign:detail \
   --campaign-id <campaignId> \
@@ -1007,6 +1041,25 @@ Success response shape:
   ]
 }
 ```
+
+Operationally important fields for generation/runtime alignment:
+
+- `project`
+- `offer`
+- `icp_profile.description`
+- `icp_profile.company_criteria`
+- `icp_profile.persona_criteria`
+- `icp_hypothesis`
+- `companies[].employees[].recipient_email`
+- `companies[].employees[].audience_source`
+- `companies[].employees[].exposure_summary`
+
+For actual delivery execution, pair `campaign:detail` with:
+
+- `draft:load --campaign-id <campaignId> --include-recipient-context --error-format json`
+
+That command returns the resolved send target (`recipient_email`, `recipient_email_source`,
+`sendable`) so `Outreach` does not need to infer a recipient from raw employee fields.
 
 Behavior:
 

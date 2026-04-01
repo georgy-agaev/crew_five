@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.2.61] - 2026-03-30
+## [0.2.61] - 2026-04-01
 ### Changed
 - `campaign:next-wave` now blocks `target_segment` candidates as `already_used_in_source_wave` when
   their `company_id` (or `contact_id`) is already present in the source campaign audience, even if
@@ -11,9 +11,22 @@ All notable changes to this project will be documented in this file.
 - `campaignSendExecution` no longer applies company-level intro suppression; intro eligibility is
   evaluated per-contact so multiple employees of the same company can be contacted within a single
   campaign across multiple runs.
+### Fixed
+- Repaired repository security automation for release `v0.2.61`:
+  - fixed `pnpm run scan:ast-grep` so CI can resolve the CLI package correctly,
+  - pinned `path-to-regexp@8.4.1` through pnpm overrides to clear production audit failures,
+  - added canonical `gitleaks.toml` allowlist config for the documented LinkedIn-profile prose false
+    positive,
+  - corrected the GitHub `gitleaks` workflow wiring and full-history checkout so `Security Checks`
+    now passes on `main`.
 ### Docs
 - Added a short handoff note for Outreach maintainers:
   [outreach_wave_dedupe_handoff_2026-03-30.md](/Users/georgyagaev/crew_five/docs/handoffs/outreach_wave_dedupe_handoff_2026-03-30.md).
+- Refreshed the project-facing documentation to match the live execution model:
+  - [README.md](/Users/georgyagaev/crew_five/README.md)
+  - [Outreach_crew_five_cli_contract.md](/Users/georgyagaev/crew_five/docs/Outreach_crew_five_cli_contract.md)
+  - [roadmap.md](/Users/georgyagaev/crew_five/docs/sessions/roadmap.md)
+  - [2026-04-01_1_project_docs_refresh.md](/Users/georgyagaev/crew_five/docs/sessions/2026-04-01_1_project_docs_refresh.md)
 
 ## [0.2.60] - 2026-03-29
 ### Changed

@@ -1,6 +1,6 @@
 # Sessions Roadmap – crew_five
 
-> Version: v1.2 (2026-03-26)
+> Version: v1.3 (2026-04-01)
 
 > This roadmap reflects the current agreed direction for `crew_five` after the
 > recent integration work with `Outreach` and the revised product model. It
@@ -138,9 +138,9 @@ The former urgent execution-migration block is now operationally completed:
 
 The next roadmap priority is:
 
-- improving generation context quality on top of the now-internal execution loop
-- refreshing automated E2E coverage for the real operator surfaces
-- cleaning up remaining operator visibility gaps rather than adding another large subsystem
+- rolling out richer canonical generation context into the `Outreach` generation path
+- formalizing the project -> offer -> hypothesis -> segment -> campaign setup workflow
+- cleaning up remaining operator inbox / visibility gaps rather than adding another large subsystem
 
 ### Current-stage priorities
 
@@ -152,27 +152,32 @@ The next roadmap priority is:
    Status: Completed
 4. richer execution context for generation (`campaign:detail`, snapshot-derived research context, confirmed facts)
    Status: Current top priority
-5. automated Playwright E2E refresh for current operator surfaces
+5. canonical campaign setup flow (`project -> offer -> icp_hypothesis -> segment -> campaign`) for
+   `Outreach` handoff / wizard alignment
    Status: Current-stage priority
-6. campaign execution exposure / offer-aware analytics UI cleanup
+6. inbox operator filtering, pagination, and campaign-linkage visibility
+   Status: Current-stage priority
+7. automated Playwright E2E refresh for current operator surfaces
+   Status: Current-stage priority
+8. campaign execution exposure / offer-aware analytics UI cleanup
    Status: Current-stage polish priority
-7. processed company -> campaign wave attach
+9. processed company -> campaign wave attach
    Status: Completed
-8. campaign wave composition / eligibility visibility
+10. campaign wave composition / eligibility visibility
    Status: Completed
-9. suppression and deliverability hardening
+11. suppression and deliverability hardening
    Status: Ongoing hardening
-10. operator-facing sendability/status UI
+12. operator-facing sendability/status UI
    Status: Partially completed, continue incrementally
-11. minimal offer registry
+13. minimal offer registry
    Status: Completed
-12. operational `Hypothesis`
+14. operational `Hypothesis`
    Status: Completed
-13. next-wave support
+15. next-wave support
    Status: Completed
-14. controlled rotation groundwork
+16. controlled rotation groundwork
    Status: Completed
-15. multi-project foundations
+17. multi-project foundations
    Status: Completed
 
 ### Current-stage completion snapshot
@@ -190,10 +195,15 @@ Completed in the current stage:
 - `send-campaign` direct execution in `crew_five`
 - `process-replies` direct polling + obvious reply handling in `crew_five`
 - dashboard and current operator shell
+- release/security automation for `main` and `v0.2.61` is green again (`lint`, `ast-grep`, `gitleaks`, `audit`)
+- wave dedupe is hardened so next-wave creation no longer silently reuses companies already present
+  in the source wave audience
 
 Still open in the current stage:
 
 - richer execution context for draft generation
+- canonical setup flow for new project / offer / hypothesis onboarding
+- inbox operator filtering / pagination / linkage-noise cleanup
 - refreshed automated E2E for current operator surfaces
 - exposure / analytics UI cleanup and stale task cleanup
 - suppression hardening and related UI follow-up
@@ -214,7 +224,7 @@ assumed, because several previously "next-stage" items are already shipped.
 Its purpose is:
 
 - improve generation quality with richer confirmed execution context,
-- strengthen observability and E2E confidence,
+- strengthen observability, setup ergonomics, and E2E confidence,
 - finish the remaining operator-quality gaps around replies, analytics, and visibility,
 - only then consider deeper transport/provider abstraction and broader strategy tooling.
 
@@ -222,15 +232,19 @@ Its purpose is:
 
 1. richer execution context for generation
    Status: Next active implementation block
-2. Playwright E2E refresh for `Home`, `Campaigns`, `Builder V2`, `Inbox V2`
+2. canonical setup / wizard alignment for new project + ICP onboarding
    Status: Next active implementation block
-3. offer / exposure / analytics operator polish
+3. inbox filtering + pagination + linkage triage operator polish
+   Status: Next active implementation block
+4. Playwright E2E refresh for `Home`, `Campaigns`, `Builder V2`, `Inbox V2`
+   Status: Next active implementation block
+5. offer / exposure / analytics operator polish
    Status: Planned
-4. reply-side operator workflow after obvious classification
+6. reply-side operator workflow after obvious classification
    Status: Planned
-5. direct transport adapter hardening / lifecycle polish
+7. direct transport adapter hardening / lifecycle polish
    Status: Partially completed (reconnect-on-ECONNRESET, restart-on-ImapFlow reuse, error hygiene); continue incrementally
-6. broader generation orchestration decisions
+8. broader generation orchestration decisions
    Status: Later
 
 Current next-stage block status:

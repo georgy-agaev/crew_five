@@ -5,6 +5,21 @@ Supabase schema for running outbound campaigns along a single GTM spine. The
 public code is designed to be extended with private or commercial connectors
 without changing the core APIs.
 
+## Current Live State
+
+- `crew_five` is the canonical execution layer for the active operator loop:
+  campaign state, send preflight, mailbox assignment, direct send execution,
+  auto-send scheduling, inbox polling, and obvious reply ingestion.
+- The current live delivery/runtime path is `crew_five -> imap-mcp -> mailbox providers`.
+  Legacy `Outreach` send / poll bridges still exist only as compatibility fallbacks when the
+  direct transport is not configured.
+- `Outreach` remains the external AI orchestration layer for company processing,
+  draft generation/review, and ambiguous reply interpretation, using `crew_five`
+  CLI/read models against the same Supabase spine.
+- Canonical campaign composition features already live in `crew_five`:
+  launch, manual attach, next-wave creation, controlled rotation previews,
+  business-day send policy, and execution-aware dedupe.
+
 ## License
 
 This repository is licensed under the Apache License 2.0.
@@ -24,6 +39,7 @@ architecture docs live in `public-docs/`.
 - `supabase/migrations/` – Supabase schema migrations for the GTM spine.
 - `tests/` – Vitest suites for CLI/adapter logic.
 - `web/src/**/*.test.tsx` – Vitest suites for Web UI flows.
+- `docs/` – engineering docs, operator handoffs, task notes, and the current sessions roadmap.
 - `public-docs/` – public user-facing docs (getting started, architecture, extensibility).
 - `prompts/` – tracked prompt templates (sanitized), plus working prompt drafts.
 - `CHANGELOG.md` – log of project-level changes.
@@ -38,15 +54,40 @@ architecture docs live in `public-docs/`.
   - Gemini: `GEMINI_API_KEY` (used by draft generation/catalog but not yet wired to live `/models` listing).
   - The web adapter exposes `GET /api/llm/models?provider=openai|anthropic`, backed by the provider `/v1/models` endpoints; the Prompts tab and Settings use these responses to populate Provider/Model dropdowns.
 - Smartlead: `SMARTLEAD_API_BASE`/`SMARTLEAD_API_KEY` or legacy MCP envs (see Smartlead section below).
+- Direct mailbox transport (`crew_five -> imap-mcp` live mode):
+  - `IMAP_MCP_SERVER_ROOT`
+  - `IMAP_MCP_HOME`
+  - optional explicit launcher pair:
+    - `IMAP_MCP_SERVER_COMMAND`
+    - `IMAP_MCP_SERVER_ENTRY`
+- Scheduler/runtime toggles:
+  - `AUTO_SEND_ENABLED`, `AUTO_SEND_INTERVAL_MINUTES`, `AUTO_SEND_BATCH_LIMIT`
+  - `INBOX_POLL_ENABLED`, `INBOX_POLL_INTERVAL_MINUTES`, `INBOX_POLL_LOOKBACK_HOURS`
 - Exa (ICP discovery + enrichment): `EXA_API_KEY` (and optional `EXA_API_BASE`) used by Websets discovery and the Exa research client for `enrich:run --provider exa`.
 - Parallel (planned research provider): `PARALLEL_API_KEY` (required) and optional `PARALLEL_API_BASE` (defaults to `https://api.parallel.ai`), validated by `loadParallelEnv`.
 - Firecrawl (planned crawl provider): `FIRECRAWL_API_KEY` (required) and optional `FIRECRAWL_API_BASE` (defaults to `https://api.firecrawl.dev`), validated by `loadFirecrawlEnv`.
 - Anysite (planned profile lookup provider): `ANYSITE_API_KEY` (required) and optional `ANYSITE_API_BASE` (defaults to `https://api.anysite.io`), validated by `loadAnySiteEnv`.
 
+### Current Runtime Split
+- `crew_five` owns:
+  - campaign execution and pacing
+  - manual `Send now` and scheduler-triggered sends
+  - inbox polling / `Poll now`
+  - obvious reply ingestion into `email_events`
+  - business-day send policy, mailbox assignment, and sendability checks
+- `Outreach` owns:
+  - company processing
+  - generation/review runtime
+  - ambiguous reply interpretation
+  - follow-up content drafting on top of canonical `crew_five` state
+- Shared contract docs:
+  - [Outreach_crew_five_cli_contract.md](/Users/georgyagaev/crew_five/docs/Outreach_crew_five_cli_contract.md)
+  - [roadmap.md](/Users/georgyagaev/crew_five/docs/sessions/roadmap.md)
+
 ## Working Agreements
 1. **Single Spine**: all GTM flows must traverse `segment → segment_members → campaign → drafts → email_outbound → email_events`.
 2. **AI Contract**: every draft generation call uses the `generate_email_draft` interface (a versioned contract maintained privately); prompt updates stay behind this contract.
-3. **SMTP First**: SMTP adapter is the default sending provider, Smartlead is optional.
+3. **Execution Runtime First**: the default live operator path is `crew_five -> imap-mcp`; Smartlead and legacy external bridges remain optional integrations, not the primary runtime.
 4. **Mode Parity**: CLI and Web UI expose the same controls (Strict/Graceful, Interactive Coach/Pipeline Express).
 5. **Changelog Discipline**: record notable decisions and doc updates in `CHANGELOG.md` with semantic version bumps.
 
@@ -66,6 +107,9 @@ architecture docs live in `public-docs/`.
 - Read `public-docs/GETTING_STARTED.md` for install and configuration details.
 - Review `public-docs/ARCHITECTURE_OVERVIEW.md` for the GTM spine and module layout.
 - Explore `public-docs/EXTENSIBILITY_AND_CONNECTORS.md` to understand how to plug in new providers.
+- For the current engineering state and near-term priorities, read:
+  - `docs/sessions/roadmap.md`
+  - `docs/Outreach_crew_five_cli_contract.md`
 - Canonical local Web UI ports:
   - daily work: adapter `http://localhost:8787/api` + Vite UI `http://localhost:5173`
   - isolated browser validation only: adapter `http://localhost:8888/api` + Vite UI `http://localhost:5174`
@@ -175,8 +219,10 @@ architecture docs live in `public-docs/`.
 ## Security Checks
 - ESLint security suite: `pnpm lint` (uses `eslint` + `@typescript-eslint` + `security` + `security-node`).
 - AST guardrails: `pnpm run scan:ast-grep` (matches `ast-grep.yml` rules).
-- Secret scan: `pnpm run scan:secrets` (requires `gitleaks` installed locally; CI runs the action).
+- Secret scan: `pnpm run scan:secrets` (requires local `gitleaks`; repo-level allowlists live in `gitleaks.toml`).
 - Dependency audit: `pnpm run audit` (fails on high/critical; CI installs with `--ignore-scripts`).
+- GitHub Actions workflow `Security Checks` validates the same guardrails on `main`:
+  `lint`, `scan:ast-grep`, `gitleaks`, and `pnpm audit --prod --audit-level high`.
 
 ### Smartlead Integration (optional)
 - Use Smartlead as a delivery provider without requiring a local MCP server. Setup steps live in
