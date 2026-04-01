@@ -112,8 +112,8 @@ function createProcessedEmployeeTable() {
 }
 
 function createEmployeeRepairTable() {
-  const upsert = vi.fn().mockResolvedValue({ data: null, error: null });
-  return { upsert };
+  const insert = vi.fn().mockResolvedValue({ data: null, error: null });
+  return { insert };
 }
 
 describe('companyStore', () => {
@@ -330,7 +330,7 @@ describe('companyStore', () => {
         }
         if (table === 'employee_data_repairs') {
           return {
-            upsert: repairTable.upsert,
+            insert: repairTable.insert,
           };
         }
         throw new Error(`unexpected table ${table}`);
@@ -371,28 +371,48 @@ describe('companyStore', () => {
         last_name: 'Тест',
       })
     );
-    expect(repairTable.upsert).toHaveBeenCalledWith(
-      [
-        expect.objectContaining({
-          employee_id: 'existing-employee-id',
-          repair_type: 'name_swap',
-          source: 'company:save-processed',
-          confidence: 'high',
-          original_first_name: 'Федина',
-          original_last_name: 'Инна',
-          repaired_first_name: 'Инна',
-          repaired_last_name: 'Федина',
-        }),
-      ],
-      {
-        onConflict:
-          'employee_id,repair_type,source,original_first_name,original_last_name,repaired_first_name,repaired_last_name',
-        ignoreDuplicates: true,
-      }
-    );
+    expect(repairTable.insert).toHaveBeenCalledWith([
+      expect.objectContaining({
+        employee_id: 'existing-employee-id',
+        repair_type: 'name_swap',
+        source: 'company:save-processed',
+        confidence: 'high',
+        original_first_name: 'Федина',
+        original_last_name: 'Инна',
+        repaired_first_name: 'Инна',
+        repaired_last_name: 'Федина',
+      }),
+    ]);
     expect(result.warnings).toContain(
       'employee name left unchanged for low-confidence repair candidate: Тест Пользователь'
     );
+  });
+
+  it('surfaces missing_fields details when processed payload is invalid', async () => {
+    const client = {
+      from: vi.fn(() => {
+        throw new Error('should not hit DB when payload is invalid');
+      }),
+    } as any;
+
+    await expect(
+      saveProcessedCompany(client, {
+        company: {
+          company_name: '',
+          tin: '7707083893',
+        },
+        employees: [
+          {
+            full_name: '',
+          },
+        ],
+      })
+    ).rejects.toMatchObject({
+      code: 'INVALID_PAYLOAD',
+      details: {
+        missing_fields: expect.arrayContaining(['company.company_name', 'employees[0].full_name']),
+      },
+    });
   });
 
   it('marks registration_number dedup as update and warns on TIN mismatch', async () => {

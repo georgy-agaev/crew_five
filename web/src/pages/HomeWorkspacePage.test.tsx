@@ -33,11 +33,19 @@ const mockOverview: apiClient.DashboardOverview = {
       campaignId: null,
     },
     {
+      kind: 'outbound',
+      id: 'out-1',
+      timestamp: '2026-03-18T11:00:00Z',
+      title: 'Intro sent',
+      subtitle: 'Fresh Co · Alex Sender · sales@alpha.test',
+      campaignId: 'camp-1',
+    },
+    {
       kind: 'draft',
       id: 'draft-1',
-      timestamp: '2026-03-18T11:00:00Z',
+      timestamp: '2026-03-18T10:00:00Z',
       title: 'Draft generated',
-      subtitle: 'intro email',
+      subtitle: 'intro email · Alpha',
       campaignId: 'camp-1',
     },
   ],
@@ -85,9 +93,11 @@ describe('HomeWorkspacePage', () => {
     render(<HomeWorkspacePage />);
 
     expect(await screen.findByText('Reply positive')).toBeTruthy();
+    expect(screen.getByText('Intro sent')).toBeTruthy();
+    expect(screen.getByText('Fresh Co · Alex Sender · sales@alpha.test')).toBeTruthy();
     expect(screen.getByText('Draft generated')).toBeTruthy();
     expect(screen.getByText('draft draft-1')).toBeTruthy();
-    expect(screen.getByText('intro email')).toBeTruthy();
+    expect(screen.getByText('intro email · Alpha')).toBeTruthy();
   });
 
   it('renders quick navigation links', async () => {

@@ -11,6 +11,9 @@ const mockPolicy = {
   sendWindowStartHour: 9,
   sendWindowEndHour: 17,
   sendWeekdaysOnly: true,
+  sendDayCountMode: 'elapsed_days' as const,
+  sendCalendarCountryCode: null,
+  sendCalendarSubdivisionCode: null,
   updatedAt: '2026-03-21T12:00:00Z',
 };
 
@@ -35,6 +38,13 @@ function waitForLoaded() {
   return waitFor(() => {
     expect(screen.getByDisplayValue('Europe/Moscow')).toBeTruthy();
   });
+}
+
+function getDayCountModeSelect() {
+  const row = screen.getByText('Delay counting').parentElement;
+  const select = row?.querySelector('select');
+  expect(select).toBeTruthy();
+  return select as HTMLSelectElement;
 }
 
 describe('CampaignSendPolicyCard', () => {
@@ -106,6 +116,58 @@ describe('CampaignSendPolicyCard', () => {
         sendWindowStartHour: 9,
         sendWindowEndHour: 17,
         sendWeekdaysOnly: true,
+        sendDayCountMode: 'elapsed_days',
+        sendCalendarCountryCode: null,
+        sendCalendarSubdivisionCode: null,
+      });
+    });
+  });
+
+  it('requires country for business-day mode', async () => {
+    mockFetch.mockResolvedValue(mockPolicy);
+    render(<CampaignSendPolicyCard campaignId="camp-1" />);
+
+    await waitForLoaded();
+
+    fireEvent.change(getDayCountModeSelect(), {
+      target: { value: 'business_days_campaign' },
+    });
+    fireEvent.click(screen.getByText('Save'));
+
+    expect(screen.getByText('Country code is required for business-day mode')).toBeTruthy();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('saves business-day campaign calendar fields', async () => {
+    const businessPolicy = {
+      ...mockPolicy,
+      sendDayCountMode: 'business_days_campaign' as const,
+      sendCalendarCountryCode: 'RU',
+      sendCalendarSubdivisionCode: 'MOW',
+    };
+    mockFetch.mockResolvedValue(mockPolicy);
+    mockUpdate.mockResolvedValue(businessPolicy as any);
+
+    render(<CampaignSendPolicyCard campaignId="camp-1" />);
+
+    await waitForLoaded();
+
+    fireEvent.change(getDayCountModeSelect(), {
+      target: { value: 'business_days_campaign' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('RU'), { target: { value: 'ru' } });
+    fireEvent.change(screen.getByPlaceholderText('e.g. MOW'), { target: { value: 'MOW' } });
+    fireEvent.click(screen.getByText('Save'));
+
+    await waitFor(() => {
+      expect(mockUpdate).toHaveBeenCalledWith('camp-1', {
+        sendTimezone: 'Europe/Moscow',
+        sendWindowStartHour: 9,
+        sendWindowEndHour: 17,
+        sendWeekdaysOnly: true,
+        sendDayCountMode: 'business_days_campaign',
+        sendCalendarCountryCode: 'RU',
+        sendCalendarSubdivisionCode: 'MOW',
       });
     });
   });

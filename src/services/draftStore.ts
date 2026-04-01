@@ -139,6 +139,41 @@ export async function loadDrafts(client: SupabaseClient, options: DraftLoadOptio
   return data ?? [];
 }
 
+async function loadDraftByIdWithRecipientContext(client: SupabaseClient, draftId: string) {
+  const { data, error } = await client
+    .from('drafts')
+    .select(
+      [
+        '*',
+        'contact:employees(id,full_name,position,work_email,work_email_status,generic_email,generic_email_status,company_name)',
+        'company:companies(id,company_name,website)',
+      ].join(',')
+    )
+    .eq('id', draftId)
+    .single();
+
+  if (error || !data) {
+    throw error ?? new Error('Draft not found');
+  }
+
+  const row = data as Record<string, any>;
+  const contact = row.contact ?? null;
+  const resolution = resolveRecipientEmail({
+    work_email: contact?.work_email,
+    work_email_status: contact?.work_email_status,
+    generic_email: contact?.generic_email,
+    generic_email_status: contact?.generic_email_status,
+  });
+
+  return {
+    ...row,
+    recipient_email: resolution.recipientEmail,
+    recipient_email_source: resolution.recipientEmailSource,
+    recipient_email_kind: resolution.recipientEmailKind,
+    sendable: resolution.sendable,
+  };
+}
+
 async function loadDraftsWithRecipientContext(client: SupabaseClient, options: DraftLoadOptions) {
   let query: any = client
     .from('drafts')
@@ -228,7 +263,7 @@ export async function updateDraftStatus(client: SupabaseClient, options: DraftUp
     throw error ?? new Error('Failed to update draft status');
   }
 
-  return data;
+  return loadDraftByIdWithRecipientContext(client, String(data.id));
 }
 
 export async function updateDraftStatuses(
@@ -280,5 +315,5 @@ export async function updateDraftContent(client: SupabaseClient, options: DraftU
     throw error ?? new Error('Failed to update draft content');
   }
 
-  return data;
+  return loadDraftByIdWithRecipientContext(client, String(data.id));
 }

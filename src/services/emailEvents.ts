@@ -32,17 +32,18 @@ export function mapProviderEvent(payload: ProviderEventPayload) {
   if (!payload.provider || !payload.event_type) {
     throw new Error('provider and event_type are required');
   }
+  const normalizedEventType = normalizeEventType(payload.event_type);
   const occurredAtForKey = String(
     payload.occurred_at ?? (payload.payload as any)?.occurred_at ?? 'missing_occurred_at'
   );
   const occurred_at = payload.occurred_at ?? new Date().toISOString();
   const normalizedOutcome = normalizeOutcome(payload.outcome_classification);
   const idempotency_key = buildIdempotencyKey(payload, occurredAtForKey);
-  const reply_label = classifyReply(payload.event_type, normalizedOutcome);
+  const reply_label = classifyReply(normalizedEventType, normalizedOutcome);
   return {
     provider: payload.provider,
     provider_event_id: payload.provider_event_id ?? null,
-    event_type: payload.event_type,
+    event_type: normalizedEventType,
     outcome_classification: normalizedOutcome,
     reply_label,
     outbound_id: payload.outbound_id ?? null,
@@ -59,6 +60,41 @@ export function mapProviderEvent(payload: ProviderEventPayload) {
     payload: payload.payload ?? {},
     idempotency_key,
   };
+}
+
+const ALLOWED_EVENT_TYPES = new Set([
+  'delivered',
+  'opened',
+  'clicked',
+  'replied',
+  'bounced',
+  'unsubscribed',
+  'complaint',
+]);
+
+const EVENT_TYPE_ALIASES: Record<string, string> = {
+  reply: 'replied',
+  replied: 'replied',
+  open: 'opened',
+  opened: 'opened',
+  click: 'clicked',
+  clicked: 'clicked',
+  bounce: 'bounced',
+  bounced: 'bounced',
+  unsubscribe: 'unsubscribed',
+  unsubscribed: 'unsubscribed',
+  spam: 'complaint',
+  complaint: 'complaint',
+  delivered: 'delivered',
+};
+
+function normalizeEventType(eventType: string) {
+  const normalized = eventType.trim().toLowerCase();
+  const mapped = EVENT_TYPE_ALIASES[normalized] ?? normalized;
+  if (!ALLOWED_EVENT_TYPES.has(mapped)) {
+    throw new Error(`Unsupported email event_type: ${eventType}`);
+  }
+  return mapped;
 }
 
 function normalizeOutcome(outcome?: string | null | undefined) {
@@ -79,10 +115,16 @@ function buildIdempotencyKey(payload: ProviderEventPayload, occurred_at: string)
 }
 
 export function classifyReply(eventType: string, outcome?: string | null) {
-  if (eventType === 'reply') return 'replied';
-  if (outcome === 'angry') return 'negative';
-  if (outcome === 'decline') return 'negative';
+  const normalizedEventType = normalizeEventType(eventType);
+
+  if (normalizedEventType === 'replied') {
+    if (outcome === 'meeting' || outcome === 'soft_interest') return 'positive';
+    if (outcome === 'angry' || outcome === 'decline') return 'negative';
+    return 'replied';
+  }
+
   if (outcome === 'meeting' || outcome === 'soft_interest') return 'positive';
+  if (outcome === 'angry' || outcome === 'decline') return 'negative';
   return null;
 }
 

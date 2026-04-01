@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { evaluateCampaignSendCalendar, type CampaignSendCalendarReason } from './campaignSendCalendar.js';
-import { resolveCampaignSendPolicy } from './campaignSendPolicy.js';
+import { resolveCampaignSendPolicy, type CampaignSendPolicyInput } from './campaignSendPolicy.js';
 import {
   getCampaignSendPreflight,
   type CampaignSendPreflightBlockerCode,
@@ -24,7 +24,10 @@ export interface CampaignAutoSendTriggerRequest {
 export interface CampaignAutoSendSweepOptions {
   batchLimit?: number;
   now?: Date;
-  triggerSendCampaign: (
+  executeSendCampaign?: (
+    request: CampaignAutoSendTriggerRequest
+  ) => Promise<Record<string, unknown>>;
+  triggerSendCampaign?: (
     request: CampaignAutoSendTriggerRequest
   ) => Promise<Record<string, unknown>>;
 }
@@ -40,6 +43,7 @@ interface AutoSendCampaignRow {
   send_window_start_hour?: number | null;
   send_window_end_hour?: number | null;
   send_weekdays_only?: boolean | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export type CampaignAutoSendSkipReason =
@@ -119,7 +123,7 @@ async function listAutoSendCampaigns(client: SupabaseClient): Promise<AutoSendCa
   const { data, error } = await client
     .from('campaigns')
     .select(
-      'id,name,status,auto_send_intro,auto_send_bump,bump_min_days_since_intro,send_timezone,send_window_start_hour,send_window_end_hour,send_weekdays_only'
+      'id,name,status,auto_send_intro,auto_send_bump,bump_min_days_since_intro,send_timezone,send_window_start_hour,send_window_end_hour,send_weekdays_only,metadata'
     )
     .or('auto_send_intro.eq.true,auto_send_bump.eq.true');
 
@@ -128,6 +132,37 @@ async function listAutoSendCampaigns(client: SupabaseClient): Promise<AutoSendCa
   }
 
   return (data ?? []) as AutoSendCampaignRow[];
+}
+
+function readSendPolicyMetadata(
+  metadata: Record<string, unknown> | null | undefined
+): Partial<CampaignSendPolicyInput> {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return {};
+  }
+
+  const sendPolicy = metadata.send_policy;
+  if (!sendPolicy || typeof sendPolicy !== 'object' || Array.isArray(sendPolicy)) {
+    return {};
+  }
+
+  const policy = sendPolicy as Record<string, unknown>;
+  return {
+    sendDayCountMode:
+      policy.send_day_count_mode === 'business_days_campaign'
+        ? 'business_days_campaign'
+        : policy.send_day_count_mode === 'business_days_recipient'
+          ? 'business_days_recipient'
+          : undefined,
+    sendCalendarCountryCode:
+      typeof policy.send_calendar_country_code === 'string'
+        ? policy.send_calendar_country_code
+        : undefined,
+    sendCalendarSubdivisionCode:
+      typeof policy.send_calendar_subdivision_code === 'string'
+        ? policy.send_calendar_subdivision_code
+        : undefined,
+  };
 }
 
 async function evaluateIntroAutoSend(
@@ -190,15 +225,16 @@ export async function runCampaignAutoSendSweep(
 
   for (const campaign of campaigns) {
     summary.checkedCount += 1;
-    const calendar = evaluateCampaignSendCalendar(
-      resolveCampaignSendPolicy({
-        sendTimezone: campaign.send_timezone ?? undefined,
-        sendWindowStartHour: campaign.send_window_start_hour ?? undefined,
-        sendWindowEndHour: campaign.send_window_end_hour ?? undefined,
-        sendWeekdaysOnly: campaign.send_weekdays_only ?? undefined,
-      }),
-      now ?? new Date()
-    );
+  const calendar = evaluateCampaignSendCalendar(
+    resolveCampaignSendPolicy({
+      sendTimezone: campaign.send_timezone ?? undefined,
+      sendWindowStartHour: campaign.send_window_start_hour ?? undefined,
+      sendWindowEndHour: campaign.send_window_end_hour ?? undefined,
+      sendWeekdaysOnly: campaign.send_weekdays_only ?? undefined,
+      ...readSendPolicyMetadata(campaign.metadata),
+    }),
+    now ?? new Date()
+  );
 
     if (!calendar.allowed) {
       summary.skippedCount += 1;
@@ -252,7 +288,11 @@ export async function runCampaignAutoSendSweep(
     }
 
     try {
-      const triggerResult = await options.triggerSendCampaign({
+      const executeSendCampaign = options.executeSendCampaign ?? options.triggerSendCampaign;
+      if (!executeSendCampaign) {
+        throw new Error('Campaign send execution is not configured');
+      }
+      const triggerResult = await executeSendCampaign({
         campaignId: campaign.id,
         reason: triggerReason,
         batchLimit: options.batchLimit,

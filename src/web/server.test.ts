@@ -1518,20 +1518,28 @@ describe('web adapter server', () => {
     vi.unstubAllEnvs();
   });
 
-  it('createLiveDeps exposes auto-send sweep only when send trigger is configured', () => {
+  it('createLiveDeps exposes direct send and inbox polling when imap-mcp is configured', () => {
     vi.stubEnv('SUPABASE_URL', 'http://example.com');
     vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'key');
     vi.stubEnv('SMARTLEAD_MCP_URL', 'http://smartlead');
     vi.stubEnv('SMARTLEAD_MCP_TOKEN', 'token');
-    vi.stubEnv('OUTREACH_SEND_CAMPAIGN_CMD', 'outreach send-campaign');
+    vi.stubEnv('OUTREACH_SEND_CAMPAIGN_CMD', '');
+    vi.stubEnv('OUTREACH_PROCESS_REPLIES_CMD', '');
+    vi.stubEnv('IMAP_MCP_SERVER_ROOT', '/opt/imap-mcp');
+    vi.stubEnv('IMAP_MCP_HOME', '/state/imap');
 
     const supabase = { from: vi.fn(() => ({ select: vi.fn() })) };
     const withTrigger = createLiveDeps({ supabase });
     expect(typeof withTrigger.runCampaignAutoSendSweep).toBe('function');
+    expect(typeof withTrigger.executeCampaignSend).toBe('function');
+    expect(typeof withTrigger.triggerInboxPoll).toBe('function');
 
-    vi.stubEnv('OUTREACH_SEND_CAMPAIGN_CMD', '');
+    vi.stubEnv('IMAP_MCP_SERVER_ROOT', '');
+    vi.stubEnv('IMAP_MCP_HOME', '');
     const withoutTrigger = createLiveDeps({ supabase });
     expect(withoutTrigger.runCampaignAutoSendSweep).toBeUndefined();
+    expect(withoutTrigger.executeCampaignSend).toBeUndefined();
+    expect(withoutTrigger.triggerInboxPoll).toBeUndefined();
 
     vi.unstubAllEnvs();
   });
@@ -1600,7 +1608,13 @@ describe('web adapter server', () => {
       { method: 'GET', pathname: '/api/inbox/replies' },
       buildMeta({ mode: 'live' })
     );
-    expect(listInboxReplies).toHaveBeenCalledWith({ limit: undefined, campaignId: undefined, replyLabel: undefined });
+    expect(listInboxReplies).toHaveBeenCalledWith({
+      campaignId: undefined,
+      replyLabel: undefined,
+      handled: undefined,
+      limit: undefined,
+      linkage: undefined,
+    });
     expect((res.body as any).total).toBe(1);
     expect((res.body as any).replies[0].reply_text).toBe('Sounds interesting.');
   });
@@ -1774,6 +1788,40 @@ describe('web adapter server', () => {
       await vi.advanceTimersByTimeAsync(1000);
       expect(triggerInboxPoll).toHaveBeenCalledTimes(2);
 
+      scheduler?.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('formats non-Error inbox poll failures instead of logging [object Object]', async () => {
+    vi.useFakeTimers();
+    const triggerInboxPoll = vi
+      .fn()
+      .mockRejectedValueOnce({ message: 'boom', code: 'ECONNRESET' })
+      .mockResolvedValueOnce({
+        source: 'outreacher-process-replies' as const,
+        requestedAt: '2026-03-19T10:00:00.000Z',
+        upstreamStatus: 200,
+        accepted: true,
+        processed: 1,
+      });
+    const logger = { log: vi.fn(), error: vi.fn() };
+
+    try {
+      const scheduler = startInboxPollScheduler(
+        { triggerInboxPoll } as any,
+        { intervalMs: 1000, lookbackHours: 24, logger }
+      );
+
+      await vi.advanceTimersByTimeAsync(1000);
+      await Promise.resolve();
+      expect(logger.error).toHaveBeenCalledWith(
+        '[web adapter] inbox poll failed: boom | code=ECONNRESET'
+      );
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(triggerInboxPoll).toHaveBeenCalledTimes(2);
       scheduler?.stop();
     } finally {
       vi.useRealTimers();
@@ -2681,6 +2729,46 @@ describe('web adapter server', () => {
     expect(getCampaignSendPreflight).toHaveBeenCalledWith('camp-1');
     expect((res.body as any).readyToSend).toBe(false);
     expect((res.body as any).blockers[0].code).toBe('missing_recipient_email');
+  });
+
+  it('routes campaign send execution', async () => {
+    const executeCampaignSend = vi.fn(async ({ campaignId, reason, batchLimit }) => ({
+      accepted: true,
+      source: 'crew_five-send-execution',
+      requestedAt: '2026-03-24T09:00:00.000Z',
+      campaignId,
+      reason,
+      provider: 'imap_mcp',
+      selectedCount: 3,
+      sentCount: 2,
+      failedCount: 1,
+      skippedCount: 0,
+      results: [],
+      batchLimit,
+    }));
+
+    const res = await dispatch(
+      {
+        ...deps,
+        executeCampaignSend,
+      } as any,
+      {
+        method: 'POST',
+        pathname: '/api/campaigns/camp-1/send',
+        body: {
+          reason: 'auto_send_mixed',
+          batchLimit: 25,
+        },
+      },
+      buildMeta({ mode: 'live' })
+    );
+
+    expect(executeCampaignSend).toHaveBeenCalledWith({
+      campaignId: 'camp-1',
+      reason: 'auto_send_mixed',
+      batchLimit: 25,
+    });
+    expect((res.body as any).sentCount).toBe(2);
   });
 
   it('routes campaign next-wave preview and create', async () => {

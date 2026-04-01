@@ -1,12 +1,17 @@
 # Task: Offer-Aware Analytics Web UI
 
 **Date:** 2026-03-22
-**Status:** To Do
+**Status:** Done
 **Owner:** frontend / Claude
 
 ## Goal
 
 Expose the new execution analytics dimensions in compact operator-facing analytics UI.
+
+## Completion Note
+
+This task was completed in the Stage Closeout pass. Remaining work in this area
+is operator polish and cleanup, not missing offer-aware analytics support.
 
 ## Backend Ready
 

@@ -148,6 +148,7 @@ export async function listInboxReplies(
     campaignId?: string;
     replyLabel?: string;
     handled?: boolean;
+    linkage?: 'all' | 'linked' | 'unlinked';
   } = {}
 ): Promise<InboxRepliesView> {
   let query = client
@@ -194,7 +195,7 @@ export async function listInboxReplies(
       metadata: Record<string, unknown> | null;
     }
   >();
-  if (outboundIds.length > 0) {
+    if (outboundIds.length > 0) {
     let outboundQuery = client
       .from('email_outbound')
       .select('id,campaign_id,draft_id,contact_id,company_id,sender_identity,metadata')
@@ -202,6 +203,12 @@ export async function listInboxReplies(
 
     if (filters.campaignId) {
       outboundQuery = outboundQuery.eq('campaign_id', filters.campaignId);
+    }
+    if (filters.linkage === 'linked') {
+      // "Linked" in Inbox UX means linked to a campaign (not merely having an outbound row).
+      outboundQuery = outboundQuery.not('campaign_id', 'is', null);
+    } else if (filters.linkage === 'unlinked') {
+      outboundQuery = outboundQuery.is('campaign_id', null);
     }
 
     const { data: outboundRows, error: outboundError } = await outboundQuery;
@@ -320,6 +327,17 @@ export async function listInboxReplies(
       if (filters.campaignId && outbound?.campaign_id !== filters.campaignId) {
         return null;
       }
+      if (filters.linkage === 'linked') {
+        // Only include events that can be tied to a campaign-linked outbound.
+        if (!outbound) return null;
+      } else if (filters.linkage === 'unlinked') {
+        // Include events that are not tied to a campaign:
+        // - no outbound_id at all, OR
+        // - outbound exists but campaign_id is null (e.g. inbox placeholder outbound)
+        const hasOutboundId = typeof row.outbound_id === 'string' && row.outbound_id.trim().length > 0;
+        if (hasOutboundId && !outbound) return null;
+        if (outbound && outbound.campaign_id) return null;
+      }
       const draftId =
         typeof row.draft_id === 'string' ? row.draft_id : outbound?.draft_id ?? null;
       const draft = draftId ? draftsById.get(draftId) ?? null : null;
@@ -329,6 +347,12 @@ export async function listInboxReplies(
         outbound?.company_id ? companiesById.get(outbound.company_id) ?? null : null;
       const payload =
         row.payload && typeof row.payload === 'object' ? (row.payload as Record<string, unknown>) : null;
+      const payloadSubject =
+        payload && typeof payload.subject === 'string' && payload.subject.trim().length > 0
+          ? payload.subject
+          : null;
+      const payloadFrom =
+        payload && typeof payload.from === 'string' && payload.from.trim().length > 0 ? payload.from : null;
 
       return {
         id: String(row.id),
@@ -348,14 +372,14 @@ export async function listInboxReplies(
         draft_id: draftId,
         draft_email_type: draft?.email_type ?? null,
         draft_status: draft?.status ?? null,
-        subject: draft?.subject ?? null,
+        subject: draft?.subject ?? payloadSubject,
         sender_identity: outbound?.sender_identity ?? null,
         recipient_email:
           typeof outbound?.metadata?.recipient_email === 'string'
             ? String(outbound.metadata.recipient_email)
             : null,
         contact_id: outbound?.contact_id ?? null,
-        contact_name: contact?.full_name ?? null,
+        contact_name: contact?.full_name ?? payloadFrom,
         contact_position: contact?.position ?? null,
         company_id: outbound?.company_id ?? null,
         company_name: company?.company_name ?? null,

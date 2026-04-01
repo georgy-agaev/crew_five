@@ -50,10 +50,12 @@ export interface CompanyImportProcessStatusView extends CompanyImportProcessStar
 export interface CompanyImportProcessOptions {
   recommendedBatchSize?: number;
   hardMaxBatchSize?: number;
+  maxJobCompanyCount?: number;
 }
 
 const DEFAULT_RECOMMENDED_BATCH_SIZE = 10;
 const DEFAULT_HARD_MAX_BATCH_SIZE = 20;
+const DEFAULT_MAX_JOB_COMPANY_COUNT = 5000;
 
 function uniqueInOrder(values: string[]) {
   const seen = new Set<string>();
@@ -256,9 +258,11 @@ export async function startCompanyImportProcess(
 
   const recommendedBatchSize = options.recommendedBatchSize ?? DEFAULT_RECOMMENDED_BATCH_SIZE;
   const hardMaxBatchSize = options.hardMaxBatchSize ?? DEFAULT_HARD_MAX_BATCH_SIZE;
-  if (companyIds.length > hardMaxBatchSize) {
-    throw new Error(`companyIds exceeds hard max batch size ${hardMaxBatchSize}`);
+  const maxJobCompanyCount = options.maxJobCompanyCount ?? DEFAULT_MAX_JOB_COMPANY_COUNT;
+  if (companyIds.length > maxJobCompanyCount) {
+    throw new Error(`companyIds exceeds max job company count ${maxJobCompanyCount}`);
   }
+  const batchSize = Math.min(recommendedBatchSize, companyIds.length, hardMaxBatchSize);
 
   const missingCompanyIds = await validateCompanyIds(client, companyIds);
   if (missingCompanyIds.length > 0) {
@@ -266,7 +270,6 @@ export async function startCompanyImportProcess(
   }
 
   const mode = request.mode === 'light' ? 'light' : 'full';
-  const batchSize = Math.min(recommendedBatchSize, companyIds.length);
   const job = await createJob(client, {
     type: 'company_process',
     status: 'created',

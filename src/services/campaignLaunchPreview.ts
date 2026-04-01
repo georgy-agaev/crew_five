@@ -3,14 +3,18 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   summarizeCampaignMailboxAssignmentInputs,
   type CampaignMailboxAssignmentInput,
-} from './campaignMailboxAssignments';
-import { resolveCampaignHypothesis } from './campaignHypothesis';
-import { deriveEnrichmentState } from './campaigns';
-import { getFilterPreviewCounts } from './filterPreview';
-import { resolveCampaignSendPolicy, type CampaignSendPolicy, type CampaignSendPolicyInput } from './campaignSendPolicy';
-import { resolveRecipientEmail } from './recipientResolver';
-import { snapshotExists } from './segmentSnapshotWorkflow';
-import { getSegmentById } from './segments';
+} from './campaignMailboxAssignments.js';
+import { resolveCampaignHypothesis } from './campaignHypothesis.js';
+import { deriveEnrichmentState } from './campaigns.js';
+import { getFilterPreviewCounts } from './filterPreview.js';
+import {
+  resolveCampaignSendPolicy,
+  type CampaignSendPolicy,
+  type CampaignSendPolicyInput,
+} from './campaignSendPolicy.js';
+import { resolveRecipientEmail } from './recipientResolver.js';
+import { snapshotExists } from './segmentSnapshotWorkflow.js';
+import { getSegmentById } from './segments.js';
 
 export interface CampaignLaunchPreviewInput extends CampaignSendPolicyInput {
   name: string;
@@ -81,6 +85,16 @@ interface EmployeeRow {
   generic_email_status: string | null;
 }
 
+function chunkValues<T>(values: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+const LOOKUP_QUERY_CHUNK_SIZE = 100;
+
 function buildWarning(code: string, message: string): CampaignLaunchPreviewWarning {
   return { code, message };
 }
@@ -109,34 +123,38 @@ async function loadSnapshotSummary(
 
   let companiesById = new Map<string, CompanyRow>();
   if (companyIds.length > 0) {
-    const { data: companies, error: companiesError } = await client
-      .from('companies')
-      .select('id,company_research,updated_at')
-      .in('id', companyIds);
+    for (const companyIdsChunk of chunkValues(companyIds, LOOKUP_QUERY_CHUNK_SIZE)) {
+      const { data: companies, error: companiesError } = await client
+        .from('companies')
+        .select('id,company_research,updated_at')
+        .in('id', companyIdsChunk);
 
-    if (companiesError) {
-      throw companiesError;
+      if (companiesError) {
+        throw companiesError;
+      }
+
+      for (const company of (companies ?? []) as CompanyRow[]) {
+        companiesById.set(company.id, company);
+      }
     }
-
-    companiesById = new Map(
-      ((companies ?? []) as CompanyRow[]).map((company) => [company.id, company])
-    );
   }
 
   let employeesById = new Map<string, EmployeeRow>();
   if (contactIds.length > 0) {
-    const { data: employees, error: employeesError } = await client
-      .from('employees')
-      .select('id,work_email,work_email_status,generic_email,generic_email_status')
-      .in('id', contactIds);
+    for (const contactIdsChunk of chunkValues(contactIds, LOOKUP_QUERY_CHUNK_SIZE)) {
+      const { data: employees, error: employeesError } = await client
+        .from('employees')
+        .select('id,work_email,work_email_status,generic_email,generic_email_status')
+        .in('id', contactIdsChunk);
 
-    if (employeesError) {
-      throw employeesError;
+      if (employeesError) {
+        throw employeesError;
+      }
+
+      for (const employee of (employees ?? []) as EmployeeRow[]) {
+        employeesById.set(employee.id, employee);
+      }
     }
-
-    employeesById = new Map(
-      ((employees ?? []) as EmployeeRow[]).map((employee) => [employee.id, employee])
-    );
   }
 
   let freshCompanyCount = 0;

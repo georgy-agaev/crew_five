@@ -72,6 +72,16 @@ The coach-prompt must push the user to a **structured ICP format**:
 
 **Output:** a normalized JSON-like structure for each ICP and persona, including a list of search hypotheses linked to that ICP.
 
+Storage rule for `icp_profiles`:
+
+- keep `description` as a narrative operator / LLM brief
+- keep stable account-level and persona-level facts in structured fields such as
+  `company_criteria` and `persona_criteria`
+
+See
+[icp_profile_storage_guidelines.md](/Users/georgyagaev/crew_five/docs/icp_profile_storage_guidelines.md)
+for the canonical rule when creating new projects and new ICPs.
+
 ---
 
 ### 4.2. Converting ICPs into Exa Websets Queries

@@ -104,6 +104,8 @@ describe('getCampaignLaunchPreview', () => {
       sendWindowStartHour: 8,
       sendWindowEndHour: 16,
       sendWeekdaysOnly: true,
+      sendDayCountMode: 'business_days_campaign',
+      sendCalendarCountryCode: 'DE',
       senderPlan: {
         assignments: [
           {
@@ -132,6 +134,9 @@ describe('getCampaignLaunchPreview', () => {
       sendWindowStartHour: 8,
       sendWindowEndHour: 16,
       sendWeekdaysOnly: true,
+      sendDayCountMode: 'business_days_campaign',
+      sendCalendarCountryCode: 'DE',
+      sendCalendarSubdivisionCode: null,
     });
     expect(result.warnings.map((row) => row.code)).toEqual(['company_enrichment_incomplete']);
   });
@@ -161,6 +166,9 @@ describe('getCampaignLaunchPreview', () => {
       sendWindowStartHour: 8,
       sendWindowEndHour: 16,
       sendWeekdaysOnly: true,
+      sendDayCountMode: 'business_days_campaign',
+      sendCalendarCountryCode: 'DE',
+      sendCalendarSubdivisionCode: null,
     });
 
     expect(result.segment.snapshotStatus).toBe('missing');
@@ -182,9 +190,75 @@ describe('getCampaignLaunchPreview', () => {
       sendWindowStartHour: 8,
       sendWindowEndHour: 16,
       sendWeekdaysOnly: true,
+      sendDayCountMode: 'business_days_campaign',
+      sendCalendarCountryCode: 'DE',
+      sendCalendarSubdivisionCode: null,
     });
     expect(getFilterPreviewCounts).toHaveBeenCalledWith(client, [
       { field: 'companies.employee_count', operator: 'gte', value: 30 },
     ]);
+  });
+
+  it('chunks company and employee lookups for large snapshots', async () => {
+    vi.mocked(getSegmentById).mockResolvedValue({
+      id: 'seg-3',
+      version: 1,
+      filter_definition: [],
+    } as any);
+    vi.mocked(snapshotExists).mockResolvedValue({ exists: true, count: 205 });
+
+    const members = Array.from({ length: 205 }, (_, index) => ({
+      company_id: `comp-${index + 1}`,
+      contact_id: `contact-${index + 1}`,
+    }));
+    const membersMatch = vi.fn().mockResolvedValue({ data: members, error: null });
+    const membersSelect = vi.fn().mockReturnValue({ match: membersMatch });
+
+    const companiesIn = vi
+      .fn()
+      .mockImplementation(async (_field: string, ids: string[]) => ({
+        data: ids.map((id) => ({ id, company_research: null, updated_at: null })),
+        error: null,
+      }));
+    const companiesSelect = vi.fn().mockReturnValue({ in: companiesIn });
+
+    const employeesIn = vi
+      .fn()
+      .mockImplementation(async (_field: string, ids: string[]) => ({
+        data: ids.map((id) => ({
+          id,
+          work_email: `${id}@example.com`,
+          work_email_status: 'valid',
+          generic_email: null,
+          generic_email_status: null,
+        })),
+        error: null,
+      }));
+    const employeesSelect = vi.fn().mockReturnValue({ in: employeesIn });
+
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table === 'segment_members') return { select: membersSelect };
+        if (table === 'companies') return { select: companiesSelect };
+        if (table === 'employees') return { select: employeesSelect };
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    } as any;
+
+    const result = await getCampaignLaunchPreview(client, {
+      name: 'Large Snapshot Launch',
+      segmentId: 'seg-3',
+      segmentVersion: 1,
+      sendDayCountMode: 'business_days_recipient',
+      sendCalendarCountryCode: 'RU',
+    });
+
+    expect(result.summary.companyCount).toBe(205);
+    expect(result.summary.contactCount).toBe(205);
+    expect(result.summary.sendableContactCount).toBe(205);
+    expect(companiesIn).toHaveBeenCalledTimes(3);
+    expect(employeesIn).toHaveBeenCalledTimes(3);
+    expect(companiesIn.mock.calls.map((call) => call[1].length)).toEqual([100, 100, 5]);
+    expect(employeesIn.mock.calls.map((call) => call[1].length)).toEqual([100, 100, 5]);
   });
 });

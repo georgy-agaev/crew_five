@@ -11,6 +11,12 @@ const translations: Record<string, Record<string, string>> = {
     timezone: 'Timezone',
     window: 'Send window',
     weekdaysOnly: 'Weekdays only',
+    dayCountMode: 'Delay counting',
+    elapsedDays: 'Elapsed days',
+    businessDaysCampaign: 'Business days (campaign)',
+    businessDaysRecipient: 'Business days (recipient)',
+    calendarCountry: 'Calendar country',
+    calendarSubdivision: 'Subdivision',
     yes: 'Yes',
     no: 'No',
     save: 'Save',
@@ -20,12 +26,19 @@ const translations: Record<string, Record<string, string>> = {
     invalidWindow: 'End hour must be greater than start hour',
     invalidHour: 'Hours must be integers (0-23 start, 1-24 end)',
     emptyTimezone: 'Timezone is required',
+    emptyCountry: 'Country code is required for business-day mode',
   },
   ru: {
     title: 'Политика отправки',
     timezone: 'Часовой пояс',
     window: 'Окно отправки',
     weekdaysOnly: 'Только будни',
+    dayCountMode: 'Счёт дней',
+    elapsedDays: 'Обычные дни',
+    businessDaysCampaign: 'Рабочие дни кампании',
+    businessDaysRecipient: 'Рабочие дни получателя',
+    calendarCountry: 'Страна календаря',
+    calendarSubdivision: 'Регион / штат',
     yes: 'Да',
     no: 'Нет',
     save: 'Сохранить',
@@ -35,6 +48,7 @@ const translations: Record<string, Record<string, string>> = {
     invalidWindow: 'Конец должен быть позже начала',
     invalidHour: 'Часы должны быть целыми числами (0-23 начало, 1-24 конец)',
     emptyTimezone: 'Укажите часовой пояс',
+    emptyCountry: 'Для режима рабочих дней укажите код страны',
   },
 };
 
@@ -70,12 +84,20 @@ export function CampaignSendPolicyCard({
   const [startHour, setStartHour] = useState(9);
   const [endHour, setEndHour] = useState(17);
   const [weekdaysOnly, setWeekdaysOnly] = useState(true);
+  const [dayCountMode, setDayCountMode] = useState<
+    'elapsed_days' | 'business_days_campaign' | 'business_days_recipient'
+  >('elapsed_days');
+  const [calendarCountryCode, setCalendarCountryCode] = useState('');
+  const [calendarSubdivisionCode, setCalendarSubdivisionCode] = useState('');
 
   const syncFromData = useCallback((view: CampaignSendPolicyView) => {
     setTimezone(view.sendTimezone);
     setStartHour(view.sendWindowStartHour);
     setEndHour(view.sendWindowEndHour);
     setWeekdaysOnly(view.sendWeekdaysOnly);
+    setDayCountMode(view.sendDayCountMode);
+    setCalendarCountryCode(view.sendCalendarCountryCode ?? '');
+    setCalendarSubdivisionCode(view.sendCalendarSubdivisionCode ?? '');
   }, []);
 
   useEffect(() => {
@@ -110,7 +132,10 @@ export function CampaignSendPolicyCard({
     timezone !== data.sendTimezone ||
     startHour !== data.sendWindowStartHour ||
     endHour !== data.sendWindowEndHour ||
-    weekdaysOnly !== data.sendWeekdaysOnly
+    weekdaysOnly !== data.sendWeekdaysOnly ||
+    dayCountMode !== data.sendDayCountMode ||
+    calendarCountryCode !== (data.sendCalendarCountryCode ?? '') ||
+    calendarSubdivisionCode !== (data.sendCalendarSubdivisionCode ?? '')
   );
 
   const validate = (): string | null => {
@@ -119,6 +144,12 @@ export function CampaignSendPolicyCard({
       return t.invalidHour;
     }
     if (endHour <= startHour) return t.invalidWindow;
+    if (
+      (dayCountMode === 'business_days_campaign' || dayCountMode === 'business_days_recipient') &&
+      !calendarCountryCode.trim()
+    ) {
+      return t.emptyCountry;
+    }
     return null;
   };
 
@@ -140,6 +171,9 @@ export function CampaignSendPolicyCard({
         sendWindowStartHour: startHour,
         sendWindowEndHour: endHour,
         sendWeekdaysOnly: weekdaysOnly,
+        sendDayCountMode: dayCountMode,
+        sendCalendarCountryCode: calendarCountryCode.trim() || null,
+        sendCalendarSubdivisionCode: calendarSubdivisionCode.trim() || null,
       });
       setData(updated);
       syncFromData(updated);
@@ -258,6 +292,47 @@ export function CampaignSendPolicyCard({
         >
           {weekdaysOnly ? t.yes : t.no}
         </button>
+      </div>
+
+      <div style={rowStyle}>
+        <span style={labelStyle}>{t.dayCountMode}</span>
+        <select
+          style={{ ...inputStyle, width: 180, textAlign: 'right' }}
+          value={dayCountMode}
+          onChange={(e) => {
+            setDayCountMode(
+              e.target.value as 'elapsed_days' | 'business_days_campaign' | 'business_days_recipient'
+            );
+            setValidationError(null);
+          }}
+          disabled={saving}
+        >
+          <option value="elapsed_days">{t.elapsedDays}</option>
+          <option value="business_days_campaign">{t.businessDaysCampaign}</option>
+          <option value="business_days_recipient">{t.businessDaysRecipient}</option>
+        </select>
+      </div>
+
+      <div style={rowStyle}>
+        <span style={labelStyle}>{t.calendarCountry}</span>
+        <input
+          style={{ ...inputStyle, width: 90, textAlign: 'right', textTransform: 'uppercase' }}
+          value={calendarCountryCode}
+          onChange={(e) => { setCalendarCountryCode(e.target.value.toUpperCase()); setValidationError(null); }}
+          disabled={saving}
+          placeholder="RU"
+        />
+      </div>
+
+      <div style={rowStyle}>
+        <span style={labelStyle}>{t.calendarSubdivision}</span>
+        <input
+          style={{ ...inputStyle, width: 140, textAlign: 'right' }}
+          value={calendarSubdivisionCode}
+          onChange={(e) => { setCalendarSubdivisionCode(e.target.value); setValidationError(null); }}
+          disabled={saving}
+          placeholder={language === 'ru' ? 'напр. MOW' : 'e.g. MOW'}
+        />
       </div>
 
       {validationError && (

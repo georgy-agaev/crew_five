@@ -142,6 +142,9 @@ export function buildContactQuery(client: SupabaseClient, filters: FilterClause[
         'company_id',
         'full_name',
         'work_email',
+        'work_email_status',
+        'generic_email',
+        'generic_email_status',
         'position',
         'company:companies(id, company_name, company_description, website, employee_count, region, office_qualification, segment, company_research)',
       ].join(', ')

@@ -505,6 +505,17 @@ function ProcessingStatusBlock({
   const completed = status?.completedCompanies ?? 0;
   const failed = status?.failedCompanies ?? 0;
   const skipped = status?.skippedCompanies ?? 0;
+  const failedResults = (status?.results ?? []).filter((entry) => entry.status === 'error' || Boolean(entry.error));
+  const normalizedErrors = (status?.errors ?? []).map((entry, index) => {
+    if (typeof entry === 'string') {
+      return { key: `raw-${index}`, label: entry };
+    }
+    const companyId = entry.companyId?.trim();
+    return {
+      key: companyId ? `company-${companyId}` : `raw-${index}`,
+      label: companyId ? `${companyId}: ${entry.error}` : entry.error,
+    };
+  });
 
   return (
     <div style={{ marginBottom: 8 }}>
@@ -535,14 +546,33 @@ function ProcessingStatusBlock({
             </div>
           )}
 
-          {/* Errors */}
-          {status.errors && status.errors.length > 0 && (
+          {/* Failures / errors */}
+          {(failedResults.length > 0 || normalizedErrors.length > 0) && (
             <div style={{ marginTop: 6 }}>
-              {status.errors.map((e) => (
-                <div key={e.companyId} style={{ fontSize: 11, color: 'var(--od-error)', padding: '2px 0' }}>
-                  {e.companyId}: {e.error}
-                </div>
-              ))}
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--od-error)', marginBottom: 4 }}>
+                Recent failures
+              </div>
+              <div
+                style={{
+                  maxHeight: 140,
+                  overflowY: 'auto',
+                  border: '1px solid var(--od-border)',
+                  borderRadius: 8,
+                  padding: '6px 8px',
+                  background: 'var(--od-card)',
+                }}
+              >
+                {failedResults.map((entry) => (
+                  <div key={`result-${entry.companyId}`} style={{ fontSize: 11, color: 'var(--od-error)', padding: '2px 0' }}>
+                    {entry.company_name ?? entry.companyId}: {entry.error ?? 'Processing failed'}
+                  </div>
+                ))}
+                {normalizedErrors.map((entry) => (
+                  <div key={entry.key} style={{ fontSize: 11, color: 'var(--od-error)', padding: '2px 0' }}>
+                    {entry.label}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </>

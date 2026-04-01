@@ -340,11 +340,12 @@ describe('web api client (live adapter)', () => {
   it('fetchInboxReplies builds reply inbox query params', async () => {
     const { fetchInboxReplies } = await loadClient();
     (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ replies: [], total: 0 }) });
-    await fetchInboxReplies({ campaignId: 'c1', replyLabel: 'positive', limit: 10 });
+    await fetchInboxReplies({ campaignId: 'c1', replyLabel: 'positive', linkage: 'linked', limit: 10 });
     const url = (fetch as any).mock.calls[0][0] as string;
     expect(url).toContain('/inbox/replies?');
     expect(url).toContain('campaignId=c1');
     expect(url).toContain('replyLabel=positive');
+    expect(url).toContain('linkage=linked');
     expect(url).toContain('limit=10');
   });
 

@@ -6,6 +6,7 @@ export interface CampaignAudienceCampaign {
   status: string;
   segment_id: string;
   segment_version: number;
+  project_id?: string | null;
   offer_id?: string | null;
   icp_hypothesis_id?: string | null;
   metadata?: Record<string, unknown> | null;
@@ -28,7 +29,9 @@ async function getAudienceCampaign(
 ): Promise<CampaignAudienceCampaign> {
   const { data, error } = await client
     .from('campaigns')
-    .select('id,name,status,segment_id,segment_version,offer_id,icp_hypothesis_id,metadata,created_at,updated_at')
+    .select(
+      'id,name,status,segment_id,segment_version,project_id,offer_id,icp_hypothesis_id,metadata,created_at,updated_at'
+    )
     .eq('id', campaignId)
     .single();
 

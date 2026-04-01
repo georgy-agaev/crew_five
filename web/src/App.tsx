@@ -12,6 +12,7 @@ import { EnrichmentWorkspacePage } from './pages/EnrichmentWorkspacePage';
 import { ImportWorkspacePage } from './pages/ImportWorkspacePage';
 import { HomeWorkspacePage } from './pages/HomeWorkspacePage';
 import CampaignOperatorDesk from './pages/CampaignOperatorDesk';
+import CampaignOpsPage from './pages/CampaignOpsPage';
 import { AppShell } from './components/AppShell';
 import { usePersistedState } from './hooks/usePersistedState';
 import { resolveViewFromLocation } from './appView';
@@ -80,6 +81,8 @@ function App() {
         <HomeWorkspacePage isDark={isDark} />
       ) : view === 'campaign-ops' ? (
         <CampaignOperatorDesk isDark={isDark} language={language} />
+      ) : view === 'campaign-ledger' ? (
+        <CampaignOpsPage />
       ) : view === 'builder-v2' ? (
         <BuilderWorkspacePage isDark={isDark} language={language} />
       ) : view === 'inbox-v2' ? (

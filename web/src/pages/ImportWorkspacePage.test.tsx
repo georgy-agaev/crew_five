@@ -342,4 +342,30 @@ describe('ImportWorkspacePage — Processing', () => {
     const btn = screen.queryByRole('button', { name: /Process with Outreacher/i });
     expect(btn === null || btn.hasAttribute('disabled')).toBe(true);
   });
+
+  it('renders raw string errors while processing is still running and keeps reset accessible', async () => {
+    await uploadPreviewAndApply();
+    vi.spyOn(apiClient, 'startCompanyImportProcess').mockResolvedValue({
+      jobId: 'job-1', status: 'created', mode: 'full', totalCompanies: 140, batchSize: 10, source: 'xlsx-import',
+    });
+    vi.spyOn(apiClient, 'fetchCompanyImportProcessStatus').mockResolvedValue({
+      jobId: 'job-1', status: 'running', mode: 'full', totalCompanies: 140, batchSize: 10, source: 'xlsx-import',
+      processedCompanies: 20, completedCompanies: 0, failedCompanies: 20, skippedCompanies: 0,
+      results: [
+        { companyId: 'uuid-1', status: 'error', company_name: 'Acme AI', error: 'Outreach timeout' },
+      ],
+      errors: ['Outreach process-companies command failed: Credit balance is too low'],
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Process with Outreacher/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Recent failures')).toBeTruthy();
+      expect(screen.getByText(/Acme AI: Outreach timeout/)).toBeTruthy();
+      expect(screen.getByText(/Credit balance is too low/)).toBeTruthy();
+      expect(screen.getByRole('button', { name: /Reset/i })).toBeTruthy();
+    });
+  });
 });

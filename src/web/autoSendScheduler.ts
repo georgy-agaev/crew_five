@@ -1,4 +1,5 @@
 import type { CampaignAutoSendSweepResult } from '../services/campaignAutoSend.js';
+import { formatErrorMessage } from '../lib/formatErrorMessage.js';
 
 const DEFAULT_AUTO_SEND_INTERVAL_MINUTES = 10;
 const DEFAULT_AUTO_SEND_BATCH_LIMIT = 25;
@@ -51,8 +52,7 @@ export function startAutoSendScheduler(
         `[web adapter] auto-send sweep completed (checked=${result.summary.checkedCount}, triggered=${result.summary.triggeredCount}, errors=${result.summary.errorCount})`
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(`[web adapter] auto-send sweep failed: ${message}`);
+      logger.error(`[web adapter] auto-send sweep failed: ${formatErrorMessage(error)}`);
     } finally {
       running = false;
     }

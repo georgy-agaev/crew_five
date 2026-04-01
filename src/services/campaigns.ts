@@ -21,6 +21,9 @@ export interface CampaignInput {
   sendWindowStartHour?: number;
   sendWindowEndHour?: number;
   sendWeekdaysOnly?: boolean;
+  sendDayCountMode?: 'elapsed_days' | 'business_days_campaign' | 'business_days_recipient';
+  sendCalendarCountryCode?: string | null;
+  sendCalendarSubdivisionCode?: string | null;
   metadata?: Record<string, unknown>;
 }
 

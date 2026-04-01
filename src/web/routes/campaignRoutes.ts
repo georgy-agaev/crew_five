@@ -378,6 +378,52 @@ export async function handleCampaignRoutes(
     }
   }
 
+  if (method === 'POST' && pathname.startsWith('/api/campaigns/') && pathname.endsWith('/send')) {
+    if (!deps.executeCampaignSend) {
+      return { status: 501, body: { error: 'Campaign send execution not configured' } };
+    }
+    const campaignId = pathname
+      .slice('/api/campaigns/'.length, -'/send'.length)
+      .replace(/\/$/, '');
+    if (!campaignId) {
+      return { status: 400, body: { error: 'campaignId is required' } };
+    }
+
+    const body = req.body ?? {};
+    if (body && (typeof body !== 'object' || Array.isArray(body))) {
+      return { status: 400, body: { error: 'send payload must be an object' } };
+    }
+
+    const reason =
+      body && typeof body.reason === 'string' ? body.reason : 'auto_send_mixed';
+    if (
+      reason !== 'auto_send_intro' &&
+      reason !== 'auto_send_bump' &&
+      reason !== 'auto_send_mixed'
+    ) {
+      return { status: 400, body: { error: 'reason must be auto_send_intro|auto_send_bump|auto_send_mixed' } };
+    }
+
+    const batchLimit =
+      body && typeof body.batchLimit === 'number' && Number.isFinite(body.batchLimit)
+        ? Math.trunc(body.batchLimit)
+        : undefined;
+
+    try {
+      return {
+        status: 200,
+        body: await deps.executeCampaignSend({
+          campaignId,
+          reason,
+          batchLimit,
+        }),
+      };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Campaign send execution failed';
+      return { status: 500, body: { error: message } };
+    }
+  }
+
   if (method === 'GET' && pathname.startsWith('/api/campaigns/') && pathname.endsWith('/next-wave-preview')) {
     if (!deps.getCampaignNextWavePreview) {
       return { status: 501, body: { error: 'Campaign next-wave preview not configured' } };

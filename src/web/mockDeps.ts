@@ -66,6 +66,46 @@ export function createMockDeps(): AdapterDeps {
     },
   ];
   const mockHypotheses = [{ id: 'h1', hypothesis_label: 'Hypothesis Mock' }];
+  const buildMockSendPolicy = (overrides: Partial<{
+    sendTimezone: string;
+    sendWindowStartHour: number;
+    sendWindowEndHour: number;
+    sendWeekdaysOnly: boolean;
+    sendDayCountMode: 'elapsed_days' | 'business_days_campaign' | 'business_days_recipient';
+    sendCalendarCountryCode: string | null;
+    sendCalendarSubdivisionCode: string | null;
+  }> = {}) => ({
+    sendTimezone: overrides.sendTimezone ?? 'Europe/Moscow',
+    sendWindowStartHour: overrides.sendWindowStartHour ?? 9,
+    sendWindowEndHour: overrides.sendWindowEndHour ?? 17,
+    sendWeekdaysOnly: overrides.sendWeekdaysOnly ?? true,
+    sendDayCountMode: overrides.sendDayCountMode ?? 'elapsed_days',
+    sendCalendarCountryCode: overrides.sendCalendarCountryCode ?? null,
+    sendCalendarSubdivisionCode: overrides.sendCalendarSubdivisionCode ?? null,
+  });
+  const buildMockSendPolicyView = (
+    campaignId: string,
+    overrides: Partial<{
+      campaignName: string;
+      campaignStatus: string | null;
+      updatedAt: string | null;
+      metadata: Record<string, unknown> | null;
+      sendTimezone: string;
+      sendWindowStartHour: number;
+      sendWindowEndHour: number;
+      sendWeekdaysOnly: boolean;
+      sendDayCountMode: 'elapsed_days' | 'business_days_campaign' | 'business_days_recipient';
+      sendCalendarCountryCode: string | null;
+      sendCalendarSubdivisionCode: string | null;
+    }> = {}
+  ) => ({
+    campaignId,
+    campaignName: overrides.campaignName ?? 'Mock Campaign',
+    campaignStatus: overrides.campaignStatus ?? 'review',
+    updatedAt: overrides.updatedAt ?? '2026-03-21T10:02:00Z',
+    metadata: overrides.metadata ?? null,
+    ...buildMockSendPolicy(overrides),
+  });
 
   return {
     listProjects: async ({ status } = {}) =>
@@ -187,6 +227,7 @@ export function createMockDeps(): AdapterDeps {
       icp_profile: null,
       icp_hypothesis: null,
       offer: mockOffers[0] ?? null,
+      project: null,
       companies: [{
         company_id: 'company-1',
         company_name: 'Mock Co',
@@ -200,6 +241,8 @@ export function createMockDeps(): AdapterDeps {
         enrichment: { status: 'fresh', last_updated_at: '2026-03-15T10:00:00Z', provider_hint: 'mock' },
         composition_summary: {
           total_contacts: 1,
+          segment_snapshot_contacts: 1,
+          manual_attach_contacts: 0,
           sendable_contacts: 1,
           eligible_for_new_intro_contacts: 1,
           blocked_no_sendable_email_contacts: 0,
@@ -212,6 +255,8 @@ export function createMockDeps(): AdapterDeps {
         employees: [
           {
             contact_id: 'contact-1',
+            audience_source: 'segment_snapshot',
+            attached_at: null,
             full_name: 'Alex Mock',
             position: 'CEO',
             work_email: 'a@example.com',
@@ -322,6 +367,30 @@ export function createMockDeps(): AdapterDeps {
         domains: ['example.com'],
       },
     }),
+    executeCampaignSend: async ({ campaignId, reason = 'auto_send_mixed', batchLimit }) => ({
+      accepted: true,
+      source: 'crew_five-send-execution',
+      requestedAt: '2026-03-24T09:00:00.000Z',
+      campaignId,
+      reason,
+      provider: 'imap_mcp',
+      selectedCount: Math.min(batchLimit ?? 25, 3),
+      sentCount: Math.min(batchLimit ?? 25, 3),
+      failedCount: 0,
+      skippedCount: 0,
+      results: Array.from({ length: Math.min(batchLimit ?? 25, 3) }, (_, index) => ({
+        draftId: `draft-${index + 1}`,
+        contactId: `contact-${index + 1}`,
+        companyId: `company-${index + 1}`,
+        emailType: index === 0 ? 'intro' : 'bump',
+        senderIdentity: 'sales-1@example.com',
+        mailboxAccountId: 'mbox-1',
+        recipientEmail: `buyer-${index + 1}@mock.example`,
+        status: 'sent',
+        provider: 'imap_mcp',
+        providerMessageId: `<mock-${index + 1}@example.com>`,
+      })),
+    }),
     getCampaignNextWavePreview: async ({ sourceCampaignId }) => ({
       sourceCampaign: {
         id: sourceCampaignId,
@@ -332,12 +401,7 @@ export function createMockDeps(): AdapterDeps {
         targetSegmentVersion: 1,
         offerId: null,
         icpHypothesisId: null,
-        sendPolicy: {
-          sendTimezone: 'Europe/Moscow',
-          sendWindowStartHour: 9,
-          sendWindowEndHour: 17,
-          sendWeekdaysOnly: true,
-        },
+        sendPolicy: buildMockSendPolicy(),
         senderPlanSummary: {
           assignmentCount: 1,
           mailboxAccountCount: 1,
@@ -375,12 +439,15 @@ export function createMockDeps(): AdapterDeps {
         targetSegmentVersion: input.targetSegmentVersion ?? 1,
         offerId: input.offerId ?? null,
         icpHypothesisId: input.icpHypothesisId ?? null,
-        sendPolicy: {
-          sendTimezone: input.sendTimezone ?? 'Europe/Moscow',
-          sendWindowStartHour: input.sendWindowStartHour ?? 9,
-          sendWindowEndHour: input.sendWindowEndHour ?? 17,
-          sendWeekdaysOnly: input.sendWeekdaysOnly ?? true,
-        },
+        sendPolicy: buildMockSendPolicy({
+          sendTimezone: input.sendTimezone,
+          sendWindowStartHour: input.sendWindowStartHour,
+          sendWindowEndHour: input.sendWindowEndHour,
+          sendWeekdaysOnly: input.sendWeekdaysOnly,
+          sendDayCountMode: input.sendDayCountMode,
+          sendCalendarCountryCode: input.sendCalendarCountryCode,
+          sendCalendarSubdivisionCode: input.sendCalendarSubdivisionCode,
+        }),
         senderPlanSummary: {
           assignmentCount: input.senderPlan?.assignments?.length ?? 0,
           mailboxAccountCount: input.senderPlan?.assignments?.length ?? 0,
@@ -399,12 +466,15 @@ export function createMockDeps(): AdapterDeps {
           domains: [],
         },
       },
-      sendPolicy: {
-        sendTimezone: input.sendTimezone ?? 'Europe/Moscow',
-        sendWindowStartHour: input.sendWindowStartHour ?? 9,
-        sendWindowEndHour: input.sendWindowEndHour ?? 17,
-        sendWeekdaysOnly: input.sendWeekdaysOnly ?? true,
-      },
+      sendPolicy: buildMockSendPolicy({
+        sendTimezone: input.sendTimezone,
+        sendWindowStartHour: input.sendWindowStartHour,
+        sendWindowEndHour: input.sendWindowEndHour,
+        sendWeekdaysOnly: input.sendWeekdaysOnly,
+        sendDayCountMode: input.sendDayCountMode,
+        sendCalendarCountryCode: input.sendCalendarCountryCode,
+        sendCalendarSubdivisionCode: input.sendCalendarSubdivisionCode,
+      }),
       summary: {
         candidateContactCount: 4,
         eligibleContactCount: 2,
@@ -533,12 +603,15 @@ export function createMockDeps(): AdapterDeps {
         domainCount: 1,
         domains: ['example.com'],
       },
-      sendPolicy: {
-        sendTimezone: input.sendTimezone ?? 'Europe/Moscow',
-        sendWindowStartHour: input.sendWindowStartHour ?? 9,
-        sendWindowEndHour: input.sendWindowEndHour ?? 17,
-        sendWeekdaysOnly: input.sendWeekdaysOnly ?? true,
-      },
+      sendPolicy: buildMockSendPolicy({
+        sendTimezone: input.sendTimezone,
+        sendWindowStartHour: input.sendWindowStartHour,
+        sendWindowEndHour: input.sendWindowEndHour,
+        sendWeekdaysOnly: input.sendWeekdaysOnly,
+        sendDayCountMode: input.sendDayCountMode,
+        sendCalendarCountryCode: input.sendCalendarCountryCode,
+        sendCalendarSubdivisionCode: input.sendCalendarSubdivisionCode,
+      }),
       warnings: [],
     }),
     launchCampaign: async (input) => ({
@@ -565,12 +638,15 @@ export function createMockDeps(): AdapterDeps {
           domains: [],
         },
       },
-      sendPolicy: {
-        sendTimezone: input.sendTimezone ?? 'Europe/Moscow',
-        sendWindowStartHour: input.sendWindowStartHour ?? 9,
-        sendWindowEndHour: input.sendWindowEndHour ?? 17,
-        sendWeekdaysOnly: input.sendWeekdaysOnly ?? true,
-      },
+      sendPolicy: buildMockSendPolicy({
+        sendTimezone: input.sendTimezone,
+        sendWindowStartHour: input.sendWindowStartHour,
+        sendWindowEndHour: input.sendWindowEndHour,
+        sendWeekdaysOnly: input.sendWeekdaysOnly,
+        sendDayCountMode: input.sendDayCountMode,
+        sendCalendarCountryCode: input.sendCalendarCountryCode,
+        sendCalendarSubdivisionCode: input.sendCalendarSubdivisionCode,
+      }),
     }),
     runCampaignAutoSendSweep: async ({ batchLimit }) => ({
       summary: {
@@ -712,7 +788,7 @@ export function createMockDeps(): AdapterDeps {
       handled_by: null,
     }),
     triggerInboxPoll: async ({ mailboxAccountId }) => ({
-      source: 'outreacher-process-replies',
+      source: 'crew_five-process-replies',
       requestedAt: '2026-03-17T10:00:00.000Z',
       upstreamStatus: 202,
       accepted: true,
@@ -794,31 +870,25 @@ export function createMockDeps(): AdapterDeps {
       bumpMinDaysSinceIntro: bumpMinDaysSinceIntro ?? 3,
       updatedAt: '2026-03-21T10:01:00Z',
     }),
-    getCampaignSendPolicy: async (campaignId) => ({
-      campaignId,
-      campaignName: 'Mock Campaign',
-      campaignStatus: 'review',
-      sendTimezone: 'Europe/Moscow',
-      sendWindowStartHour: 9,
-      sendWindowEndHour: 17,
-      sendWeekdaysOnly: true,
-      updatedAt: '2026-03-21T10:02:00Z',
-    }),
+    getCampaignSendPolicy: async (campaignId) => buildMockSendPolicyView(campaignId),
     updateCampaignSendPolicy: async ({
       campaignId,
       sendTimezone,
       sendWindowStartHour,
       sendWindowEndHour,
       sendWeekdaysOnly,
-    }) => ({
-      campaignId,
-      campaignName: 'Mock Campaign',
-      campaignStatus: 'review',
-      sendTimezone: sendTimezone ?? 'Europe/Moscow',
-      sendWindowStartHour: sendWindowStartHour ?? 9,
-      sendWindowEndHour: sendWindowEndHour ?? 17,
-      sendWeekdaysOnly: sendWeekdaysOnly ?? true,
+      sendDayCountMode,
+      sendCalendarCountryCode,
+      sendCalendarSubdivisionCode,
+    }) => buildMockSendPolicyView(campaignId, {
       updatedAt: '2026-03-21T10:03:00Z',
+      sendTimezone,
+      sendWindowStartHour,
+      sendWindowEndHour,
+      sendWeekdaysOnly,
+      sendDayCountMode,
+      sendCalendarCountryCode,
+      sendCalendarSubdivisionCode,
     }),
     replaceCampaignMailboxAssignment: async ({ campaignId, assignments, source }) => ({
       campaignId,

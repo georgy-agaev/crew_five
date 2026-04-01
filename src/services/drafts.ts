@@ -8,6 +8,10 @@ import { getPrimaryProvidersForWorkflow } from './enrichmentSettings.js';
 import { getProviderResult } from './enrichment/store.js';
 import { buildHybridEnrichmentByProvider } from './enrichment/hybridContext.js';
 import { listCampaignAudience } from './campaignAudience.js';
+import {
+  resolveRecipientEmail,
+  type EmailDeliverabilityStatus,
+} from './recipientResolver.js';
 
 interface GenerateDraftsOptions {
   campaignId: string;
@@ -34,7 +38,12 @@ interface SegmentMemberRow {
     contact?: {
       full_name?: string;
       work_email?: string;
+      generic_email?: string | null;
       position?: string;
+      recipient_email?: string | null;
+      recipient_email_source?: string | null;
+      recipient_email_kind?: string | null;
+      sendable?: boolean;
     };
     company?: Record<string, unknown> | null;
     request?: EmailDraftRequest;
@@ -47,6 +56,15 @@ interface OfferingProvenance {
   offeringSummary: Record<string, unknown> | null;
 }
 
+interface EmployeeContextRow {
+  id: string;
+  ai_research_data?: unknown;
+  work_email?: string | null;
+  work_email_status?: EmailDeliverabilityStatus | null;
+  generic_email?: string | null;
+  generic_email_status?: EmailDeliverabilityStatus | null;
+}
+
 function normalizeEmail(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -55,10 +73,22 @@ function normalizeEmail(value: unknown): string | null {
   return trimmed;
 }
 
-function resolveMemberEmail(snapshot: SegmentMemberRow['snapshot']): string | null {
+function resolveMemberEmail(
+  snapshot: SegmentMemberRow['snapshot'],
+  employee?: EmployeeContextRow | null
+): string | null {
   const fromRequest = snapshot?.request?.brief?.prospect?.email;
+  const fromSnapshotRecipient = snapshot?.contact?.recipient_email;
   const fromSnapshot = snapshot?.contact?.work_email;
-  return normalizeEmail(fromRequest) ?? normalizeEmail(fromSnapshot);
+  const fromEmployee = employee
+    ? resolveRecipientEmail({
+        work_email: employee.work_email ?? null,
+        work_email_status: employee.work_email_status ?? null,
+        generic_email: employee.generic_email ?? null,
+        generic_email_status: employee.generic_email_status ?? null,
+      }).recipientEmail
+    : null;
+  return normalizeEmail(fromRequest) ?? normalizeEmail(fromSnapshotRecipient) ?? normalizeEmail(fromSnapshot) ?? normalizeEmail(fromEmployee);
 }
 
 function coerceLanguage(value: unknown): string {
@@ -91,7 +121,11 @@ function buildRequestFromSnapshot(params: {
   const companyName = companyNameRaw.trim() ? companyNameRaw.trim() : 'your company';
 
   const email =
-    typeof contact.work_email === 'string' && contact.work_email.includes('@') ? contact.work_email : undefined;
+    typeof contact.recipient_email === 'string' && contact.recipient_email.includes('@')
+      ? contact.recipient_email
+      : typeof contact.work_email === 'string' && contact.work_email.includes('@')
+        ? contact.work_email
+        : undefined;
 
   return {
     email_type: 'intro',
@@ -332,12 +366,15 @@ export async function generateDrafts(
     }
   }
 
-  const employeeResearchById = new Map<string, unknown>();
+  const employeeById = new Map<string, EmployeeContextRow>();
   if (contactIds.length) {
-    const { data, error } = await client.from('employees').select('id, ai_research_data').in('id', contactIds);
+    const { data, error } = await client
+      .from('employees')
+      .select('id, ai_research_data, work_email, work_email_status, generic_email, generic_email_status')
+      .in('id', contactIds);
     if (error) throw error;
-    for (const row of (data ?? []) as any[]) {
-      employeeResearchById.set(String(row.id), row.ai_research_data);
+    for (const row of (data ?? []) as EmployeeContextRow[]) {
+      employeeById.set(String(row.id), row);
     }
   }
 
@@ -347,7 +384,8 @@ export async function generateDrafts(
       break;
     }
 
-    const memberEmail = resolveMemberEmail(member.snapshot);
+    const employee = employeeById.get(member.contact_id) ?? null;
+    const memberEmail = resolveMemberEmail(member.snapshot, employee);
     if (!memberEmail) {
       summary.skippedNoEmail += 1;
       continue;
@@ -396,7 +434,7 @@ export async function generateDrafts(
       request,
       primaryProviders: primaryProvider,
       companyResearch: companyResearchById.get(member.company_id) ?? null,
-      employeeResearch: employeeResearchById.get(member.contact_id) ?? null,
+      employeeResearch: employee?.ai_research_data ?? null,
     });
     const response = await aiClient.generateDraft(enriched.request);
     let subject = response.subject;

@@ -15,6 +15,7 @@ import {
   type RecipientEmailSource,
 } from './recipientResolver.js';
 import type { OfferRecord } from './offers.js';
+import type { ProjectRecord } from './projects.js';
 
 interface SegmentContext {
   id: string;
@@ -26,15 +27,26 @@ interface SegmentContext {
 interface IcpProfileContext {
   id: string;
   name: string | null;
+  project_id: string | null;
+  description: string | null;
   offering_domain: string | null;
+  company_criteria: Record<string, unknown>;
+  persona_criteria: Record<string, unknown>;
+  phase_outputs: Record<string, unknown> | null;
+  learnings: unknown;
 }
 
 interface IcpHypothesisContext {
   id: string;
+  icp_id: string | null;
   name: string | null;
   offer_id: string | null;
   status: string | null;
   messaging_angle: string | null;
+  search_config: Record<string, unknown>;
+  targeting_defaults: Record<string, unknown> | null;
+  pattern_defaults: Record<string, unknown> | null;
+  notes: string | null;
 }
 
 interface EmployeeRow {
@@ -73,6 +85,8 @@ const EMPLOYEE_QUERY_CHUNK_SIZE = 100;
 
 export interface CampaignDetailEmployeeView {
   contact_id: string;
+  audience_source: 'segment_snapshot' | 'manual_attach';
+  attached_at: string | null;
   full_name: string | null;
   position: string | null;
   work_email: string | null;
@@ -102,6 +116,8 @@ export interface CampaignDetailEmployeeView {
 export interface CampaignDetailCompanyView extends CampaignCompanyRecord {
   composition_summary: {
     total_contacts: number;
+    segment_snapshot_contacts: number;
+    manual_attach_contacts: number;
     sendable_contacts: number;
     eligible_for_new_intro_contacts: number;
     blocked_no_sendable_email_contacts: number;
@@ -120,6 +136,7 @@ export interface CampaignReadModel {
   icp_profile: IcpProfileContext | null;
   icp_hypothesis: IcpHypothesisContext | null;
   offer: OfferRecord | null;
+  project: ProjectRecord | null;
   companies: CampaignDetailCompanyView[];
 }
 
@@ -194,7 +211,9 @@ export async function getCampaignReadModel(
     icpProfile = await loadOptionalSingle<IcpProfileContext>(
       client
         .from('icp_profiles')
-        .select('id,name,offering_domain')
+        .select(
+          'id,project_id,name,description,offering_domain,company_criteria,persona_criteria,phase_outputs,learnings'
+        )
         .eq('id', segment.icp_profile_id)
         .single()
     );
@@ -205,17 +224,33 @@ export async function getCampaignReadModel(
     const hypothesis = await loadOptionalSingle<Record<string, unknown>>(
       client
         .from('icp_hypotheses')
-        .select('id,hypothesis_label,offer_id,status,messaging_angle')
+        .select(
+          'id,icp_id,hypothesis_label,offer_id,status,messaging_angle,search_config,targeting_defaults,pattern_defaults,notes'
+        )
         .eq('id', campaign.icp_hypothesis_id)
         .single()
     );
     if (hypothesis) {
       icpHypothesis = {
         id: String(hypothesis.id),
+        icp_id: typeof hypothesis.icp_id === 'string' ? hypothesis.icp_id : null,
         name: typeof hypothesis.hypothesis_label === 'string' ? hypothesis.hypothesis_label : null,
         offer_id: typeof hypothesis.offer_id === 'string' ? hypothesis.offer_id : null,
         status: typeof hypothesis.status === 'string' ? hypothesis.status : null,
         messaging_angle: typeof hypothesis.messaging_angle === 'string' ? hypothesis.messaging_angle : null,
+        search_config:
+          hypothesis.search_config && typeof hypothesis.search_config === 'object'
+            ? (hypothesis.search_config as Record<string, unknown>)
+            : {},
+        targeting_defaults:
+          hypothesis.targeting_defaults && typeof hypothesis.targeting_defaults === 'object'
+            ? (hypothesis.targeting_defaults as Record<string, unknown>)
+            : null,
+        pattern_defaults:
+          hypothesis.pattern_defaults && typeof hypothesis.pattern_defaults === 'object'
+            ? (hypothesis.pattern_defaults as Record<string, unknown>)
+            : null,
+        notes: typeof hypothesis.notes === 'string' ? hypothesis.notes : null,
       };
     }
   }
@@ -225,8 +260,25 @@ export async function getCampaignReadModel(
     offer = await loadOptionalSingle<OfferRecord>(
       client
         .from('offers')
-        .select('id,title,project_name,description,status,created_at,updated_at')
+        .select('id,project_id,title,project_name,description,status,created_at,updated_at')
         .eq('id', campaign.offer_id)
+        .single()
+    );
+  }
+
+  const resolvedProjectId =
+    campaign.project_id ??
+    offer?.project_id ??
+    icpProfile?.project_id ??
+    null;
+
+  let project: ProjectRecord | null = null;
+  if (resolvedProjectId) {
+    project = await loadOptionalSingle<ProjectRecord>(
+      client
+        .from('projects')
+        .select('id,key,name,description,status,created_at,updated_at')
+        .eq('id', resolvedProjectId)
         .single()
     );
   }
@@ -303,9 +355,13 @@ export async function getCampaignReadModel(
     const employeeOutbounds = outboundsByContact.get(contactId) ?? [];
     const employeeEvents = employeeOutbounds.flatMap((row) => eventsByOutbound.get(row.id) ?? []);
     const recipient = resolveRecipientEmail({
-      work_email: employee?.work_email ?? null,
+      work_email:
+        employee?.work_email ??
+        (typeof snapshotContact?.work_email === 'string' ? snapshotContact.work_email : null),
       work_email_status: employee?.work_email_status ?? null,
-      generic_email: employee?.generic_email ?? null,
+      generic_email:
+        employee?.generic_email ??
+        (typeof snapshotContact?.generic_email === 'string' ? snapshotContact.generic_email : null),
       generic_email_status: employee?.generic_email_status ?? null,
     });
     const sentCount = employeeOutbounds.filter((row) => row.status === 'sent').length;
@@ -319,6 +375,8 @@ export async function getCampaignReadModel(
 
     const row: CampaignDetailEmployeeView = {
       contact_id: contactId,
+      audience_source: member.source,
+      attached_at: member.attached_at ?? null,
       full_name:
         employee?.full_name ??
         (typeof snapshotContact?.full_name === 'string' ? snapshotContact.full_name : null),
@@ -328,7 +386,9 @@ export async function getCampaignReadModel(
       work_email:
         employee?.work_email ??
         (typeof snapshotContact?.work_email === 'string' ? snapshotContact.work_email : null),
-      generic_email: employee?.generic_email ?? null,
+      generic_email:
+        employee?.generic_email ??
+        (typeof snapshotContact?.generic_email === 'string' ? snapshotContact.generic_email : null),
       recipient_email: recipient.recipientEmail,
       recipient_email_source: recipient.recipientEmailSource,
       sendable: recipient.sendable,
@@ -364,6 +424,7 @@ export async function getCampaignReadModel(
     icp_profile: icpProfile,
     icp_hypothesis: icpHypothesis,
     offer,
+    project,
     companies: companiesView.companies.map((company) => ({
       ...company,
       employees: sortByName(companyEmployees.get(company.company_id) ?? []),
@@ -371,6 +432,8 @@ export async function getCampaignReadModel(
         const employees = companyEmployees.get(company.company_id) ?? [];
         return {
           total_contacts: employees.length,
+          segment_snapshot_contacts: employees.filter((employee) => employee.audience_source === 'segment_snapshot').length,
+          manual_attach_contacts: employees.filter((employee) => employee.audience_source === 'manual_attach').length,
           sendable_contacts: employees.filter((employee) => employee.sendable).length,
           eligible_for_new_intro_contacts: employees.filter((employee) => employee.eligible_for_new_intro).length,
           blocked_no_sendable_email_contacts: employees.filter((employee) =>

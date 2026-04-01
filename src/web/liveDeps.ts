@@ -78,6 +78,7 @@ import {
   updateDraftContent as updateDraftContentService,
 } from '../services/draftStore.js';
 import { getReplyPatterns } from '../services/emailEvents.js';
+import { processReplies as processRepliesService } from '../services/processReplies.js';
 import {
   markInboxReplyHandled as markInboxReplyHandledService,
   markInboxReplyUnhandled as markInboxReplyUnhandledService,
@@ -105,6 +106,7 @@ import {
   suggestPromptPatternAdjustments,
 } from '../services/analytics.js';
 import { runCampaignAutoSendSweep as runCampaignAutoSendSweepService } from '../services/campaignAutoSend.js';
+import { executeCampaignSendRun as executeCampaignSendRunService } from '../services/campaignSendExecution.js';
 import { getDashboardOverview as getDashboardOverviewService } from '../services/dashboardOverview.js';
 import {
   listCampaignEvents as listCampaignEventsService,
@@ -140,11 +142,24 @@ import {
   isSendCampaignTriggerConfigured,
   triggerSendCampaign,
 } from './liveDeps/sendCampaignTrigger.js';
+import {
+  closeSharedImapMcpSendTransport,
+  getSharedImapMcpSendTransport,
+  isImapMcpSendConfigured,
+} from './liveDeps/imapMcpSendTransport.js';
+import {
+  getSharedImapMcpInboxTransport,
+  isImapMcpInboxConfigured,
+} from './liveDeps/imapMcpInboxTransport.js';
 import { probeEnrichmentProvider } from './liveDeps/providerProbe.js';
 import { ensurePromptRegistryColumns, getPromptRegistryColumnSupport } from './liveDeps/promptRegistrySupport.js';
 import { saveExaSegmentToSupabase } from './liveDeps/saveExaSegment.js';
 import { buildSmartleadClientFromEnv } from './smartlead.js';
 import type { AdapterDeps, Campaign, EventRow } from './types.js';
+
+// Direct transport operational logs are intentional; without them send-path diagnosis is too opaque in live mode.
+/* eslint-disable-next-line security-node/detect-crlf */
+const logSendExecution = (message: string) => console.log(message);
 
 export function createLiveDeps(
   opts: { supabase?: any; aiClient?: AiClient; smartlead?: SmartleadMcpClient; chatClient?: ChatClient } = {}
@@ -160,6 +175,67 @@ export function createLiveDeps(
   if (process.env.FIRECRAWL_API_KEY) readyProviders.add('firecrawl');
   if (process.env.ANYSITE_API_KEY) readyProviders.add('anysite');
   const sendCampaignTriggerConfigured = isSendCampaignTriggerConfigured();
+  const directImapMcpSendConfigured = isImapMcpSendConfigured();
+  const processRepliesTriggerConfigured = isProcessRepliesTriggerConfigured();
+  const directImapMcpInboxConfigured = isImapMcpInboxConfigured();
+  const executeCampaignSend = async (request: {
+    campaignId: string;
+    reason?: 'auto_send_intro' | 'auto_send_bump' | 'auto_send_mixed';
+    batchLimit?: number;
+  }) => {
+    if (directImapMcpSendConfigured) {
+      const transport = await getSharedImapMcpSendTransport();
+      const result = (await executeCampaignSendRunService(supabase, transport, {
+          campaignId: request.campaignId,
+          reason: request.reason ?? 'auto_send_mixed',
+          batchLimit: request.batchLimit,
+        })) as unknown as Record<string, unknown>;
+      const sentCount =
+        typeof result.sentCount === 'number'
+          ? result.sentCount
+          : typeof result.triggered === 'number'
+            ? result.triggered
+            : 0;
+      const selectedCount = typeof result.selectedCount === 'number' ? result.selectedCount : sentCount;
+      const failedCount = typeof result.failedCount === 'number' ? result.failedCount : 0;
+      const skippedCount = typeof result.skippedCount === 'number' ? result.skippedCount : 0;
+      logSendExecution(
+        `[web adapter] direct send execution completed (campaign=${request.campaignId}, reason=${request.reason ?? 'auto_send_mixed'}, selected=${selectedCount}, sent=${sentCount}, failed=${failedCount}, skipped=${skippedCount})`
+      );
+      return result;
+    }
+
+    logSendExecution(
+      `[web adapter] falling back to Outreach send bridge (campaign=${request.campaignId}, reason=${request.reason ?? 'auto_send_mixed'})`
+    );
+    return triggerSendCampaign({
+      campaignId: request.campaignId,
+      reason: request.reason ?? 'auto_send_mixed',
+      batchLimit: request.batchLimit,
+    });
+  };
+  const executeInboxPoll = async (request: {
+    mailboxAccountId?: string;
+    lookbackHours?: number;
+  }) => {
+    if (directImapMcpInboxConfigured) {
+      const transport = await getSharedImapMcpInboxTransport();
+      const result = await processRepliesService(supabase, transport, request);
+      logSendExecution(
+        `[web adapter] direct process-replies completed (accounts=${result.polledAccounts}, processed=${result.processed}, ingested=${result.ingested}, skipped=${result.skipped}, failed=${result.failed})`
+      );
+      if (result.failed > 0 && Array.isArray(result.errors) && result.errors.length > 0) {
+        const sample = result.errors.slice(0, 3).join('; ');
+        logSendExecution(
+          `[web adapter] direct process-replies errors (showing ${Math.min(3, result.errors.length)}/${result.errors.length}): ${sample}`
+        );
+      }
+      return result;
+    }
+
+    logSendExecution('[web adapter] falling back to Outreach process-replies bridge');
+    return triggerProcessReplies(request);
+  };
 
   return {
     listProjects: async (options) => listProjectsService(supabase, options),
@@ -202,17 +278,30 @@ export function createLiveDeps(
     getCampaignReadModel: async (campaignId) => getCampaignReadModelService(supabase, campaignId),
     getCampaignAudit: async (campaignId) => getCampaignAuditService(supabase, campaignId),
     getCampaignSendPreflight: async (campaignId) => getCampaignSendPreflightService(supabase, campaignId),
+    ...(directImapMcpSendConfigured || sendCampaignTriggerConfigured
+      ? {
+          executeCampaignSend,
+        }
+      : {}),
     getCampaignLaunchPreview: async (input) => getCampaignLaunchPreviewService(supabase, input),
     launchCampaign: async (input) => launchCampaignService(supabase, input),
     getCampaignNextWavePreview: async (input) => getCampaignNextWavePreviewService(supabase, input),
     createCampaignNextWave: async (input) => createCampaignNextWaveService(supabase, input),
     getCampaignRotationPreview: async (input) => getCampaignRotationPreviewService(supabase, input),
-    ...(sendCampaignTriggerConfigured
+    ...(directImapMcpSendConfigured || sendCampaignTriggerConfigured
       ? {
           runCampaignAutoSendSweep: async ({ batchLimit }: { batchLimit?: number }) =>
             runCampaignAutoSendSweepService(supabase, {
               batchLimit,
-              triggerSendCampaign,
+              ...(directImapMcpSendConfigured
+                ? {
+                  executeSendCampaign: async (request) => {
+                      return executeCampaignSend(request);
+                    },
+                  }
+                : {
+                    triggerSendCampaign,
+                  }),
             }),
         }
       : {}),
@@ -321,14 +410,14 @@ export function createLiveDeps(
       return data as EventRow[];
     },
     listReplyPatterns: async ({ since, topN }) => getReplyPatterns(supabase, { since, topN }),
-    listInboxReplies: async ({ campaignId, replyLabel, handled, limit }) =>
-      listInboxRepliesService(supabase, { campaignId, replyLabel, handled, limit }),
+    listInboxReplies: async ({ campaignId, replyLabel, handled, limit, linkage }) =>
+      listInboxRepliesService(supabase, { campaignId, replyLabel, handled, limit, linkage }),
     markInboxReplyHandled: async ({ replyId, handledBy }) =>
       markInboxReplyHandledService(supabase, { replyId, handledBy }),
     markInboxReplyUnhandled: async (replyId) =>
       markInboxReplyUnhandledService(supabase, replyId),
-    triggerInboxPoll: isProcessRepliesTriggerConfigured()
-      ? async (request) => triggerProcessReplies(request)
+    triggerInboxPoll: directImapMcpInboxConfigured || processRepliesTriggerConfigured
+      ? async (request) => executeInboxPoll(request)
       : undefined,
     dashboardOverview: async () => getDashboardOverviewService(supabase),
     analyticsSummary: async ({ groupBy, since }) =>
@@ -510,3 +599,5 @@ export function createLiveDeps(
     saveExaSegment: async (payload) => saveExaSegmentToSupabase(supabase, payload),
   };
 }
+
+export { closeSharedImapMcpSendTransport };

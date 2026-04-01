@@ -34,6 +34,11 @@ export async function handleAnalyticsRoutes(
     if (!deps.listInboxReplies) {
       return { status: 501, body: { error: 'Inbox replies not configured' } };
     }
+    const linkageRaw = searchParams.get('linkage');
+    const linkage =
+      linkageRaw === 'linked' || linkageRaw === 'unlinked' || linkageRaw === 'all'
+        ? linkageRaw
+        : undefined;
     return {
       status: 200,
       body: await deps.listInboxReplies({
@@ -46,6 +51,7 @@ export async function handleAnalyticsRoutes(
               ? false
               : undefined,
         limit: searchParams.get('limit') ? Number(searchParams.get('limit')) : undefined,
+        linkage,
       }),
     };
   }

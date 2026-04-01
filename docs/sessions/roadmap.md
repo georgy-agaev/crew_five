@@ -1,6 +1,6 @@
 # Sessions Roadmap – crew_five
 
-> Version: v0.9 (2026-03-22)
+> Version: v1.2 (2026-03-26)
 
 > This roadmap reflects the current agreed direction for `crew_five` after the
 > recent integration work with `Outreach` and the revised product model. It
@@ -52,11 +52,11 @@ Primary role:
 
 Primary role:
 
-- runtime execution
 - company processing
-- draft generation/review/send runtime
-- mailbox polling
-- reply classification
+- draft generation/review runtime
+- angle formation
+- ambiguous reply interpretation
+- reply drafting
 
 ### crew_five
 
@@ -129,48 +129,74 @@ The current stage is about making the real operator loop reliably usable:
 
 ### Urgent current priority
 
-Because live campaigns already exist and the main pain is manual send
-supervision, the most urgent current block is:
+The former urgent execution-migration block is now operationally completed:
 
-- automatic scheduled sending of approved intro and eligible bump drafts
+- `send-campaign` moved into `crew_five`
+- auto-send intro + bump works through direct `imap-mcp`
+- inbox polling + simple reply processing also now run in `crew_five`
+- manual `Send now` and `Poll now` now go through `crew_five` surfaces
 
-This should currently outrank broader ergonomics work because it removes
-day-to-day operator babysitting from already live campaigns.
+The next roadmap priority is:
+
+- improving generation context quality on top of the now-internal execution loop
+- refreshing automated E2E coverage for the real operator surfaces
+- cleaning up remaining operator visibility gaps rather than adding another large subsystem
 
 ### Current-stage priorities
 
-1. auto-send intro + bump scheduler
+1. `send-campaign -> crew_five`
    Status: Completed
-2. processed company -> campaign wave attach
+2. auto-send intro + bump scheduler
    Status: Completed
-3. campaign wave composition / eligibility visibility
+3. inbox polling + simple reply processing in `crew_five`
    Status: Completed
-4. suppression and deliverability hardening
+4. richer execution context for generation (`campaign:detail`, snapshot-derived research context, confirmed facts)
+   Status: Current top priority
+5. automated Playwright E2E refresh for current operator surfaces
+   Status: Current-stage priority
+6. campaign execution exposure / offer-aware analytics UI cleanup
+   Status: Current-stage polish priority
+7. processed company -> campaign wave attach
    Status: Completed
-5. operator-facing sendability/status UI
+8. campaign wave composition / eligibility visibility
    Status: Completed
-6. minimal offer registry
+9. suppression and deliverability hardening
+   Status: Ongoing hardening
+10. operator-facing sendability/status UI
+   Status: Partially completed, continue incrementally
+11. minimal offer registry
    Status: Completed
-7. operational `Hypothesis`
+12. operational `Hypothesis`
    Status: Completed
-8. next-wave support
+13. next-wave support
+   Status: Completed
+14. controlled rotation groundwork
+   Status: Completed
+15. multi-project foundations
    Status: Completed
 
 ### Current-stage completion snapshot
 
 Completed in the current stage:
 
-- auto-send intro + bump scheduler
+- import preview/apply and partial apply
+- post-import company processing backend
 - processed company -> campaign wave attach
-- campaign wave composition / eligibility visibility
-- suppression and deliverability hardening
-- operator-facing sendability/status UI
-- minimal offer registry
-- operational `Hypothesis`
+- campaign launch + send preflight backbone
+- campaign send policy and business-day calendar
+- next-wave and controlled rotation
+- offer / hypothesis / project foundations
+- bounce materialization to per-email deliverability state
+- `send-campaign` direct execution in `crew_five`
+- `process-replies` direct polling + obvious reply handling in `crew_five`
+- dashboard and current operator shell
 
 Still open in the current stage:
 
-- none
+- richer execution context for draft generation
+- refreshed automated E2E for current operator surfaces
+- exposure / analytics UI cleanup and stale task cleanup
+- suppression hardening and related UI follow-up
 
 ### Current-stage detailed plan
 
@@ -178,46 +204,39 @@ See:
 
 - [docs/private/2026-03-21_current_stage_action_plan.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_current_stage_action_plan.md)
 - [docs/private/2026-03-21_backend_task_auto_send_scheduler.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_backend_task_auto_send_scheduler.md)
+- [docs/private/2026-03-23_response_to_outreach_evolution_proposal.md](/Users/georgyagaev/crew_five/docs/private/2026-03-23_response_to_outreach_evolution_proposal.md)
 
 ## Next Stage – Main Goal
 
-The next stage starts after the current operator loop is stable enough in real
-use.
+The next stage now starts from a different point than this roadmap originally
+assumed, because several previously "next-stage" items are already shipped.
 
 Its purpose is:
 
-- make repeated waves easier,
-- make `Offer` and `Hypothesis` first-class operational objects,
-- support next-wave creation,
-- prepare controlled offer rotation later.
+- improve generation quality with richer confirmed execution context,
+- strengthen observability and E2E confidence,
+- finish the remaining operator-quality gaps around replies, analytics, and visibility,
+- only then consider deeper transport/provider abstraction and broader strategy tooling.
 
 ### Next-stage priorities
 
-1. offer registry hardening
-   Status: Completed
-2. offer management UI
-   Status: Completed (minimal operator shape)
-3. hypothesis operationalization
-   Status: Completed
-4. hypothesis-aware campaign creation
-   Status: Completed
-5. next-wave backend support
-   Status: Completed
-6. next-wave operator flow
-   Status: Completed
-7. offer history / exposure tracking
-   Status: Completed
-8. offer-aware analytics
-   Status: Completed
-9. controlled rotation groundwork
-   Status: Completed
-10. multi-project foundations
-   Status: Completed
+1. richer execution context for generation
+   Status: Next active implementation block
+2. Playwright E2E refresh for `Home`, `Campaigns`, `Builder V2`, `Inbox V2`
+   Status: Next active implementation block
+3. offer / exposure / analytics operator polish
+   Status: Planned
+4. reply-side operator workflow after obvious classification
+   Status: Planned
+5. direct transport adapter hardening / lifecycle polish
+   Status: Partially completed (reconnect-on-ECONNRESET, restart-on-ImapFlow reuse, error hygiene); continue incrementally
+6. broader generation orchestration decisions
+   Status: Later
 
 Current next-stage block status:
 
-- Completed through `multi-project foundations`
-- Next backend priority: TBD in the next planning cycle
+- active
+- should focus on quality, observability, and operator usefulness rather than reopening execution migration
 
 ### Next-stage detailed plan
 
@@ -274,6 +293,7 @@ For implementation planning:
 - [docs/private/2026-03-20_backend_roadmap_v1.md](/Users/georgyagaev/crew_five/docs/private/2026-03-20_backend_roadmap_v1.md)
 - [docs/private/2026-03-21_current_stage_action_plan.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_current_stage_action_plan.md)
 - [docs/private/2026-03-21_next_stage_action_plan.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_next_stage_action_plan.md)
+- [docs/private/2026-03-23_response_to_outreach_evolution_proposal.md](/Users/georgyagaev/crew_five/docs/private/2026-03-23_response_to_outreach_evolution_proposal.md)
 
 For strategy context:
 

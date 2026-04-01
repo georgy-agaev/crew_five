@@ -86,7 +86,6 @@ export async function setActivePromptForStep(
   step: string,
   coachPromptId: string
 ): Promise<void> {
-  /* eslint-disable security-node/detect-unhandled-async-errors */
   // Demote all prompts for the step to non-active (pilot) then set the chosen one to active.
   const demoteRes = await client
     .from('prompt_registry')
@@ -128,7 +127,6 @@ export async function setActivePromptForStep(
     }
     throw error;
   }
-  /* eslint-enable security-node/detect-unhandled-async-errors */
 }
 
 export async function resolvePromptForStep(

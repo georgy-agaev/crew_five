@@ -1,4 +1,3 @@
-/* eslint-disable security-node/detect-unhandled-async-errors */
 import { createHash } from 'crypto';
 import { emitTrace, finishTrace, isTracingEnabled, startTrace } from '../services/tracing.js';
 

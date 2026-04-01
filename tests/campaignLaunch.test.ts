@@ -129,6 +129,8 @@ describe('launchCampaign', () => {
       icpHypothesisId: 'hyp-1',
       snapshotMode: 'reuse',
       createdBy: 'outreacher',
+      sendDayCountMode: 'business_days_campaign',
+      sendCalendarCountryCode: 'RU',
       senderPlan: {
         source: 'outreacher',
         assignments: [
@@ -168,10 +170,17 @@ describe('launchCampaign', () => {
         sendWindowStartHour: 8,
         sendWindowEndHour: 16,
         sendWeekdaysOnly: false,
+        sendDayCountMode: 'business_days_campaign',
+        sendCalendarCountryCode: 'RU',
         metadata: {
           snapshot: {
             version: 3,
             count: 120,
+          },
+          send_policy: {
+            send_day_count_mode: 'business_days_campaign',
+            send_calendar_country_code: 'RU',
+            send_calendar_subdivision_code: null,
           },
         },
       })
@@ -194,6 +203,9 @@ describe('launchCampaign', () => {
       sendWindowStartHour: 8,
       sendWindowEndHour: 16,
       sendWeekdaysOnly: false,
+      sendDayCountMode: 'business_days_campaign',
+      sendCalendarCountryCode: 'RU',
+      sendCalendarSubdivisionCode: null,
     });
   });
 
@@ -241,6 +253,9 @@ describe('launchCampaign', () => {
       sendWindowStartHour: 9,
       sendWindowEndHour: 17,
       sendWeekdaysOnly: true,
+      sendDayCountMode: 'elapsed_days',
+      sendCalendarCountryCode: null,
+      sendCalendarSubdivisionCode: null,
     });
   });
 

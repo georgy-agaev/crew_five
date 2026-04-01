@@ -1,10 +1,18 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+export type CampaignSendPolicyMode =
+  | 'elapsed_days'
+  | 'business_days_campaign'
+  | 'business_days_recipient';
+
 export interface CampaignSendPolicyInput {
   sendTimezone?: string;
   sendWindowStartHour?: number;
   sendWindowEndHour?: number;
   sendWeekdaysOnly?: boolean;
+  sendDayCountMode?: CampaignSendPolicyMode;
+  sendCalendarCountryCode?: string | null;
+  sendCalendarSubdivisionCode?: string | null;
 }
 
 export interface CampaignSendPolicy {
@@ -12,6 +20,9 @@ export interface CampaignSendPolicy {
   sendWindowStartHour: number;
   sendWindowEndHour: number;
   sendWeekdaysOnly: boolean;
+  sendDayCountMode: CampaignSendPolicyMode;
+  sendCalendarCountryCode: string | null;
+  sendCalendarSubdivisionCode: string | null;
 }
 
 export interface CampaignSendPolicyView extends CampaignSendPolicy {
@@ -19,6 +30,7 @@ export interface CampaignSendPolicyView extends CampaignSendPolicy {
   campaignName: string;
   campaignStatus: string | null;
   updatedAt: string | null;
+  metadata: Record<string, unknown> | null;
 }
 
 type CampaignSendPolicyRow = {
@@ -29,6 +41,7 @@ type CampaignSendPolicyRow = {
   send_window_start_hour: number | null;
   send_window_end_hour: number | null;
   send_weekdays_only: boolean | null;
+  metadata: Record<string, unknown> | null;
   updated_at: string | null;
 };
 
@@ -37,6 +50,9 @@ export const DEFAULT_CAMPAIGN_SEND_POLICY: CampaignSendPolicy = {
   sendWindowStartHour: 9,
   sendWindowEndHour: 17,
   sendWeekdaysOnly: true,
+  sendDayCountMode: 'elapsed_days',
+  sendCalendarCountryCode: null,
+  sendCalendarSubdivisionCode: null,
 };
 
 function createValidationError(message: string) {
@@ -61,9 +77,86 @@ function assertIntegerHour(value: unknown, field: string, min: number, max: numb
   }
 }
 
+function normalizeCampaignCountryCode(value: unknown): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    throw createValidationError('sendCalendarCountryCode must be a string when provided');
+  }
+  const normalized = value.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(normalized)) {
+    throw createValidationError('sendCalendarCountryCode must be a valid ISO 3166-1 alpha-2 code');
+  }
+  return normalized;
+}
+
+function normalizeCampaignSubdivisionCode(value: unknown): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    throw createValidationError('sendCalendarSubdivisionCode must be a string when provided');
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    throw createValidationError('sendCalendarSubdivisionCode cannot be empty');
+  }
+  return normalized;
+}
+
+function readSendPolicyMetadata(metadata: Record<string, unknown> | null | undefined): Partial<CampaignSendPolicyInput> {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return {};
+  }
+
+  const sendPolicy = metadata.send_policy;
+  if (!sendPolicy || typeof sendPolicy !== 'object' || Array.isArray(sendPolicy)) {
+    return {};
+  }
+
+  const policy = sendPolicy as Record<string, unknown>;
+  return {
+    sendDayCountMode:
+      policy.send_day_count_mode === 'business_days_campaign'
+        ? 'business_days_campaign'
+        : policy.send_day_count_mode === 'business_days_recipient'
+          ? 'business_days_recipient'
+        : policy.send_day_count_mode === 'elapsed_days'
+          ? 'elapsed_days'
+          : undefined,
+    sendCalendarCountryCode:
+      typeof policy.send_calendar_country_code === 'string'
+        ? policy.send_calendar_country_code
+        : null,
+    sendCalendarSubdivisionCode:
+      typeof policy.send_calendar_subdivision_code === 'string'
+        ? policy.send_calendar_subdivision_code
+        : null,
+  };
+}
+
+export function buildCampaignSendPolicyMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+  policy: CampaignSendPolicy
+): Record<string, unknown> {
+  const existing = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+  return {
+    ...existing,
+    send_policy: {
+      send_day_count_mode: policy.sendDayCountMode,
+      send_calendar_country_code: policy.sendCalendarCountryCode,
+      send_calendar_subdivision_code: policy.sendCalendarSubdivisionCode,
+    },
+  };
+}
+
 export function resolveCampaignSendPolicy(
   input: CampaignSendPolicyInput = {}
 ): CampaignSendPolicy {
+  const mode = input.sendDayCountMode ?? DEFAULT_CAMPAIGN_SEND_POLICY.sendDayCountMode;
+  const sendCalendarCountryCode = normalizeCampaignCountryCode(input.sendCalendarCountryCode);
+  const sendCalendarSubdivisionCode = normalizeCampaignSubdivisionCode(input.sendCalendarSubdivisionCode);
   const resolved: CampaignSendPolicy = {
     sendTimezone: input.sendTimezone ?? DEFAULT_CAMPAIGN_SEND_POLICY.sendTimezone,
     sendWindowStartHour:
@@ -71,6 +164,9 @@ export function resolveCampaignSendPolicy(
     sendWindowEndHour: input.sendWindowEndHour ?? DEFAULT_CAMPAIGN_SEND_POLICY.sendWindowEndHour,
     sendWeekdaysOnly:
       input.sendWeekdaysOnly ?? DEFAULT_CAMPAIGN_SEND_POLICY.sendWeekdaysOnly,
+    sendDayCountMode: mode,
+    sendCalendarCountryCode,
+    sendCalendarSubdivisionCode,
   };
 
   if (!resolved.sendTimezone || !isValidIanaTimezone(resolved.sendTimezone)) {
@@ -84,16 +180,29 @@ export function resolveCampaignSendPolicy(
   if (typeof resolved.sendWeekdaysOnly !== 'boolean') {
     throw createValidationError('sendWeekdaysOnly must be a boolean');
   }
+  if (
+    (resolved.sendDayCountMode === 'business_days_campaign' ||
+      resolved.sendDayCountMode === 'business_days_recipient') &&
+    !resolved.sendCalendarCountryCode
+  ) {
+    throw createValidationError(
+      'sendCalendarCountryCode is required when sendDayCountMode uses business-day mode'
+    );
+  }
 
   return resolved;
 }
 
 function mapRowToView(row: CampaignSendPolicyRow): CampaignSendPolicyView {
+  const metadataPolicy = readSendPolicyMetadata(row.metadata);
   const policy = resolveCampaignSendPolicy({
     sendTimezone: row.send_timezone ?? undefined,
     sendWindowStartHour: row.send_window_start_hour ?? undefined,
     sendWindowEndHour: row.send_window_end_hour ?? undefined,
     sendWeekdaysOnly: row.send_weekdays_only ?? undefined,
+    sendDayCountMode: metadataPolicy.sendDayCountMode,
+    sendCalendarCountryCode: metadataPolicy.sendCalendarCountryCode,
+    sendCalendarSubdivisionCode: metadataPolicy.sendCalendarSubdivisionCode,
   });
 
   return {
@@ -101,6 +210,7 @@ function mapRowToView(row: CampaignSendPolicyRow): CampaignSendPolicyView {
     campaignName: row.name,
     campaignStatus: row.status,
     updatedAt: row.updated_at ?? null,
+    metadata: row.metadata ?? null,
     ...policy,
   };
 }
@@ -112,7 +222,7 @@ export async function getCampaignSendPolicy(
   const { data, error } = await client
     .from('campaigns')
     .select(
-      'id,name,status,send_timezone,send_window_start_hour,send_window_end_hour,send_weekdays_only,updated_at'
+      'id,name,status,send_timezone,send_window_start_hour,send_window_end_hour,send_weekdays_only,metadata,updated_at'
     )
     .eq('id', campaignId)
     .single();
@@ -132,7 +242,10 @@ export async function updateCampaignSendPolicy(
     input.sendTimezone !== undefined ||
     input.sendWindowStartHour !== undefined ||
     input.sendWindowEndHour !== undefined ||
-    input.sendWeekdaysOnly !== undefined;
+    input.sendWeekdaysOnly !== undefined ||
+    input.sendDayCountMode !== undefined ||
+    input.sendCalendarCountryCode !== undefined ||
+    input.sendCalendarSubdivisionCode !== undefined;
 
   if (!hasAnyField) {
     throw createValidationError('At least one send policy field must be provided');
@@ -163,6 +276,15 @@ export async function updateCampaignSendPolicy(
     sendWindowStartHour: input.sendWindowStartHour ?? current.sendWindowStartHour,
     sendWindowEndHour: input.sendWindowEndHour ?? current.sendWindowEndHour,
     sendWeekdaysOnly: input.sendWeekdaysOnly ?? current.sendWeekdaysOnly,
+    sendDayCountMode: input.sendDayCountMode ?? current.sendDayCountMode,
+    sendCalendarCountryCode:
+      input.sendCalendarCountryCode !== undefined
+        ? input.sendCalendarCountryCode
+        : current.sendCalendarCountryCode,
+    sendCalendarSubdivisionCode:
+      input.sendCalendarSubdivisionCode !== undefined
+        ? input.sendCalendarSubdivisionCode
+        : current.sendCalendarSubdivisionCode,
   });
 
   const { data, error } = await client
@@ -172,10 +294,11 @@ export async function updateCampaignSendPolicy(
       send_window_start_hour: resolved.sendWindowStartHour,
       send_window_end_hour: resolved.sendWindowEndHour,
       send_weekdays_only: resolved.sendWeekdaysOnly,
+      metadata: buildCampaignSendPolicyMetadata(current.metadata, resolved),
     })
     .eq('id', input.campaignId)
     .select(
-      'id,name,status,send_timezone,send_window_start_hour,send_window_end_hour,send_weekdays_only,updated_at'
+      'id,name,status,send_timezone,send_window_start_hour,send_window_end_hour,send_weekdays_only,metadata,updated_at'
     )
     .single();
 

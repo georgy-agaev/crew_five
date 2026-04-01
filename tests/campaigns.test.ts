@@ -520,6 +520,7 @@ describe('createCampaign', () => {
       recipient_email: 'alice@example.com',
       recipient_email_source: 'work',
       recipient_email_kind: 'corporate',
+      created_at: '2026-03-15T12:00:00Z',
     });
   });
 });

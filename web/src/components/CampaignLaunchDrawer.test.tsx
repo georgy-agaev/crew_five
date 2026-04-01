@@ -8,6 +8,9 @@ const mockSendPolicy = {
   sendWindowStartHour: 9,
   sendWindowEndHour: 17,
   sendWeekdaysOnly: true,
+  sendDayCountMode: 'elapsed_days' as const,
+  sendCalendarCountryCode: null,
+  sendCalendarSubdivisionCode: null,
 };
 
 const mockPreviewResult = {
@@ -65,6 +68,13 @@ const mailboxes = [
     lastSentAt: null,
   },
 ];
+
+function getDayCountModeSelect() {
+  const row = screen.getByText('Delay counting').parentElement;
+  const select = row?.querySelector('select');
+  expect(select).toBeTruthy();
+  return select as HTMLSelectElement;
+}
 
 /** Helper: fill name + confirm send policy so preview button is enabled */
 function fillFormAndConfirmPolicy() {
@@ -153,6 +163,67 @@ describe('CampaignLaunchDrawer', () => {
     expect(screen.getByText('25 contacts')).toBeTruthy();
     expect(screen.getByText('Some companies are not enriched')).toBeTruthy();
     expect(screen.getByText('Launch')).toBeTruthy();
+  });
+
+  it('passes business-day calendar fields through preview and launch', async () => {
+    mockPreview.mockResolvedValue({
+      ...mockPreviewResult,
+      sendPolicy: {
+        ...mockSendPolicy,
+        sendDayCountMode: 'business_days_campaign',
+        sendCalendarCountryCode: 'RU',
+        sendCalendarSubdivisionCode: 'MOW',
+      },
+    } as any);
+    mockLaunch.mockResolvedValue({
+      ...mockLaunchResult,
+      sendPolicy: {
+        ...mockSendPolicy,
+        sendDayCountMode: 'business_days_campaign',
+        sendCalendarCountryCode: 'RU',
+        sendCalendarSubdivisionCode: 'MOW',
+      },
+    } as any);
+
+    render(
+      <CampaignLaunchDrawer open={true} onClose={() => {}} segments={segments} mailboxes={mailboxes} />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('e.g. Q2 Outreach'), { target: { value: 'Test Campaign' } });
+    fireEvent.change(screen.getByPlaceholderText('e.g. Europe/Moscow'), { target: { value: 'Europe/Berlin' } });
+    fireEvent.change(getDayCountModeSelect(), {
+      target: { value: 'business_days_campaign' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('RU'), { target: { value: 'ru' } });
+    fireEvent.change(screen.getByPlaceholderText('e.g. MOW'), { target: { value: 'MOW' } });
+    fireEvent.click(screen.getByText('Confirm policy'));
+    fireEvent.click(screen.getByText('Preview launch'));
+
+    await waitFor(() => {
+      expect(mockPreview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sendDayCountMode: 'business_days_campaign',
+          sendCalendarCountryCode: 'RU',
+          sendCalendarSubdivisionCode: 'MOW',
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Business days (campaign)')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('Launch'));
+
+    await waitFor(() => {
+      expect(mockLaunch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sendDayCountMode: 'business_days_campaign',
+          sendCalendarCountryCode: 'RU',
+          sendCalendarSubdivisionCode: 'MOW',
+        })
+      );
+    });
   });
 
   it('shows success after launch', async () => {

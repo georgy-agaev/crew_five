@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable security-node/detect-unhandled-async-errors */
 export interface DraftForJudge {
   id: string;
   subject: string;

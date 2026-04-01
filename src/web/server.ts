@@ -4,6 +4,8 @@ import { URL, fileURLToPath } from 'node:url';
 
 import { dispatch } from './dispatch.js';
 import { createLiveDeps } from './liveDeps.js';
+import { closeSharedImapMcpInboxTransport } from './liveDeps/imapMcpInboxTransport.js';
+import { closeSharedImapMcpSendTransport } from './liveDeps/imapMcpSendTransport.js';
 import { buildMeta } from './meta.js';
 import { createMockDeps } from './mockDeps.js';
 import {
@@ -12,6 +14,7 @@ import {
 } from './autoSendScheduler.js';
 import { buildSmartleadClientFromEnv } from './smartlead.js';
 import type { AdapterDeps, MetaStatus } from './types.js';
+import { formatErrorMessage } from '../lib/formatErrorMessage.js';
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
@@ -120,8 +123,7 @@ export function startInboxPollScheduler(
         `[web adapter] inbox poll completed (accepted=${String(result.accepted ?? false)}, processed=${String(result.processed ?? 0)})`
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(`[web adapter] inbox poll failed: ${message}`);
+      logger.error(`[web adapter] inbox poll failed: ${formatErrorMessage(error)}`);
     } finally {
       running = false;
     }
@@ -186,6 +188,8 @@ if ((process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
   server.on('close', () => {
     scheduler?.stop();
     autoSendScheduler?.stop();
+    void closeSharedImapMcpInboxTransport();
+    void closeSharedImapMcpSendTransport();
   });
   console.log(
     `[web adapter] listening on http://localhost:${port}/api (mode=${useMock ? 'mock' : 'live'})`

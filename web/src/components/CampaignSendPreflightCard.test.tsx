@@ -37,10 +37,12 @@ const mockReady = {
 
 vi.mock('../apiClient', () => ({
   fetchCampaignSendPreflight: vi.fn(),
+  triggerCampaignSendExecution: vi.fn(),
 }));
 
-import { fetchCampaignSendPreflight } from '../apiClient';
+import { fetchCampaignSendPreflight, triggerCampaignSendExecution } from '../apiClient';
 const mockFetch = vi.mocked(fetchCampaignSendPreflight);
+const mockTrigger = vi.mocked(triggerCampaignSendExecution);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -77,6 +79,7 @@ describe('CampaignSendPreflightCard', () => {
       expect(screen.getByText('Ready to send')).toBeTruthy();
     });
     expect(screen.getByText('example.com, acme.io')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Send now' })).toBeTruthy();
   });
 
   it('hides sender plan section in compact mode', async () => {
@@ -96,6 +99,35 @@ describe('CampaignSendPreflightCard', () => {
     await waitFor(() => {
       expect(screen.getByText('Network error')).toBeTruthy();
     });
+  });
+
+  it('triggers manual send and shows summary', async () => {
+    mockFetch.mockResolvedValue(mockReady);
+    mockTrigger.mockResolvedValue({
+      accepted: true,
+      source: 'crew_five-send-execution',
+      requestedAt: '2026-03-24T09:00:00.000Z',
+      campaignId: 'camp-1',
+      reason: 'auto_send_mixed',
+      sentCount: 3,
+      failedCount: 0,
+      skippedCount: 1,
+    } as any);
+    render(<CampaignSendPreflightCard campaignId="camp-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Ready to send')).toBeTruthy();
+    });
+
+    screen.getByRole('button', { name: 'Send now' }).click();
+
+    await waitFor(() => {
+      expect(mockTrigger).toHaveBeenCalledWith('camp-1', {
+        reason: 'auto_send_mixed',
+        batchLimit: 2,
+      });
+    });
+    expect(screen.getByText('3 sent · 0 failed · 1 skipped')).toBeTruthy();
   });
 
   it('renders in Russian', async () => {

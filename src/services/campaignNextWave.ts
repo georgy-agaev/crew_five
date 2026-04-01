@@ -311,26 +311,6 @@ async function loadOutboundsByContact(
   return { outboundsByContact, eventsByOutbound };
 }
 
-async function loadSourceUsedContactIds(
-  client: SupabaseClient,
-  sourceCampaignId: string
-): Promise<Set<string>> {
-  const { data, error } = await client
-    .from('drafts')
-    .select('contact_id')
-    .eq('campaign_id', sourceCampaignId);
-
-  if (error) {
-    throw error;
-  }
-
-  return new Set(
-    ((data ?? []) as Array<Record<string, unknown>>)
-      .map((row) => (typeof row.contact_id === 'string' ? row.contact_id : null))
-      .filter((value): value is string => Boolean(value))
-  );
-}
-
 function buildCandidateSeeds(
   targetRows: TargetCandidateSeed[],
   sourceAudienceRows: CampaignAudienceRow[]
@@ -381,12 +361,22 @@ async function evaluateNextWaveCandidates(
   const targetRows = await loadTargetSegmentSeeds(client, input.targetSegmentId, input.targetSegmentVersion);
   const { rows: candidateSeeds, targetSegmentContactIds } = buildCandidateSeeds(targetRows, input.sourceAudienceRows);
   const contactIds = candidateSeeds.map((row) => row.contactId);
-  const [employeesById, outboundState, sourceUsedContactIds] = await Promise.all([
+  const [employeesById, outboundState] = await Promise.all([
     loadEmployeesById(client, contactIds),
     loadOutboundsByContact(client, contactIds),
-    loadSourceUsedContactIds(client, input.sourceCampaignId),
   ]);
   const executionExposureByContact = await listExecutionExposureByContact(client, contactIds);
+
+  const sourceAudienceContactIds = new Set(
+    input.sourceAudienceRows
+      .map((row) => (typeof row.contact_id === 'string' ? row.contact_id : null))
+      .filter((value): value is string => Boolean(value))
+  );
+  const sourceAudienceCompanyIds = new Set(
+    input.sourceAudienceRows
+      .map((row) => (typeof row.company_id === 'string' ? row.company_id : null))
+      .filter((value): value is string => Boolean(value))
+  );
 
   const blockedBreakdown = buildBlockedBreakdown();
   const previewItems: CampaignNextWavePreviewItem[] = [];
@@ -402,6 +392,10 @@ async function evaluateNextWaveCandidates(
       generic_email_status: employee?.generic_email_status ?? null,
     });
     const contactOutbounds = outboundState.outboundsByContact.get(seed.contactId) ?? [];
+    const usedInSourceWave =
+      seed.source === 'target_segment' &&
+      (sourceAudienceContactIds.has(seed.contactId) ||
+        (typeof seed.companyId === 'string' && sourceAudienceCompanyIds.has(seed.companyId)));
     const suppression = deriveContactSuppressionState(
       contactOutbounds.flatMap((row) => outboundState.eventsByOutbound.get(row.id) ?? [])
     );
@@ -413,7 +407,7 @@ async function evaluateNextWaveCandidates(
     );
 
     let blockedReason: CampaignNextWaveBlockedReason | null = null;
-    if (sourceUsedContactIds.has(seed.contactId)) {
+    if (usedInSourceWave) {
       blockedReason = 'already_used_in_source_wave';
     } else if (suppression.suppressed || suppression.replyReceived) {
       blockedReason = 'suppressed_contact';
@@ -470,6 +464,9 @@ function resolveDefaults(context: NextWaveContext) {
       sendWindowStartHour: context.sourceSendPolicy.sendWindowStartHour,
       sendWindowEndHour: context.sourceSendPolicy.sendWindowEndHour,
       sendWeekdaysOnly: context.sourceSendPolicy.sendWeekdaysOnly,
+      sendDayCountMode: context.sourceSendPolicy.sendDayCountMode,
+      sendCalendarCountryCode: context.sourceSendPolicy.sendCalendarCountryCode,
+      sendCalendarSubdivisionCode: context.sourceSendPolicy.sendCalendarSubdivisionCode,
     },
     senderPlanSummary: context.sourceMailboxAssignment.summary,
   } as const;
@@ -528,6 +525,13 @@ export async function createCampaignNextWave(
     sendWindowStartHour: input.sendWindowStartHour ?? defaults.sendPolicy.sendWindowStartHour,
     sendWindowEndHour: input.sendWindowEndHour ?? defaults.sendPolicy.sendWindowEndHour,
     sendWeekdaysOnly: input.sendWeekdaysOnly ?? defaults.sendPolicy.sendWeekdaysOnly,
+    sendDayCountMode: input.sendDayCountMode ?? defaults.sendPolicy.sendDayCountMode,
+    sendCalendarCountryCode:
+      input.sendCalendarCountryCode ?? defaults.sendPolicy.sendCalendarCountryCode ?? null,
+    sendCalendarSubdivisionCode:
+      input.sendCalendarSubdivisionCode ??
+      defaults.sendPolicy.sendCalendarSubdivisionCode ??
+      null,
     senderPlan: {
       source: senderPlanSource,
       assignments: senderPlanAssignments,

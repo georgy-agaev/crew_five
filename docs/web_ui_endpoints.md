@@ -1,6 +1,6 @@
 # Web UI Endpoint Map
 
-> Version: v0.22 (2026-03-22)
+> Version: v0.25 (2026-03-30)
 >
 > This document catalogues the HTTP endpoints exposed by the web adapter
 > (`src/web/server.ts`) and shows how the React Web UI (`web/src`) uses them.
@@ -162,23 +162,48 @@
   - Returns:
     - `campaign`: operator-facing campaign detail (`id`, `name`, `status`,
       `segment_id`, `segment_version`, `created_at`, `updated_at`)
-    - `segment`, `icp_profile`, `icp_hypothesis`, `offer`: optional campaign context
+    - `segment`, `icp_profile`, `icp_hypothesis`, `offer`, `project`:
+      optional campaign context for generation/execution read-model consumers
+      - `project`:
+        - `id`
+        - `key`
+        - `name`
+        - `description`
+        - `status`
       - `offer`:
         - `id`
+        - `project_id`
         - `title`
         - `project_name`
         - `description`
         - `status`
+      - `icp_profile`:
+        - `id`
+        - `project_id`
+        - `name`
+        - `description`
+        - `offering_domain`
+        - `company_criteria`
+        - `persona_criteria`
+        - `phase_outputs`
+        - `learnings`
       - `icp_hypothesis`:
         - `id`
+        - `icp_id`
         - `name`
         - `offer_id`
         - `status`
         - `messaging_angle`
+        - `search_config`
+        - `targeting_defaults`
+        - `pattern_defaults`
+        - `notes`
     - `companies`: the same campaign company rows as `/companies`, but each row also includes
       `composition_summary` and `employees[]` with campaign-scoped employee detail:
       - `composition_summary`:
         - `total_contacts`
+        - `segment_snapshot_contacts`
+        - `manual_attach_contacts`
         - `sendable_contacts`
         - `eligible_for_new_intro_contacts`
         - `blocked_no_sendable_email_contacts`
@@ -187,6 +212,8 @@
         - `blocked_already_used_contacts`
         - `contacts_with_drafts`
         - `contacts_with_sent_outbound`
+      - `audience_source` – `segment_snapshot` | `manual_attach`
+      - `attached_at`
       - `contact_id`, `full_name`, `position`
       - `work_email`, `generic_email`
       - `recipient_email`
@@ -725,7 +752,32 @@
     - uses canonical recipient resolution from `employees.work_email` / `generic_email`
     - blocks approved drafts that target bounced / unsubscribed / complaint contacts
     - blocks repeated intro sends for already-used contacts
-  - Used by: future `Campaigns` and `Builder V2` send-preflight surfaces.
+  - Used by: `CampaignSendPreflightCard` in `Campaigns` / operator surfaces.
+- `POST /api/campaigns/:id/send`
+  - Body:
+    - `reason?`
+      - `auto_send_intro`
+      - `auto_send_bump`
+      - `auto_send_mixed`
+    - `batchLimit?`
+  - Defaults:
+    - `reason = auto_send_mixed`
+  - Returns:
+    - direct `crew_five` execution result when direct transport is configured:
+      - `accepted`
+      - `source`
+      - `requestedAt`
+      - `campaignId`
+      - `reason`
+      - `provider`
+      - `selectedCount`
+      - `sentCount`
+      - `failedCount`
+      - `skippedCount`
+      - `results[]`
+    - or the legacy `Outreach` bridge payload when only the old send bridge is configured
+  - Used by: `triggerCampaignSendExecution` in `web/src/apiClient.ts`, powering the manual
+    `Send now` action in `CampaignSendPreflightCard`.
 
 ### Inbox
 
@@ -739,6 +791,10 @@
     - `campaignId?`
     - `replyLabel?`
     - `handled?` (`true` or `false`)
+    - `linkage?` (`linked` | `unlinked` | `all`)
+      - `linked`: only events linked to a campaign (the underlying outbound has `campaign_id != null`)
+      - `unlinked`: only events not linked to any campaign (the underlying outbound has `campaign_id is null`, e.g. inbox placeholders)
+      - `all`: default server behaviour (no linkage filtering)
     - `limit?`
   - Returns canonical reply events joined with outbound/draft/contact/company
     context.
@@ -748,12 +804,21 @@
     - `handled_by`
   - Used by: `Inbox V2`.
 - `POST /api/inbox/poll`
-  - Triggers Outreach reply polling via the adapter when configured.
-  - Supports either:
+  - Triggers inbox polling to ingest obvious replies into canonical `email_events`.
+  - Prefers direct `imap-mcp` polling when configured via:
+    - `IMAP_MCP_SERVER_ROOT`
+    - `IMAP_MCP_HOME`
+    - optional `IMAP_MCP_SERVER_COMMAND`
+    - optional `IMAP_MCP_SERVER_ENTRY`
+  - Falls back to the legacy Outreach-owned polling trigger when direct transport is not configured:
     - external HTTP trigger via `OUTREACH_PROCESS_REPLIES_URL`
     - fallback base URL via `OUTREACH_API_BASE` -> `/process-replies`
     - local command bridge via `OUTREACH_PROCESS_REPLIES_CMD`
   - Returns `202` on accepted trigger, `501` when polling is not configured.
+  - Reliability:
+    - Direct `imap-mcp` transport applies per-mailbox backoff after repeated transient connection
+      failures (e.g. `ECONNRESET`, MCP timeouts). During backoff, polling returns `accepted=true`
+      but may increment `skipped` (instead of `failed`) for the affected mailbox accounts.
   - Used by: `Inbox V2`.
 - `POST /api/inbox/replies/:id/handled`
   - Marks a canonical inbox reply event as handled.

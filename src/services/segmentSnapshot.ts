@@ -1,4 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  resolveRecipientEmail,
+  type EmailDeliverabilityStatus,
+  type RecipientEmailKind,
+  type RecipientEmailSource,
+} from './recipientResolver.js';
 
 export interface SegmentRecord {
   id: string;
@@ -10,6 +16,9 @@ export interface ContactRow {
   company_id: string;
   full_name?: string;
   work_email?: string;
+  work_email_status?: EmailDeliverabilityStatus | null;
+  generic_email?: string | null;
+  generic_email_status?: EmailDeliverabilityStatus | null;
   position?: string;
   company?: {
     id: string;
@@ -51,11 +60,7 @@ export async function createSegmentSnapshot(
     contact_id: contact.id,
     company_id: contact.company_id,
     snapshot: {
-      contact: {
-        full_name: contact.full_name,
-        work_email: contact.work_email,
-        position: contact.position,
-      },
+      contact: normalizeContactSnapshot(contact),
       company: normalizeCompanySnapshot(contact.company),
       filters_hash: filtersHash ?? null,
     },
@@ -71,6 +76,26 @@ export async function createSegmentSnapshot(
     inserted: data?.length ?? rows.length,
     segmentId: segment.id,
     segmentVersion: segment.version,
+  };
+}
+
+function normalizeContactSnapshot(contact: ContactRow) {
+  const recipient = resolveRecipientEmail({
+    work_email: contact.work_email ?? null,
+    work_email_status: contact.work_email_status ?? null,
+    generic_email: contact.generic_email ?? null,
+    generic_email_status: contact.generic_email_status ?? null,
+  });
+
+  return {
+    full_name: contact.full_name ?? null,
+    work_email: contact.work_email ?? null,
+    generic_email: contact.generic_email ?? null,
+    position: contact.position ?? null,
+    recipient_email: recipient.recipientEmail,
+    recipient_email_source: recipient.recipientEmailSource as RecipientEmailSource,
+    recipient_email_kind: recipient.recipientEmailKind as RecipientEmailKind,
+    sendable: recipient.sendable,
   };
 }
 

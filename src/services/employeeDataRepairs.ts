@@ -1,4 +1,3 @@
-/* eslint-disable security-node/detect-unhandled-async-errors */
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface EmployeeDataRepairInput {
@@ -12,19 +11,19 @@ export interface EmployeeDataRepairInput {
   repaired_last_name: string | null;
 }
 
-export const EMPLOYEE_DATA_REPAIRS_CONFLICT_COLUMNS =
-  'employee_id,repair_type,source,original_first_name,original_last_name,repaired_first_name,repaired_last_name';
-
 export async function recordEmployeeDataRepair(
   client: SupabaseClient,
   repair: EmployeeDataRepairInput
 ): Promise<void> {
-  const { error } = await client.from('employee_data_repairs').upsert([repair], {
-    onConflict: EMPLOYEE_DATA_REPAIRS_CONFLICT_COLUMNS,
-    ignoreDuplicates: true,
-  });
+  // Use plain insert and ignore duplicates because the backing uniqueness is implemented
+  // via an expression index (`coalesce(...)`) which cannot be targeted by PostgREST on_conflict.
+  const { error } = await client.from('employee_data_repairs').insert([repair]);
 
   if (error) {
+    const code = typeof (error as any).code === 'string' ? String((error as any).code) : '';
+    if (code === '23505') {
+      return;
+    }
     throw error;
   }
 }

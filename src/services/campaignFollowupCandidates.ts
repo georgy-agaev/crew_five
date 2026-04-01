@@ -1,6 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { deriveContactSuppressionState } from './contactSuppression.js';
+import {
+  countCampaignBusinessDaysBetween,
+  type CampaignBusinessCalendarOverride,
+} from './campaignSendCalendar.js';
+import { getCampaignSendPolicy } from './campaignSendPolicy.js';
 
 const DEFAULT_MIN_DAYS_SINCE_INTRO = 3;
 
@@ -30,9 +35,15 @@ interface EventRow {
   payload: unknown;
 }
 
+interface CompanyRow {
+  id: string;
+  country_code: string | null;
+}
+
 export interface CampaignFollowupCandidate {
   contact_id: string;
   company_id: string | null;
+  company_country_code: string | null;
   intro_sent: boolean;
   intro_sent_at: string | null;
   intro_sender_identity: string | null;
@@ -44,7 +55,22 @@ export interface CampaignFollowupCandidate {
   bump_sent: boolean;
   eligible: boolean;
   days_since_intro: number | null;
+  business_days_since_intro: number | null;
   auto_reply: string | null;
+}
+
+function getCompanyCalendarOverride(
+  companyId: string | null,
+  companyCountriesById: Map<string, string | null>
+): CampaignBusinessCalendarOverride | null {
+  if (!companyId) {
+    return null;
+  }
+  const countryCode = companyCountriesById.get(companyId) ?? null;
+  if (!countryCode) {
+    return null;
+  }
+  return { countryCode };
 }
 
 export interface CampaignFollowupCandidatesOptions {
@@ -105,6 +131,7 @@ export async function listCampaignFollowupCandidates(
 ): Promise<CampaignFollowupCandidate[]> {
   const now = options.now ?? new Date();
   const minDaysSinceIntro = options.minDaysSinceIntro ?? DEFAULT_MIN_DAYS_SINCE_INTRO;
+  const sendPolicy = await getCampaignSendPolicy(client, campaignId);
 
   const draftsRes = await client
     .from('drafts')
@@ -169,6 +196,24 @@ export async function listCampaignFollowupCandidates(
     rowsByContact.set(outbound.contact_id, existing);
   }
 
+  const companyIds = Array.from(
+    new Set(
+      Array.from(rowsByContact.values())
+        .map((entry) => entry.company_id)
+        .filter((value): value is string => typeof value === 'string')
+    )
+  );
+  const companyCountriesById = new Map<string, string | null>();
+  if (companyIds.length > 0) {
+    const companiesRes = await client.from('companies').select('id,country_code').in('id', companyIds);
+    if (companiesRes.error) {
+      throw companiesRes.error;
+    }
+    for (const row of (companiesRes.data ?? []) as CompanyRow[]) {
+      companyCountriesById.set(row.id, typeof row.country_code === 'string' ? row.country_code : null);
+    }
+  }
+
   const result: CampaignFollowupCandidate[] = [];
 
   for (const [contactId, contactState] of rowsByContact.entries()) {
@@ -194,28 +239,53 @@ export async function listCampaignFollowupCandidates(
       return draft?.email_type === 'bump' && row.status === 'sent';
     });
     const daysSinceIntro = getDaysSinceIntro(introOutbound.sent_at, now);
+    const companyCalendarOverride = getCompanyCalendarOverride(
+      contactState.company_id,
+      companyCountriesById
+    );
+    const effectiveBusinessDaysSinceIntro =
+      (sendPolicy.sendDayCountMode === 'business_days_campaign' ||
+        sendPolicy.sendDayCountMode === 'business_days_recipient') &&
+      introOutbound.sent_at
+        ? countCampaignBusinessDaysBetween(
+            sendPolicy,
+            new Date(introOutbound.sent_at),
+            now,
+            sendPolicy.sendDayCountMode === 'business_days_recipient'
+              ? companyCalendarOverride
+              : null
+          )
+        : null;
+    const minDaysReached =
+      sendPolicy.sendDayCountMode === 'business_days_campaign' ||
+      sendPolicy.sendDayCountMode === 'business_days_recipient'
+        ? effectiveBusinessDaysSinceIntro !== null && effectiveBusinessDaysSinceIntro >= minDaysSinceIntro
+        : daysSinceIntro !== null && daysSinceIntro >= minDaysSinceIntro;
 
     result.push({
       contact_id: contactId,
-        company_id: contactState.company_id,
-        intro_sent: true,
-        intro_sent_at: introOutbound.sent_at,
-        intro_sender_identity: introOutbound.sender_identity,
-        reply_received: suppression.replyReceived,
-        bounce: suppression.bounced,
-        unsubscribed: suppression.unsubscribed,
-        bump_draft_exists: bumpDraftExists,
-        bump_draft_approved: bumpDraftApproved,
-        bump_sent: bumpSent,
-        eligible:
-          bumpDraftApproved &&
-          !bumpSent &&
-          !suppression.replyReceived &&
-          !suppression.bounced &&
-          !suppression.unsubscribed &&
-          daysSinceIntro !== null &&
-          daysSinceIntro >= minDaysSinceIntro,
+      company_id: contactState.company_id,
+      company_country_code: contactState.company_id
+        ? companyCountriesById.get(contactState.company_id) ?? null
+        : null,
+      intro_sent: true,
+      intro_sent_at: introOutbound.sent_at,
+      intro_sender_identity: introOutbound.sender_identity,
+      reply_received: suppression.replyReceived,
+      bounce: suppression.bounced,
+      unsubscribed: suppression.unsubscribed,
+      bump_draft_exists: bumpDraftExists,
+      bump_draft_approved: bumpDraftApproved,
+      bump_sent: bumpSent,
+      eligible:
+        bumpDraftApproved &&
+        !bumpSent &&
+        !suppression.replyReceived &&
+        !suppression.bounced &&
+        !suppression.unsubscribed &&
+        minDaysReached,
       days_since_intro: daysSinceIntro,
+      business_days_since_intro: effectiveBusinessDaysSinceIntro,
       auto_reply: extractAutoReply(contactEvents),
     });
   }

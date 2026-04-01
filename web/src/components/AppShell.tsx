@@ -6,6 +6,7 @@ import type { AppView } from '../appView';
 const NAV_ITEMS: Array<{ view: AppView; label: string; short: string }> = [
   { view: 'home', label: 'Home', short: 'H' },
   { view: 'campaign-ops', label: 'Campaigns', short: 'Ca' },
+  { view: 'campaign-ledger', label: 'Ledger', short: 'L' },
   { view: 'builder-v2', label: 'Builder', short: 'B' },
   { view: 'inbox-v2', label: 'Inbox', short: 'I' },
   { view: 'contacts', label: 'Contacts', short: 'C' },
