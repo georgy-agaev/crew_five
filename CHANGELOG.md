@@ -27,6 +27,9 @@ All notable changes to this project will be documented in this file.
   - [Outreach_crew_five_cli_contract.md](/Users/georgyagaev/crew_five/docs/Outreach_crew_five_cli_contract.md)
   - [roadmap.md](/Users/georgyagaev/crew_five/docs/sessions/roadmap.md)
   - [2026-04-01_1_project_docs_refresh.md](/Users/georgyagaev/crew_five/docs/sessions/2026-04-01_1_project_docs_refresh.md)
+- Rewrote [README.md](/Users/georgyagaev/crew_five/README.md) again as a focused operational entry
+  point: current system boundary, live transport, what works now, what is next, minimal runbook,
+  and the main CLI surface.
 
 ## [0.2.60] - 2026-03-29
 ### Changed

@@ -22,6 +22,11 @@ clearly enough.
   - replaced outdated `SMTP First` wording with the current execution-runtime model
   - clarified current shared runtime split between `crew_five` and `Outreach`
   - documented the current security checks stack (`lint`, `ast-grep`, `gitleaks`, `audit`)
+- Rewrote [README.md](/Users/georgyagaev/crew_five/README.md) into a much shorter project entry point:
+  - removed historical/secondary material from the main landing document
+  - focused it on current system boundary, current focus, live transport, current capabilities,
+    next priorities, local runbook, and main CLI surface
+  - kept deeper detail in specialized docs instead of the repo front page
 - Updated
   [Outreach_crew_five_cli_contract.md](/Users/georgyagaev/crew_five/docs/Outreach_crew_five_cli_contract.md):
   - version bump to `v0.14`
