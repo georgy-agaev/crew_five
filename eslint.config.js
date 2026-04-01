@@ -61,4 +61,14 @@ export default [
       },
     },
   },
+  {
+    files: ['script.js'],
+    languageOptions: {
+      sourceType: 'script',
+      ecmaVersion: 'latest',
+      globals: {
+        ...globals.browser,
+      },
+    },
+  },
 ];
