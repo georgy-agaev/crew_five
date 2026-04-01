@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>crew_five — canonical outbound execution system</title>
+    <meta
+      name="description"
+      content="crew_five is the canonical outbound execution system: campaigns, waves, send policy, direct imap-mcp delivery, inbox polling, reply ingestion, and operator workflows."
+    />
+    <link rel="canonical" href="https://georgy-agaev.github.io/crew_five/" />
+    <meta property="og:title" content="crew_five" />
+    <meta
+      property="og:description"
+      content="Canonical outbound execution system for the current operator loop."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://georgy-agaev.github.io/crew_five/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,700;12..96,800&family=DM+Sans:wght@400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="accent-bar" aria-hidden="true"></div>
+
+    <nav class="nav">
+      <div class="nav-inner">
+        <a class="brand" href="#">
+          <span class="logo" aria-hidden="true"></span>
+          <span class="brand-copy">
+            <span class="brand-name">crew_five</span>
+            <span class="brand-sub">canonical outbound execution system</span>
+          </span>
+        </a>
+
+        <div class="nav-links">
+          <a href="#system">System</a>
+          <a href="#workflow">Workflow</a>
+          <a href="#runbook">Runbook</a>
+          <a href="#docs">Docs</a>
+        </div>
+
+        <div class="nav-actions">
+          <a class="btn btn-ghost btn-sm" href="https://github.com/georgy-agaev/crew_five">GitHub</a>
+          <button class="hamburger" type="button" aria-label="Toggle menu" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="mobile-menu" hidden>
+        <a href="#system">System</a>
+        <a href="#workflow">Workflow</a>
+        <a href="#runbook">Runbook</a>
+        <a href="#docs">Docs</a>
+        <a href="https://github.com/georgy-agaev/crew_five">GitHub</a>
+      </div>
+    </nav>
+
+    <main class="wrap">
+      <header class="hero">
+        <div class="hero-copy reveal">
+          <p class="eyebrow">Outbound operations, not theory</p>
+          <h1>
+            crew_five is the
+            <span class="hero-dim">system that actually executes the campaign loop</span>
+          </h1>
+          <p class="hero-text">
+            It keeps the canonical GTM spine in Supabase, owns campaign execution state, sends mail
+            through the live mailbox transport, polls inboxes, ingests obvious reply events, and
+            exposes the operator workflow through Web UI and CLI.
+          </p>
+
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#runbook">Start locally</a>
+            <a class="btn btn-outline" href="#docs">Open docs</a>
+            <a class="btn btn-ghost" href="https://github.com/georgy-agaev/crew_five">Repository</a>
+          </div>
+
+          <div class="pill-row" aria-label="highlights">
+            <span class="pill"><b>Live runtime</b> crew_five → imap-mcp</span>
+            <span class="pill"><b>Canonical spine</b> campaign → drafts → outbound → events</span>
+            <span class="pill"><b>Operator-first</b> send, poll, review, trace</span>
+          </div>
+        </div>
+
+        <aside class="hero-panel reveal">
+          <div class="status-card">
+            <div class="status-head">
+              <span class="status-dot ok"></span>
+              <span>Current live shape</span>
+            </div>
+            <div class="status-grid">
+              <div class="status-item">
+                <span class="label">Runtime</span>
+                <span class="value">crew_five → imap-mcp</span>
+              </div>
+              <div class="status-item">
+                <span class="label">Generation</span>
+                <span class="value">Outreach</span>
+              </div>
+              <div class="status-item">
+                <span class="label">Campaign model</span>
+                <span class="value">Frozen waves</span>
+              </div>
+              <div class="status-item">
+                <span class="label">Current focus</span>
+                <span class="value">Execution + operator usability</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </header>
+
+      <section id="system" class="section reveal">
+        <div class="section-header">
+          <h2>Current system boundary</h2>
+          <p class="lead">
+            The important thing about `crew_five` is not the number of modules. It is the boundary:
+            what this repository owns now, what it exposes, and what stays outside.
+          </p>
+        </div>
+
+        <div class="grid">
+          <article class="card col-6" data-accent="orange">
+            <h3>crew_five owns</h3>
+            <ul class="list">
+              <li>campaign launch, attach, next-wave, and rotation preview primitives</li>
+              <li>mailbox assignment, send preflight, send policy, business-day calendar</li>
+              <li>manual send and auto-send execution</li>
+              <li>inbox polling and obvious reply ingestion</li>
+              <li>canonical GTM spine and operator workflow surfaces</li>
+            </ul>
+          </article>
+
+          <article class="card col-6" data-accent="slate">
+            <h3>Outreach owns</h3>
+            <ul class="list">
+              <li>company processing</li>
+              <li>generation and review runtime</li>
+              <li>ambiguous reply interpretation</li>
+              <li>follow-up drafting on top of canonical crew_five state</li>
+            </ul>
+          </article>
+
+          <article class="card col-12 soft">
+            <h3>Canonical model</h3>
+            <div class="spine">
+              <span>project</span>
+              <span>icp_profile</span>
+              <span>offer</span>
+              <span>icp_hypothesis</span>
+              <span>segment</span>
+              <span>campaign</span>
+              <span>drafts</span>
+              <span>email_outbound</span>
+              <span>email_events</span>
+            </div>
+            <p class="muted">
+              The execution spine matters more than any individual screen. It is how launch, send,
+              reply ingestion, analytics, and operator decisions stay aligned.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="workflow" class="section reveal">
+        <div class="section-header">
+          <h2>Operator workflow</h2>
+          <p class="lead">
+            The project is focused on making the real loop reliable: import, process, attach, draft,
+            review, send, poll, work inbox.
+          </p>
+        </div>
+
+        <div class="workflow">
+          <div class="flow-card">
+            <span class="step">01</span>
+            <h3>Audience in</h3>
+            <p>Import, dedupe, process companies, and attach them into the right campaign wave.</p>
+          </div>
+          <div class="flow-card">
+            <span class="step">02</span>
+            <h3>Context locked</h3>
+            <p>Campaign, offer, hypothesis, recipient context, and send policy become canonical.</p>
+          </div>
+          <div class="flow-card">
+            <span class="step">03</span>
+            <h3>Execution out</h3>
+            <p>Send preflight, manual send, and scheduler runs happen through the direct mailbox transport.</p>
+          </div>
+          <div class="flow-card">
+            <span class="step">04</span>
+            <h3>Replies back</h3>
+            <p>Inbox polling writes obvious reply events into the same spine for operators and automation.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section reveal">
+        <div class="section-header">
+          <h2>What works now</h2>
+        </div>
+
+        <div class="grid">
+          <article class="card col-4">
+            <h3>Campaign composition</h3>
+            <ul class="list">
+              <li>launch preview + create</li>
+              <li>manual attach to existing wave</li>
+              <li>next-wave preview + create</li>
+              <li>rotation preview groundwork</li>
+            </ul>
+          </article>
+          <article class="card col-4">
+            <h3>Execution runtime</h3>
+            <ul class="list">
+              <li>mailbox assignment</li>
+              <li>send preflight</li>
+              <li>manual <code>Send now</code></li>
+              <li>auto-send intro + bump</li>
+            </ul>
+          </article>
+          <article class="card col-4">
+            <h3>Inbox side</h3>
+            <ul class="list">
+              <li>direct polling</li>
+              <li><code>Poll now</code> trigger</li>
+              <li>obvious reply ingestion</li>
+              <li>operator inbox surfaces</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="runbook" class="section reveal">
+        <div class="section-header">
+          <h2>Runbook</h2>
+          <p class="lead">Minimal setup for local live-mode work.</p>
+        </div>
+
+        <div class="grid">
+          <article class="card col-5 soft">
+            <h3>Required env</h3>
+            <ul class="list">
+              <li><code>SUPABASE_URL</code></li>
+              <li><code>SUPABASE_SERVICE_ROLE_KEY</code></li>
+              <li><code>IMAP_MCP_SERVER_ROOT</code></li>
+              <li><code>IMAP_MCP_HOME</code></li>
+            </ul>
+            <p class="muted small">
+              Common live runtime toggles: <code>IMAP_MCP_SERVER_COMMAND</code>,
+              <code>IMAP_MCP_SERVER_ENTRY</code>, <code>AUTO_SEND_*</code>, <code>INBOX_POLL_*</code>.
+            </p>
+          </article>
+
+          <article class="card col-7">
+            <h3>Core commands</h3>
+            <div class="terminal">
+              <div class="terminal-bar">
+                <span class="terminal-dot"></span>
+                <span class="terminal-dot"></span>
+                <span class="terminal-dot"></span>
+                <span class="terminal-label">zsh</span>
+              </div>
+              <pre data-copy><code>pnpm install
+pnpm dev:web:live
+
+pnpm build
+pnpm lint
+pnpm test
+pnpm run scan:ast-grep
+pnpm run audit</code></pre>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="docs" class="section reveal">
+        <div class="section-header">
+          <h2>Read next</h2>
+          <p class="lead">
+            The landing page should orient you quickly. The detailed contracts and engineering notes
+            live in the documents below.
+          </p>
+        </div>
+
+        <div class="grid">
+          <a class="card link-card col-6" href="https://github.com/georgy-agaev/crew_five/blob/main/docs/Outreach_crew_five_cli_contract.md">
+            <h3>Outreach ↔ crew_five CLI contract</h3>
+            <p>Canonical runtime boundary, command surface, next-wave semantics, generation context.</p>
+          </a>
+          <a class="card link-card col-6" href="https://github.com/georgy-agaev/crew_five/blob/main/docs/sessions/roadmap.md">
+            <h3>Current roadmap</h3>
+            <p>What is done, what is active now, and what should not dominate the next stage.</p>
+          </a>
+          <a class="card link-card col-6" href="https://github.com/georgy-agaev/crew_five/blob/main/docs/web_ui_endpoints.md">
+            <h3>HTTP endpoint catalog</h3>
+            <p>Adapter routes, payloads, live/fallback behavior, and Web UI integration points.</p>
+          </a>
+          <a class="card link-card col-6" href="https://github.com/georgy-agaev/crew_five/blob/main/docs/Database_Description.md">
+            <h3>Database description</h3>
+            <p>Schema-level reference for the canonical GTM spine and related entities.</p>
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        <p>
+          `crew_five` is the execution layer for the current operator workflow. `Outreach` remains
+          the external generation/orchestration runtime.
+        </p>
+        <div class="footer-links">
+          <a href="https://github.com/georgy-agaev/crew_five">GitHub</a>
+          <a href="https://github.com/georgy-agaev/crew_five/blob/main/README.md">README</a>
+          <a href="https://github.com/georgy-agaev/crew_five/blob/main/CHANGELOG.md">Changelog</a>
+        </div>
+      </div>
+    </footer>
+
+    <script src="script.js"></script>
+  </body>
+</html>

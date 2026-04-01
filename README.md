@@ -11,6 +11,10 @@ Today it is not a generic GTM platform and not a fully autonomous AI SDR. Its ac
 - expose operator workflows in Web UI + CLI,
 - provide stable read/write contracts for `Outreach`.
 
+Public landing page:
+
+- https://georgy-agaev.github.io/crew_five/
+
 ## Current Focus
 
 The active product focus is:

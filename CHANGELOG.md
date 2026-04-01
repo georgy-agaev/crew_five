@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+### Docs
+- Added a public static landing page at the repository root for GitHub Pages:
+  [index.html](/Users/georgyagaev/crew_five/index.html),
+  [style.css](/Users/georgyagaev/crew_five/style.css),
+  [script.js](/Users/georgyagaev/crew_five/script.js),
+  [assets/icon.svg](/Users/georgyagaev/crew_five/assets/icon.svg),
+  [\.nojekyll](/Users/georgyagaev/crew_five/.nojekyll).
+- Linked the public landing page from [README.md](/Users/georgyagaev/crew_five/README.md).
+- Added session note
+  [2026-04-01_2_public_landing_page.md](/Users/georgyagaev/crew_five/docs/sessions/2026-04-01_2_public_landing_page.md).
+
 ## [0.2.61] - 2026-04-01
 ### Changed
 - `campaign:next-wave` now blocks `target_segment` candidates as `already_used_in_source_wave` when
