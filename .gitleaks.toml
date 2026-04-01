@@ -1,0 +1,15 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Allow the documented LinkedIn prose false positive in the simulation workflow doc"
+paths = [
+  '''docs/2_sim_prospect_reaction_simulation_workflow\.md''',
+]
+regexTarget = "line"
+regexes = [
+  '''Goal: Move from a bare LinkedIn profile to a rich, contextualized picture\.''',
+]
+rules = [
+  '''linkedin-client-id''',
+]
