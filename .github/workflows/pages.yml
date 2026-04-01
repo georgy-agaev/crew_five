@@ -9,6 +9,7 @@ on:
       - ".nojekyll"
       - "assets/**"
       - "index.html"
+      - "ru.html"
       - "script.js"
       - "style.css"
   workflow_dispatch:
@@ -36,7 +37,7 @@ jobs:
         run: |
           rm -rf _site
           mkdir -p _site/assets
-          cp index.html style.css script.js .nojekyll _site/
+          cp index.html ru.html style.css script.js .nojekyll _site/
           cp -R assets/. _site/assets/
 
       - name: Upload Pages artifact
