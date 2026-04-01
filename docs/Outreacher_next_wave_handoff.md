@@ -61,6 +61,17 @@ It also computes canonical blocked reasons:
   - eligible copied manual additions
   - blocked target-wave exclusions
 
+## Key Semantics (Avoid Duplicate Companies)
+
+`already_used_in_source_wave` is an *audience* dedupe guardrail:
+
+- A `target_segment` candidate is blocked when its `company_id` (or `contact_id`) is already present
+  in the source campaign audience (segment snapshot or manual attach).
+- This does **not** depend on whether the source campaign has already sent emails.
+
+This prevents “Wave 2 is a subset of Wave 1” when Wave 1 is still early (no outbounds yet), and
+forces Wave 2 to contain only *new* segment members added since Wave 1.
+
 ## Example
 
 ```bash

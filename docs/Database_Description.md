@@ -841,6 +841,14 @@ result.
 **What it is**: frozen membership rows for a segment snapshot (`segment_id` + `segment_version`) with a denormalized
 `snapshot` payload (company + contact at time of membership).
 
+Canonical snapshot payload notes:
+- `snapshot.company` stores frozen company context used by generation
+- `snapshot.contact` stores frozen contact context, including:
+  - `full_name`, `position`, `work_email`, `generic_email`
+  - resolved `recipient_email`, `recipient_email_source`, `recipient_email_kind`
+  - `sendable`
+- recipient resolution follows the shared repo policy `work_email -> generic_email` at snapshot time
+
 **Key facts**
 - Primary key: `id` (`uuid`, default `gen_random_uuid()`)
 - Foreign keys:

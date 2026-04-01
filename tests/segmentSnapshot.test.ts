@@ -90,4 +90,52 @@ describe('createSegmentSnapshot', () => {
       summary: 'Deep research',
     });
   });
+
+  it('persists canonical recipient context inside contact snapshot payload', async () => {
+    const match = vi.fn().mockResolvedValue({ error: null });
+    const deleteBuilder = { match };
+    const insertSelect = vi.fn().mockResolvedValue({ data: [{ id: 'member-1' }], error: null });
+    const insert = vi.fn().mockReturnValue({ select: insertSelect });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'segment_members') {
+        return {
+          delete: () => deleteBuilder,
+          insert,
+        } as any;
+      }
+      throw new Error('unexpected table');
+    });
+
+    const client = { from } as any;
+
+    await createSegmentSnapshot(
+      client,
+      { id: 'segment-1', version: 2 },
+      [
+        {
+          id: 'contact-1',
+          company_id: 'company-1',
+          full_name: 'Jane Doe',
+          work_email: '',
+          work_email_status: null,
+          generic_email: 'info@acme.example',
+          generic_email_status: 'valid',
+          position: 'CEO',
+        },
+      ]
+    );
+
+    const rows = insert.mock.calls[0]?.[0] as any[];
+    expect(rows[0].snapshot.contact).toMatchObject({
+      full_name: 'Jane Doe',
+      work_email: '',
+      generic_email: 'info@acme.example',
+      position: 'CEO',
+      recipient_email: 'info@acme.example',
+      recipient_email_source: 'generic',
+      recipient_email_kind: 'generic',
+      sendable: true,
+    });
+  });
 });

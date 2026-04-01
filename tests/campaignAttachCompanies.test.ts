@@ -70,7 +70,10 @@ describe('attachCompaniesToCampaign', () => {
           company_id: 'company-2',
           full_name: 'Bob',
           position: 'CTO',
-          work_email: 'bob@beta.test',
+          work_email: '',
+          work_email_status: null,
+          generic_email: 'info@beta.test',
+          generic_email_status: 'valid',
           processing_status: 'completed',
         },
         {
@@ -79,6 +82,9 @@ describe('attachCompaniesToCampaign', () => {
           full_name: 'Carol',
           position: 'COO',
           work_email: 'carol@beta.test',
+          work_email_status: 'valid',
+          generic_email: null,
+          generic_email_status: null,
           processing_status: 'completed',
         },
       ],
@@ -122,6 +128,20 @@ describe('attachCompaniesToCampaign', () => {
         contact_id: 'contact-3',
       }),
     ]);
+    const insertedRows = insert.mock.calls[0]?.[0] as Array<Record<string, any>>;
+    expect(insertedRows[0]?.snapshot?.contact).toMatchObject({
+      generic_email: 'info@beta.test',
+      recipient_email: 'info@beta.test',
+      recipient_email_source: 'generic',
+      recipient_email_kind: 'generic',
+      sendable: true,
+    });
+    expect(insertedRows[1]?.snapshot?.contact).toMatchObject({
+      work_email: 'carol@beta.test',
+      recipient_email: 'carol@beta.test',
+      recipient_email_source: 'work',
+      sendable: true,
+    });
     expect(result.summary).toEqual({
       requestedCompanyCount: 2,
       attachedCompanyCount: 1,

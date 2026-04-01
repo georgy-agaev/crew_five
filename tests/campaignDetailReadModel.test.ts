@@ -4,6 +4,25 @@ import { getCampaignReadModel } from '../src/services/campaignDetailReadModel';
 
 describe('campaignDetailReadModel', () => {
   it('returns campaign, segment, icp, and company employee drill-down', async () => {
+    const offersSelect = vi.fn().mockReturnValue({
+      in: vi.fn().mockResolvedValue({
+        data: [{ id: 'offer-1', project_id: 'project-1', title: 'Negotiation room audit', project_name: 'VoiceXpert' }],
+        error: null,
+      }),
+      eq: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: {
+            id: 'offer-1',
+            project_id: 'project-1',
+            title: 'Negotiation room audit',
+            project_name: 'VoiceXpert',
+            description: 'Audit offer',
+            status: 'active',
+          },
+          error: null,
+        }),
+      }),
+    });
     const segmentMembersSelect = vi.fn().mockReturnValue({
       match: vi.fn().mockResolvedValue({
         data: [
@@ -35,7 +54,7 @@ describe('campaignDetailReadModel', () => {
           return {
             select: vi.fn().mockReturnValue({
               in: vi.fn().mockResolvedValue({
-                data: [{ id: 'camp-1', offer_id: 'offer-1', icp_hypothesis_id: 'hyp-camp-1' }],
+                data: [{ id: 'camp-1', project_id: 'project-1', offer_id: 'offer-1', icp_hypothesis_id: 'hyp-camp-1' }],
                 error: null,
               }),
               eq: vi.fn().mockReturnValue({
@@ -46,6 +65,7 @@ describe('campaignDetailReadModel', () => {
                     status: 'review',
                     segment_id: 'segment-1',
                     segment_version: 2,
+                    project_id: 'project-1',
                     offer_id: 'offer-1',
                     icp_hypothesis_id: 'hyp-camp-1',
                     created_at: '2026-03-15T10:00:00Z',
@@ -82,7 +102,13 @@ describe('campaignDetailReadModel', () => {
                   data: {
                     id: 'icp-1',
                     name: 'VoiceXpert ICP',
+                    project_id: 'project-1',
+                    description: 'Teams running audit-heavy negotiation rooms',
                     offering_domain: 'voicexpert.ru',
+                    company_criteria: { industries: ['Audit', 'Legal'] },
+                    persona_criteria: { roles: ['Finance Director', 'Office Lead'] },
+                    phase_outputs: { phase1: { valueProp: 'Audit negotiation room refresh' } },
+                    learnings: ['Avoid generic AV language'],
                   },
                   error: null,
                 }),
@@ -102,9 +128,32 @@ describe('campaignDetailReadModel', () => {
                   data: {
                     id: 'hyp-camp-1',
                     hypothesis_label: 'Operational audit hypothesis',
+                    icp_id: 'icp-1',
                     status: 'active',
                     offer_id: 'offer-1',
                     messaging_angle: 'Negotiation room refresh for audit-heavy teams',
+                    search_config: { audience: 'audit-heavy' },
+                    targeting_defaults: { country: 'RU' },
+                    pattern_defaults: { intro: 'direct' },
+                    notes: 'Prioritize negotiation room language',
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'projects') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({
+                  data: {
+                    id: 'project-1',
+                    key: 'vx',
+                    name: 'VoiceXpert Workspace',
+                    description: 'Primary outbound workspace',
+                    status: 'active',
                   },
                   error: null,
                 }),
@@ -114,24 +163,7 @@ describe('campaignDetailReadModel', () => {
         }
         if (table === 'offers') {
           return {
-            select: vi.fn().mockReturnValue({
-              in: vi.fn().mockResolvedValue({
-                data: [{ id: 'offer-1', title: 'Negotiation room audit', project_name: 'VoiceXpert' }],
-                error: null,
-              }),
-              eq: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({
-                  data: {
-                    id: 'offer-1',
-                    title: 'Negotiation room audit',
-                    project_name: 'VoiceXpert',
-                    description: 'Audit offer',
-                    status: 'active',
-                  },
-                  error: null,
-                }),
-              }),
-            }),
+            select: offersSelect,
           };
         }
         if (table === 'segment_members') {
@@ -272,6 +304,9 @@ describe('campaignDetailReadModel', () => {
     expect(campaignMemberAdditionsSelect).toHaveBeenCalledWith(
       'campaign_id,company_id,contact_id,source,attached_at'
     );
+    expect(offersSelect).toHaveBeenCalledWith(
+      'id,project_id,title,project_name,description,status,created_at,updated_at'
+    );
 
     expect(result.campaign.name).toBe('Q1 Push');
     expect(result.segment).toMatchObject({
@@ -281,19 +316,36 @@ describe('campaignDetailReadModel', () => {
     expect(result.icp_profile).toMatchObject({
       id: 'icp-1',
       name: 'VoiceXpert ICP',
+      description: 'Teams running audit-heavy negotiation rooms',
       offering_domain: 'voicexpert.ru',
+      company_criteria: { industries: ['Audit', 'Legal'] },
+      persona_criteria: { roles: ['Finance Director', 'Office Lead'] },
+      phase_outputs: { phase1: { valueProp: 'Audit negotiation room refresh' } },
+      learnings: ['Avoid generic AV language'],
     });
     expect(result.icp_hypothesis).toMatchObject({
       id: 'hyp-camp-1',
+      icp_id: 'icp-1',
       name: 'Operational audit hypothesis',
       status: 'active',
       offer_id: 'offer-1',
       messaging_angle: 'Negotiation room refresh for audit-heavy teams',
+      search_config: { audience: 'audit-heavy' },
+      targeting_defaults: { country: 'RU' },
+      pattern_defaults: { intro: 'direct' },
+      notes: 'Prioritize negotiation room language',
     });
     expect(result.offer).toMatchObject({
       id: 'offer-1',
+      project_id: 'project-1',
       title: 'Negotiation room audit',
       project_name: 'VoiceXpert',
+      status: 'active',
+    });
+    expect(result.project).toMatchObject({
+      id: 'project-1',
+      key: 'vx',
+      name: 'VoiceXpert Workspace',
       status: 'active',
     });
     expect(result.companies).toHaveLength(1);
@@ -301,11 +353,18 @@ describe('campaignDetailReadModel', () => {
       company_id: 'company-1',
       company_name: 'ООО Пример',
       contact_count: 1,
+      composition_summary: {
+        total_contacts: 1,
+        segment_snapshot_contacts: 1,
+        manual_attach_contacts: 0,
+      },
       employees: [
         {
           contact_id: 'contact-1',
           full_name: 'Инна Федина',
           position: 'Финансовый директор',
+          audience_source: 'segment_snapshot',
+          attached_at: null,
           work_email: 'inna@example.ru',
           generic_email: 'info@example.ru',
           draft_counts: {
@@ -476,6 +535,13 @@ describe('campaignDetailReadModel', () => {
       contact_id: 'contact-2',
       full_name: 'Боб',
       work_email: 'bob@example.ru',
+      audience_source: 'manual_attach',
+      attached_at: '2026-03-21T12:00:00Z',
+    });
+    expect(result.companies[0].composition_summary).toMatchObject({
+      total_contacts: 1,
+      segment_snapshot_contacts: 0,
+      manual_attach_contacts: 1,
     });
   });
 
@@ -953,6 +1019,8 @@ describe('campaignDetailReadModel', () => {
     });
     expect(company.composition_summary).toEqual({
       total_contacts: 3,
+      segment_snapshot_contacts: 3,
+      manual_attach_contacts: 0,
       sendable_contacts: 2,
       eligible_for_new_intro_contacts: 0,
       blocked_no_sendable_email_contacts: 1,

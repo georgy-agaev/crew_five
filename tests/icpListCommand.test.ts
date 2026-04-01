@@ -59,7 +59,9 @@ describe('icp list commands', () => {
     });
 
     expect(from).toHaveBeenCalledWith('icp_hypotheses');
-    expect(hypothesisSelect).toHaveBeenCalledWith('id, icp_id, status, hypothesis_label, search_config, created_at');
+    expect(hypothesisSelect).toHaveBeenCalledWith(
+      'id, icp_id, offer_id, status, hypothesis_label, search_config, targeting_defaults, messaging_angle, pattern_defaults, notes, created_at'
+    );
     expect(rows).toEqual([{ id: 'hyp-1', icp_profile_id: 'icp-1', segment_id: 'seg-1' }]);
   });
 

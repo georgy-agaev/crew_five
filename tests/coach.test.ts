@@ -107,6 +107,10 @@ describe('coach service', () => {
     const employeesSelect = vi.fn().mockReturnValue({
       in: vi.fn().mockResolvedValue({ data: [], error: null }),
     });
+    const additionsEq = vi.fn().mockResolvedValue({ data: [], error: null });
+    const additionsSelect = vi.fn().mockReturnValue({ eq: additionsEq });
+    const exclusionsEq = vi.fn().mockResolvedValue({ data: [], error: null });
+    const exclusionsSelect = vi.fn().mockReturnValue({ eq: exclusionsEq });
 
     const from = vi.fn((table: string) => {
       if (table === 'campaigns') return { select: () => ({ eq: campaignEq }) };
@@ -129,6 +133,8 @@ describe('coach service', () => {
         } as any;
       }
       if (table === 'segment_members') return { select: () => ({ match: membersMatch }) };
+      if (table === 'campaign_member_additions') return { select: additionsSelect };
+      if (table === 'campaign_member_exclusions') return { select: exclusionsSelect };
       if (table === 'app_settings') return { select: appSettingsSelect };
       if (table === 'companies') return { select: companiesSelect };
       if (table === 'employees') return { select: employeesSelect };

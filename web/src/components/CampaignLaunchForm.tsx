@@ -27,12 +27,19 @@ const translations: Record<string, Record<string, string>> = {
     timezone: 'Timezone',
     sendWindow: 'Send window',
     weekdaysOnly: 'Weekdays only',
+    dayCountMode: 'Delay counting',
+    elapsedDays: 'Elapsed days',
+    businessDaysCampaign: 'Business days (campaign)',
+    businessDaysRecipient: 'Business days (recipient)',
+    calendarCountry: 'Calendar country',
+    calendarSubdivision: 'Subdivision',
     yes: 'Yes',
     no: 'No',
     policyNotSet: 'Set send policy before preview',
     confirmPolicy: 'Confirm policy',
     editPolicy: 'Edit',
     policyConfirmed: 'Confirmed',
+    emptyCountry: 'Country code is required for business-day mode',
   },
   ru: {
     name: 'Название кампании',
@@ -59,12 +66,19 @@ const translations: Record<string, Record<string, string>> = {
     timezone: 'Часовой пояс',
     sendWindow: 'Окно отправки',
     weekdaysOnly: 'Только будни',
+    dayCountMode: 'Счёт дней',
+    elapsedDays: 'Обычные дни',
+    businessDaysCampaign: 'Рабочие дни кампании',
+    businessDaysRecipient: 'Рабочие дни получателя',
+    calendarCountry: 'Страна календаря',
+    calendarSubdivision: 'Регион / штат',
     yes: 'Да',
     no: 'Нет',
     policyNotSet: 'Укажите политику отправки',
     confirmPolicy: 'Подтвердить',
     editPolicy: 'Изменить',
     policyConfirmed: 'Подтверждено',
+    emptyCountry: 'Для режима рабочих дней укажите код страны',
   },
 };
 
@@ -85,6 +99,9 @@ export interface CampaignLaunchFormValues {
   sendWindowStartHour: number;
   sendWindowEndHour: number;
   sendWeekdaysOnly: boolean;
+  sendDayCountMode: 'elapsed_days' | 'business_days_campaign' | 'business_days_recipient';
+  sendCalendarCountryCode: string | null;
+  sendCalendarSubdivisionCode: string | null;
 }
 
 export interface SendPolicyHint {
@@ -92,6 +109,9 @@ export interface SendPolicyHint {
   sendWindowStartHour?: number;
   sendWindowEndHour?: number;
   sendWeekdaysOnly?: boolean;
+  sendDayCountMode?: 'elapsed_days' | 'business_days_campaign' | 'business_days_recipient';
+  sendCalendarCountryCode?: string | null;
+  sendCalendarSubdivisionCode?: string | null;
 }
 
 interface SegmentOption {
@@ -206,6 +226,13 @@ export function CampaignLaunchForm({
   const [sendStartHour, setSendStartHour] = useState(sendPolicyHint?.sendWindowStartHour ?? 9);
   const [sendEndHour, setSendEndHour] = useState(sendPolicyHint?.sendWindowEndHour ?? 17);
   const [sendWeekdaysOnly, setSendWeekdaysOnly] = useState(sendPolicyHint?.sendWeekdaysOnly ?? true);
+  const [sendDayCountMode, setSendDayCountMode] = useState<
+    'elapsed_days' | 'business_days_campaign' | 'business_days_recipient'
+  >(
+    sendPolicyHint?.sendDayCountMode ?? 'elapsed_days'
+  );
+  const [sendCalendarCountryCode, setSendCalendarCountryCode] = useState(sendPolicyHint?.sendCalendarCountryCode ?? '');
+  const [sendCalendarSubdivisionCode, setSendCalendarSubdivisionCode] = useState(sendPolicyHint?.sendCalendarSubdivisionCode ?? '');
   const [policyConfirmed, setPolicyConfirmed] = useState(false);
   const [policyEditing, setPolicyEditing] = useState(!hasHint);
   const [policyValidationError, setPolicyValidationError] = useState<string | null>(null);
@@ -222,6 +249,13 @@ export function CampaignLaunchForm({
     }
     if (sendEndHour <= sendStartHour) {
       return language === 'ru' ? 'Конец должен быть позже начала' : 'End hour must be greater than start hour';
+    }
+    if (
+      (sendDayCountMode === 'business_days_campaign' ||
+        sendDayCountMode === 'business_days_recipient') &&
+      !sendCalendarCountryCode.trim()
+    ) {
+      return t.emptyCountry;
     }
     return null;
   };
@@ -287,6 +321,9 @@ export function CampaignLaunchForm({
       sendWindowStartHour: sendStartHour,
       sendWindowEndHour: sendEndHour,
       sendWeekdaysOnly,
+      sendDayCountMode,
+      sendCalendarCountryCode: sendCalendarCountryCode.trim() || null,
+      sendCalendarSubdivisionCode: sendCalendarSubdivisionCode.trim() || null,
     });
   };
 
@@ -597,7 +634,7 @@ export function CampaignLaunchForm({
         {!policyConfirmed && !policyEditing && hasHint && (
           <div>
             <div style={{ fontSize: 12, color: 'var(--od-text)', lineHeight: 1.6, marginBottom: 6 }}>
-              {sendTimezone} &middot; {sendStartHour}:00–{sendEndHour}:00 &middot; {sendWeekdaysOnly ? t.weekdaysOnly : (language === 'ru' ? 'вкл. выходные' : 'incl. weekends')}
+              {sendTimezone} &middot; {sendStartHour}:00–{sendEndHour}:00 &middot; {sendWeekdaysOnly ? t.weekdaysOnly : (language === 'ru' ? 'вкл. выходные' : 'incl. weekends')} &middot; {sendDayCountMode === 'business_days_campaign' ? `${t.businessDaysCampaign}${sendCalendarCountryCode ? ` (${sendCalendarCountryCode}${sendCalendarSubdivisionCode ? `/${sendCalendarSubdivisionCode}` : ''})` : ''}` : sendDayCountMode === 'business_days_recipient' ? `${t.businessDaysRecipient}${sendCalendarCountryCode ? ` (${sendCalendarCountryCode}${sendCalendarSubdivisionCode ? `/${sendCalendarSubdivisionCode}` : ''})` : ''}` : t.elapsedDays}
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <button
@@ -638,7 +675,7 @@ export function CampaignLaunchForm({
         {/* Confirmed read-only summary */}
         {policyConfirmed && !policyEditing && (
           <div style={{ fontSize: 12, color: 'var(--od-text)', lineHeight: 1.6 }}>
-            {sendTimezone} &middot; {sendStartHour}:00–{sendEndHour}:00 &middot; {sendWeekdaysOnly ? t.weekdaysOnly : (language === 'ru' ? 'вкл. выходные' : 'incl. weekends')}
+            {sendTimezone} &middot; {sendStartHour}:00–{sendEndHour}:00 &middot; {sendWeekdaysOnly ? t.weekdaysOnly : (language === 'ru' ? 'вкл. выходные' : 'incl. weekends')} &middot; {sendDayCountMode === 'business_days_campaign' ? `${t.businessDaysCampaign}${sendCalendarCountryCode ? ` (${sendCalendarCountryCode}${sendCalendarSubdivisionCode ? `/${sendCalendarSubdivisionCode}` : ''})` : ''}` : sendDayCountMode === 'business_days_recipient' ? `${t.businessDaysRecipient}${sendCalendarCountryCode ? ` (${sendCalendarCountryCode}${sendCalendarSubdivisionCode ? `/${sendCalendarSubdivisionCode}` : ''})` : ''}` : t.elapsedDays}
           </div>
         )}
 
@@ -693,6 +730,42 @@ export function CampaignLaunchForm({
                   {sendWeekdaysOnly ? t.yes : t.no}
                 </button>
               </div>
+            </div>
+
+            <div style={{ marginBottom: 8 }}>
+              <label style={{ ...labelStyle, fontSize: 10 }}>{t.dayCountMode}</label>
+              <select
+                style={{ ...inputStyle, width: '100%', marginTop: 2 }}
+                value={sendDayCountMode}
+                onChange={(e) => { setSendDayCountMode(e.target.value as 'elapsed_days' | 'business_days_campaign' | 'business_days_recipient'); setPolicyValidationError(null); }}
+                disabled={disabled}
+              >
+                <option value="elapsed_days">{t.elapsedDays}</option>
+                <option value="business_days_campaign">{t.businessDaysCampaign}</option>
+                <option value="business_days_recipient">{t.businessDaysRecipient}</option>
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 8 }}>
+              <label style={{ ...labelStyle, fontSize: 10 }}>{t.calendarCountry}</label>
+              <input
+                style={{ ...inputStyle, width: '100%', marginTop: 2, textTransform: 'uppercase' }}
+                value={sendCalendarCountryCode}
+                onChange={(e) => { setSendCalendarCountryCode(e.target.value.toUpperCase()); setPolicyValidationError(null); }}
+                disabled={disabled}
+                placeholder="RU"
+              />
+            </div>
+
+            <div style={{ marginBottom: 8 }}>
+              <label style={{ ...labelStyle, fontSize: 10 }}>{t.calendarSubdivision}</label>
+              <input
+                style={{ ...inputStyle, width: '100%', marginTop: 2 }}
+                value={sendCalendarSubdivisionCode}
+                onChange={(e) => { setSendCalendarSubdivisionCode(e.target.value); setPolicyValidationError(null); }}
+                disabled={disabled}
+                placeholder={language === 'ru' ? 'напр. MOW' : 'e.g. MOW'}
+              />
             </div>
 
             {policyValidationError && (

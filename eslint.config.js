@@ -40,6 +40,9 @@ export default [
       ...securityNode.configs.recommended.rules,
       // Avoid noisy false positives; re-enable per-file if needed.
       'security/detect-object-injection': 'off',
+      // eslint-plugin-security-node currently crashes on some TS AST shapes (ESLint 9 + TS parser).
+      // Keep the rest of the rule-set enabled.
+      'security-node/detect-unhandled-async-errors': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': 'warn',

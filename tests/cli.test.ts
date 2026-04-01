@@ -1172,12 +1172,19 @@ describe('createProgram', () => {
       error: null,
     });
     const currentEq = vi.fn().mockReturnValue({ single: singleCurrent });
-    const currentSelect = vi.fn().mockReturnValue({ eq: currentEq });
+    const recipientEq = vi.fn();
+    const currentSelect = vi.fn((columns: string) => {
+      if (columns === 'metadata') {
+        return { eq: currentEq };
+      }
+      return { eq: recipientEq };
+    });
 
     const singleUpdated = vi.fn().mockResolvedValue({
       data: { id: 'draft-1', status: 'approved', reviewer: 'qa-user', metadata: { source: 'agent', note: 'ok' } },
       error: null,
     });
+    recipientEq.mockReturnValue({ single: singleUpdated });
     const updateEq = vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({ single: singleUpdated }),
     });

@@ -133,10 +133,27 @@ describe('InboxWorkspacePage', () => {
     expect(screen.getByText('No replies match the current filters.')).toBeTruthy();
   });
 
+  it('filters replies by linkage scope (campaign-linked vs unlinked)', async () => {
+    vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue(inboxView);
+
+    render(<InboxWorkspacePage />);
+    await screen.findAllByText('Bianca Mock');
+
+    fireEvent.click(screen.getByRole('button', { name: 'unlinked' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /Bianca Mock/i })).toBeNull();
+    });
+    expect(screen.getByText('No replies match the current filters.')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'campaign-linked' }));
+    expect(await screen.findAllByText('Bianca Mock')).toBeTruthy();
+  });
+
   it('shows success message after poll now', async () => {
     vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue(inboxView);
     const pollSpy = vi.spyOn(apiClient, 'triggerInboxPoll').mockResolvedValue({
-      source: 'outreacher-process-replies',
+      source: 'crew_five-process-replies',
       requestedAt: '2026-03-17T10:00:00Z',
       upstreamStatus: 200,
       accepted: true,
@@ -188,7 +205,7 @@ describe('InboxWorkspacePage', () => {
     await screen.findAllByText('Bianca Mock');
 
     // Default is 'unhandled'
-    expect(fetchSpy).toHaveBeenCalledWith(expect.objectContaining({ handled: false }));
+    expect(fetchSpy).toHaveBeenCalledWith(expect.objectContaining({ handled: false, linkage: 'linked', limit: 50 }));
 
     // Switch to 'handled'
     fireEvent.click(screen.getByRole('button', { name: 'handled' }));

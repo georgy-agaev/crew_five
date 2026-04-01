@@ -264,4 +264,59 @@ describe('directory read models', () => {
     expect(result.summary.total).toBe(1);
     expect(result.items[0]?.companyId).toBe('co-target');
   });
+
+  it('chunks directory company contact stats lookups for large company sets', async () => {
+    const companyRows = Array.from({ length: 205 }, (_, index) => ({
+      id: `co-${index + 1}`,
+      company_name: `Company ${index + 1}`,
+      segment: 'AI',
+      status: 'active',
+      website: null,
+      employee_count: null,
+      office_qualification: null,
+      registration_date: null,
+      updated_at: '2026-03-10T10:00:00Z',
+      company_research: null,
+    }));
+
+    const employeeIn = vi.fn(async (_field: string, companyIds: string[]) => ({
+      data: companyIds.map((companyId) => ({
+        company_id: companyId,
+        work_email: `${companyId}@example.com`,
+        generic_email: null,
+      })),
+      error: null,
+    }));
+
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table === 'companies') {
+          return {
+            select: vi.fn(() => ({
+              order: vi.fn(async () => ({
+                data: companyRows,
+                error: null,
+              })),
+            })),
+          };
+        }
+
+        if (table === 'employees') {
+          return {
+            select: vi.fn(() => ({
+              in: employeeIn,
+            })),
+          };
+        }
+
+        throw new Error(`unexpected table ${table}`);
+      }),
+    } as any;
+
+    const result = await listDirectoryCompanies(client, {});
+
+    expect(employeeIn).toHaveBeenCalledTimes(3);
+    expect(employeeIn.mock.calls.map((call) => call[1].length)).toEqual([100, 100, 5]);
+    expect(result.summary.total).toBe(205);
+  });
 });

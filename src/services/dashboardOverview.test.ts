@@ -20,15 +20,87 @@ describe('dashboard overview', () => {
 
         if (table === 'drafts') {
           return {
+            select: vi.fn((fields?: string) => {
+              if (typeof fields === 'string' && fields === 'id,campaign_id,email_type,updated_at') {
+                return {
+                  eq: vi.fn(() => ({
+                    order: vi.fn(() => ({
+                      limit: vi.fn(async () => ({
+                        data: [
+                          {
+                            id: 'draft-3',
+                            campaign_id: 'camp-1',
+                            email_type: 'intro',
+                            updated_at: '2026-03-18T10:45:00Z',
+                          },
+                        ],
+                        error: null,
+                      })),
+                    })),
+                  })),
+                };
+              }
+              return {
+                order: vi.fn(() => ({
+                  limit: vi.fn(async () => ({
+                    data: [
+                      { id: 'draft-1', campaign_id: 'camp-1', status: 'generated', email_type: 'intro', updated_at: '2026-03-18T09:30:00Z' },
+                      { id: 'draft-2', campaign_id: 'camp-2', status: 'approved', email_type: 'bump', updated_at: '2026-03-18T07:30:00Z' },
+                      { id: 'draft-3', campaign_id: 'camp-1', status: 'sent', email_type: 'intro', updated_at: '2026-03-18T10:45:00Z' },
+                    ],
+                    error: null,
+                  })),
+                })),
+              };
+            }),
+          };
+        }
+
+        if (table === 'email_outbound') {
+          return {
             select: vi.fn(() => ({
-              order: vi.fn(() => ({
-                limit: vi.fn(async () => ({
+              in: vi.fn(() => ({
+                eq: vi.fn(async () => ({
                   data: [
-                    { id: 'draft-1', campaign_id: 'camp-1', status: 'generated', email_type: 'intro', updated_at: '2026-03-18T09:30:00Z' },
-                    { id: 'draft-2', campaign_id: 'camp-2', status: 'approved', email_type: 'bump', updated_at: '2026-03-18T07:30:00Z' },
+                    {
+                      id: 'out-older',
+                      campaign_id: 'camp-1',
+                      draft_id: 'draft-3',
+                      contact_id: 'emp-1',
+                      company_id: 'co-1',
+                      sender_identity: 'sales@alpha.test',
+                      status: 'sent',
+                      sent_at: '2026-03-18T10:40:00Z',
+                    },
+                    {
+                      id: 'out-1',
+                      campaign_id: 'camp-1',
+                      draft_id: 'draft-3',
+                      contact_id: 'emp-1',
+                      company_id: 'co-1',
+                      sender_identity: 'sales@alpha.test',
+                      status: 'sent',
+                      sent_at: '2026-03-18T10:45:00Z',
+                    },
                   ],
                   error: null,
                 })),
+              })),
+            })),
+          };
+        }
+
+        if (table === 'employees') {
+          return {
+            select: vi.fn(() => ({
+              in: vi.fn(async () => ({
+                data: [
+                  {
+                    id: 'emp-1',
+                    full_name: 'Alex Sender',
+                  },
+                ],
+                error: null,
               })),
             })),
           };
@@ -52,29 +124,44 @@ describe('dashboard overview', () => {
 
         if (table === 'companies') {
           return {
-            select: vi.fn(async () => ({
-              data: [
-                {
-                  id: 'co-1',
-                  company_name: 'Fresh Co',
-                  company_research: { lastUpdatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() },
-                  updated_at: '2026-03-18T09:00:00Z',
-                },
-                {
-                  id: 'co-2',
-                  company_name: 'Stale Co',
-                  company_research: { lastUpdatedAt: '2025-01-01T09:00:00Z' },
-                  updated_at: '2026-03-18T09:00:00Z',
-                },
-                {
-                  id: 'co-3',
-                  company_name: 'Missing Co',
-                  company_research: null,
-                  updated_at: '2026-03-18T09:00:00Z',
-                },
-              ],
-              error: null,
-            })),
+            select: vi.fn((fields?: string) => {
+              if (typeof fields === 'string' && fields.includes('company_research')) {
+                return Promise.resolve({
+                  data: [
+                    {
+                      id: 'co-1',
+                      company_name: 'Fresh Co',
+                      company_research: { lastUpdatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() },
+                      updated_at: '2026-03-18T09:00:00Z',
+                    },
+                    {
+                      id: 'co-2',
+                      company_name: 'Stale Co',
+                      company_research: { lastUpdatedAt: '2025-01-01T09:00:00Z' },
+                      updated_at: '2026-03-18T09:00:00Z',
+                    },
+                    {
+                      id: 'co-3',
+                      company_name: 'Missing Co',
+                      company_research: null,
+                      updated_at: '2026-03-18T09:00:00Z',
+                    },
+                  ],
+                  error: null,
+                });
+              }
+              return {
+                in: vi.fn(async () => ({
+                  data: [
+                    {
+                      id: 'co-1',
+                      company_name: 'Fresh Co',
+                    },
+                  ],
+                  error: null,
+                })),
+              };
+            }),
           };
         }
 
@@ -106,9 +193,29 @@ describe('dashboard overview', () => {
     expect(result.recentActivity).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          kind: 'outbound',
+          id: 'out-1',
+          timestamp: '2026-03-18T10:45:00Z',
+          title: 'Intro sent',
+          subtitle: 'Fresh Co · Alex Sender · sales@alpha.test',
+          campaignId: 'camp-1',
+        }),
+      ])
+    );
+    expect(result.recentActivity).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
           kind: 'draft',
           id: 'draft-1',
           subtitle: 'intro email · Alpha',
+        }),
+      ])
+    );
+    expect(result.recentActivity).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'draft',
+          id: 'draft-3',
         }),
       ])
     );

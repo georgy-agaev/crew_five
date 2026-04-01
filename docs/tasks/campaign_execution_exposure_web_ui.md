@@ -1,12 +1,18 @@
 # Task: Campaign Execution Exposure Web UI
 
 **Date:** 2026-03-22
-**Status:** To Do
+**Status:** Done
 **Owner:** frontend / Claude
 
 ## Goal
 
 Use the already-expanded campaign read models to show historical execution exposure in operator UI.
+
+## Completion Note
+
+This task was completed in the Stage Closeout pass together with the related
+offer/exposure analytics UI work. The remaining backlog is polish and roadmap
+cleanup, not missing core UI capability.
 
 ## Backend Ready
 

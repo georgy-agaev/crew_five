@@ -35,6 +35,10 @@ import type {
 } from '../services/campaignRotation.js';
 import type { CampaignAutoSendSweepResult } from '../services/campaignAutoSend.js';
 import type {
+  CampaignSendExecutionReason,
+  CampaignSendExecutionResult,
+} from '../services/campaignSendExecution.js';
+import type {
   CampaignAutoSendSettingsView,
   UpdateCampaignAutoSendSettingsInput,
 } from '../services/campaignAutoSendSettings.js';
@@ -277,7 +281,7 @@ export type InboxPollRequest = {
   lookbackHours?: number;
 };
 export type InboxPollResult = {
-  source: 'outreacher-process-replies';
+  source: 'outreacher-process-replies' | 'crew_five-process-replies';
   requestedAt: string;
   upstreamStatus: number;
   accepted?: boolean;
@@ -332,6 +336,7 @@ export type AdapterDeps = {
     campaignId?: string;
     replyLabel?: string;
     handled?: boolean;
+    linkage?: 'all' | 'linked' | 'unlinked';
   }) => Promise<InboxRepliesView>;
   markInboxReplyHandled?: (params: {
     replyId: string;
@@ -365,6 +370,11 @@ export type AdapterDeps = {
   getCampaignReadModel?: (campaignId: string) => Promise<CampaignReadModel>;
   getCampaignAudit?: (campaignId: string) => Promise<CampaignAuditView>;
   getCampaignSendPreflight?: (campaignId: string) => Promise<CampaignSendPreflightView>;
+  executeCampaignSend?: (params: {
+    campaignId: string;
+    reason?: CampaignSendExecutionReason;
+    batchLimit?: number;
+  }) => Promise<CampaignSendExecutionResult | Record<string, unknown>>;
   getCampaignLaunchPreview?: (input: CampaignLaunchPreviewInput) => Promise<CampaignLaunchPreviewResult>;
   launchCampaign?: (input: CampaignLaunchInput) => Promise<CampaignLaunchResult>;
   getCampaignNextWavePreview?: (input: CampaignNextWavePreviewInput) => Promise<CampaignNextWavePreviewResult>;

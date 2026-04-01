@@ -72,6 +72,8 @@ export interface CampaignCompaniesView {
 
 export interface CampaignDetailEmployee {
   contact_id: string;
+  audience_source: 'segment_snapshot' | 'manual_attach';
+  attached_at: string | null;
   full_name: string | null;
   position: string | null;
   work_email: string | null;
@@ -124,6 +126,8 @@ export interface CampaignDetailEmployee {
 export interface CampaignDetailCompany extends CampaignCompany {
   composition_summary: {
     total_contacts: number;
+    segment_snapshot_contacts: number;
+    manual_attach_contacts: number;
     sendable_contacts: number;
     eligible_for_new_intro_contacts: number;
     blocked_no_sendable_email_contacts: number;
@@ -155,14 +159,25 @@ export interface CampaignDetailView {
   icp_profile: {
     id: string;
     name: string | null;
+    project_id: string | null;
+    description: string | null;
     offering_domain: string | null;
+    company_criteria: Record<string, unknown>;
+    persona_criteria: Record<string, unknown>;
+    phase_outputs: Record<string, unknown> | null;
+    learnings: unknown;
   } | null;
   icp_hypothesis: {
     id: string;
+    icp_id: string | null;
     name: string | null;
     offer_id: string | null;
     status: string | null;
     messaging_angle: string | null;
+    search_config: Record<string, unknown>;
+    targeting_defaults: Record<string, unknown> | null;
+    pattern_defaults: Record<string, unknown> | null;
+    notes: string | null;
   } | null;
   offer: OfferRecord | null;
   project: ProjectRecord | null;
@@ -795,12 +810,14 @@ export async function fetchInboxReplies(opts: {
   campaignId?: string;
   replyLabel?: string;
   handled?: boolean;
+  linkage?: 'all' | 'linked' | 'unlinked';
   limit?: number;
 } = {}): Promise<InboxRepliesView> {
   const params = new URLSearchParams();
   if (opts.campaignId) params.set('campaignId', opts.campaignId);
   if (opts.replyLabel) params.set('replyLabel', opts.replyLabel);
   if (typeof opts.handled === 'boolean') params.set('handled', String(opts.handled));
+  if (opts.linkage) params.set('linkage', opts.linkage);
   if (opts.limit) params.set('limit', String(opts.limit));
   const qs = params.toString();
   return fetchJson<InboxRepliesView>(`/inbox/replies${qs ? `?${qs}` : ''}`);
@@ -827,7 +844,7 @@ export async function markInboxReplyUnhandled(replyId: string): Promise<InboxRep
 }
 
 export interface InboxPollResult {
-  source: 'outreacher-process-replies';
+  source: 'outreacher-process-replies' | 'crew_five-process-replies';
   requestedAt: string;
   upstreamStatus: number;
   accepted?: boolean;
@@ -1050,6 +1067,48 @@ export interface CampaignSendPreflightView {
 
 export async function fetchCampaignSendPreflight(campaignId: string): Promise<CampaignSendPreflightView> {
   return fetchJson<CampaignSendPreflightView>(`/campaigns/${campaignId}/send-preflight`);
+}
+
+export interface CampaignSendExecutionResultItem {
+  draftId: string;
+  contactId: string | null;
+  companyId: string | null;
+  emailType: string | null;
+  senderIdentity: string;
+  mailboxAccountId: string | null;
+  recipientEmail: string;
+  status: 'sent' | 'failed';
+  provider: string;
+  providerMessageId?: string | null;
+  error?: string;
+}
+
+export interface CampaignSendExecutionResult {
+  accepted: true;
+  source: string;
+  requestedAt: string;
+  campaignId: string;
+  reason: 'auto_send_intro' | 'auto_send_bump' | 'auto_send_mixed';
+  provider?: string;
+  selectedCount?: number;
+  sentCount?: number;
+  failedCount?: number;
+  skippedCount?: number;
+  triggered?: number;
+  results?: CampaignSendExecutionResultItem[];
+}
+
+export async function triggerCampaignSendExecution(
+  campaignId: string,
+  input: {
+    reason?: 'auto_send_intro' | 'auto_send_bump' | 'auto_send_mixed';
+    batchLimit?: number;
+  } = {}
+): Promise<CampaignSendExecutionResult> {
+  return fetchJson<CampaignSendExecutionResult>(`/campaigns/${campaignId}/send`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 // ---- Campaign Auto-Send Settings ----
@@ -1301,6 +1360,9 @@ export interface CampaignSendPolicy {
   sendWindowStartHour: number;
   sendWindowEndHour: number;
   sendWeekdaysOnly: boolean;
+  sendDayCountMode: 'elapsed_days' | 'business_days_campaign' | 'business_days_recipient';
+  sendCalendarCountryCode: string | null;
+  sendCalendarSubdivisionCode: string | null;
 }
 
 export interface CampaignSendPolicyView extends CampaignSendPolicy {
@@ -1308,6 +1370,7 @@ export interface CampaignSendPolicyView extends CampaignSendPolicy {
   campaignName: string;
   campaignStatus: string | null;
   updatedAt: string | null;
+  metadata: Record<string, unknown> | null;
 }
 
 export async function fetchCampaignSendPolicy(campaignId: string): Promise<CampaignSendPolicyView> {
@@ -1346,6 +1409,9 @@ export interface CampaignLaunchPreviewInput {
   sendWindowStartHour?: number;
   sendWindowEndHour?: number;
   sendWeekdaysOnly?: boolean;
+  sendDayCountMode?: 'elapsed_days' | 'business_days_campaign' | 'business_days_recipient';
+  sendCalendarCountryCode?: string | null;
+  sendCalendarSubdivisionCode?: string | null;
 }
 
 export interface CampaignLaunchPreviewWarning {
@@ -1403,6 +1469,9 @@ export interface CampaignLaunchInput {
   sendWindowStartHour?: number;
   sendWindowEndHour?: number;
   sendWeekdaysOnly?: boolean;
+  sendDayCountMode?: 'elapsed_days' | 'business_days_campaign' | 'business_days_recipient';
+  sendCalendarCountryCode?: string | null;
+  sendCalendarSubdivisionCode?: string | null;
 }
 
 export interface CampaignLaunchResult {
@@ -1899,6 +1968,8 @@ export interface CompanyImportProcessCompanyResult {
   companyId: string;
   status: string;
   company_name?: string;
+  error?: string;
+  note?: string;
 }
 
 export interface CompanyImportProcessStatusResponse {
@@ -1913,7 +1984,7 @@ export interface CompanyImportProcessStatusResponse {
   failedCompanies?: number;
   skippedCompanies?: number;
   results?: CompanyImportProcessCompanyResult[];
-  errors?: Array<{ companyId: string; error: string }>;
+  errors?: Array<string | { companyId?: string; error: string }>;
 }
 
 export async function previewCompanyImport(records: CompanyImportRecord[]): Promise<CompanyImportResult> {

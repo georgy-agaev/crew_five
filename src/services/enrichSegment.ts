@@ -96,6 +96,18 @@ function classifyFreshness(store: unknown, now: Date, maxAgeDays: number): Fresh
   return ageMs > maxAgeMs ? 'stale' : 'fresh';
 }
 
+function extractCountryCodeFromEnrichmentResult(result: unknown): string | null {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return null;
+  }
+  const raw = (result as Record<string, unknown>).country;
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const normalized = raw.trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
+}
+
 export async function planSegmentEnrichment(
   client: SupabaseClient,
   options: {
@@ -346,8 +358,10 @@ export async function runSegmentEnrichmentOnce(
     }
     try {
       let merged = companyResearchById.get(companyId) ?? null;
+      let countryCode: string | null = null;
       for (const providerEntry of adapters) {
         const companyResearch = await providerEntry.adapter.fetchCompanyInsights({ company_id: companyId });
+        countryCode = countryCode ?? extractCountryCodeFromEnrichmentResult(companyResearch);
         merged = upsertProviderResult({
           existing: merged,
           provider: providerEntry.provider,
@@ -356,7 +370,10 @@ export async function runSegmentEnrichmentOnce(
       }
       await client
         .from('companies')
-        .update({ company_research: merged })
+        .update({
+          company_research: merged,
+          ...(countryCode ? { country_code: countryCode, country_source: 'enrichment_provider' } : {}),
+        })
         .eq('id', companyId);
       companyResearchById.set(companyId, merged);
       companyCounts.processed += 1;

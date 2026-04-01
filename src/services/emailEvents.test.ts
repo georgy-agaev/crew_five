@@ -7,7 +7,7 @@ describe('emailEvents', () => {
     const result = mapProviderEvent({
       provider: 'imap_mcp',
       provider_event_id: 'evt-1',
-      event_type: 'reply',
+      event_type: ' reply ',
       outcome_classification: 'soft_interest',
       contact_id: 'employee-1',
       outbound_id: 'outbound-1',
@@ -16,11 +16,23 @@ describe('emailEvents', () => {
 
     expect(result.provider).toBe('imap_mcp');
     expect(result.provider_event_id).toBe('evt-1');
-    expect(result.reply_label).toBe('replied');
+    expect(result.event_type).toBe('replied');
+    expect(result.reply_label).toBe('positive');
     expect(result.employee_id).toBe('employee-1');
     expect(result.outbound_id).toBe('outbound-1');
     expect(result.idempotency_key).toMatch(/[a-f0-9]{64}/);
     expect('contact_id' in result).toBe(false);
+  });
+
+  it('rejects provider events with unsupported event_type values', () => {
+    expect(() =>
+      mapProviderEvent({
+        provider: 'imap_mcp',
+        provider_event_id: 'evt-2',
+        event_type: 'reply_received',
+        outbound_id: 'outbound-1',
+      })
+    ).toThrow(/unsupported email event_type/i);
   });
 
   it('classifies outcome-driven negative and positive replies', () => {

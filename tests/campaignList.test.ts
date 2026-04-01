@@ -18,7 +18,7 @@ describe('listCampaigns', () => {
     const rows = await listCampaigns(client, { status: 'review', segmentId: 'seg-1' });
 
     expect(select).toHaveBeenCalledWith(
-      'id,name,status,segment_id,segment_version,created_by,metadata,created_at,updated_at'
+      'id,name,status,segment_id,segment_version,offer_id,created_by,metadata,created_at,updated_at'
     );
     expect(statusEq).toHaveBeenCalledWith('status', 'review');
     expect(segmentEq).toHaveBeenCalledWith('segment_id', 'seg-1');

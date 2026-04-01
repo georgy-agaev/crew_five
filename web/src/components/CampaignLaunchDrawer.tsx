@@ -130,6 +130,9 @@ export function CampaignLaunchDrawer({
         sendWindowStartHour: values.sendWindowStartHour,
         sendWindowEndHour: values.sendWindowEndHour,
         sendWeekdaysOnly: values.sendWeekdaysOnly,
+        sendDayCountMode: values.sendDayCountMode,
+        sendCalendarCountryCode: values.sendCalendarCountryCode,
+        sendCalendarSubdivisionCode: values.sendCalendarSubdivisionCode,
       });
       setPreview(res);
       setStep('preview');
@@ -161,6 +164,9 @@ export function CampaignLaunchDrawer({
         sendWindowStartHour: formValues.sendWindowStartHour,
         sendWindowEndHour: formValues.sendWindowEndHour,
         sendWeekdaysOnly: formValues.sendWeekdaysOnly,
+        sendDayCountMode: formValues.sendDayCountMode,
+        sendCalendarCountryCode: formValues.sendCalendarCountryCode,
+        sendCalendarSubdivisionCode: formValues.sendCalendarSubdivisionCode,
       });
       setResult(res);
       setStep('success');

@@ -401,6 +401,59 @@ describe('runCampaignAutoSendSweep', () => {
     });
   });
 
+  it('prefers the internal executor when provided', async () => {
+    vi.mocked(getCampaignSendPreflight).mockResolvedValue({
+      campaign: { id: 'camp-7b', name: 'Seven B', status: 'ready', segment_id: 'seg-7b', segment_version: 1 },
+      readyToSend: true,
+      blockers: [],
+      summary: {
+        mailboxAssignmentCount: 1,
+        draftCount: 1,
+        approvedDraftCount: 1,
+        generatedDraftCount: 0,
+        rejectedDraftCount: 0,
+        sentDraftCount: 0,
+        sendableApprovedDraftCount: 1,
+        approvedMissingRecipientEmailCount: 0,
+      },
+      senderPlan: {
+        assignmentCount: 1,
+        mailboxAccountCount: 1,
+        senderIdentityCount: 1,
+        domainCount: 1,
+        domains: ['voicexpert.ru'],
+      },
+    } as any);
+
+    const client = createCampaignListClient([
+      {
+        id: 'camp-7b',
+        name: 'Seven B',
+        status: 'ready',
+        auto_send_intro: true,
+        auto_send_bump: false,
+        bump_min_days_since_intro: 3,
+      },
+    ]);
+
+    const executeSendCampaign = vi.fn().mockResolvedValue({ accepted: true, sentCount: 1 });
+    const triggerSendCampaign = vi.fn();
+
+    const result = await runCampaignAutoSendSweep(client, {
+      executeSendCampaign,
+      triggerSendCampaign,
+      now: new Date('2026-03-23T07:00:00Z'),
+    });
+
+    expect(executeSendCampaign).toHaveBeenCalledWith({
+      campaignId: 'camp-7b',
+      reason: 'auto_send_intro',
+      batchLimit: undefined,
+    });
+    expect(triggerSendCampaign).not.toHaveBeenCalled();
+    expect(result.summary.triggeredCount).toBe(1);
+  });
+
   it('skips auto-send outside campaign-local send window before eligibility checks', async () => {
     const client = createCampaignListClient([
       {

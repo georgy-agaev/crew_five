@@ -5,15 +5,16 @@ import {
   summarizeCampaignMailboxAssignmentInputs,
   type CampaignMailboxAssignmentInput,
   type CampaignMailboxAssignmentView,
-} from './campaignMailboxAssignments';
-import { resolveCampaignHypothesis } from './campaignHypothesis';
-import { createCampaign, type CampaignInput } from './campaigns';
+} from './campaignMailboxAssignments.js';
+import { resolveCampaignHypothesis } from './campaignHypothesis.js';
+import { createCampaign, type CampaignInput } from './campaigns.js';
 import {
+  buildCampaignSendPolicyMetadata,
   resolveCampaignSendPolicy,
   type CampaignSendPolicy,
   type CampaignSendPolicyInput,
-} from './campaignSendPolicy';
-import { ensureSegmentSnapshot } from './segmentSnapshotWorkflow';
+} from './campaignSendPolicy.js';
+import { ensureSegmentSnapshot } from './segmentSnapshotWorkflow.js';
 
 export interface CampaignLaunchInput extends CampaignSendPolicyInput {
   name: string;
@@ -79,8 +80,12 @@ function toCampaignCreateInput(
     sendWindowStartHour: sendPolicy.sendWindowStartHour,
     sendWindowEndHour: sendPolicy.sendWindowEndHour,
     sendWeekdaysOnly: sendPolicy.sendWeekdaysOnly,
+    sendDayCountMode: sendPolicy.sendDayCountMode,
+    sendCalendarCountryCode: sendPolicy.sendCalendarCountryCode,
+    sendCalendarSubdivisionCode: sendPolicy.sendCalendarSubdivisionCode,
     metadata: {
       snapshot,
+      ...buildCampaignSendPolicyMetadata(null, sendPolicy),
     },
   };
 }

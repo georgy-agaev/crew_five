@@ -93,12 +93,12 @@ describe('employeeNameRepair', () => {
     const chain = createSelectChain(rows);
     const eq = vi.fn().mockResolvedValue({ data: [{ id: 'emp-1' }], error: null });
     const update = vi.fn().mockReturnValue({ eq });
-    const repairsUpsert = vi.fn().mockResolvedValue({ data: null, error: null });
+    const repairsInsert = vi.fn().mockResolvedValue({ data: null, error: null });
     const client = {
       from: vi.fn().mockImplementation(() => ({
         select: chain.select,
         update,
-        upsert: repairsUpsert,
+        insert: repairsInsert,
       })),
     } as any;
 
@@ -110,25 +110,18 @@ describe('employeeNameRepair', () => {
       last_name: 'Федина',
     });
     expect(eq).toHaveBeenCalledWith('id', 'emp-1');
-    expect(repairsUpsert).toHaveBeenCalledWith(
-      [
-        expect.objectContaining({
-          employee_id: 'emp-1',
-          repair_type: 'name_swap',
-          source: 'employee:repair-names',
-          confidence: 'high',
-          original_first_name: 'Федина',
-          original_last_name: 'Инна',
-          repaired_first_name: 'Инна',
-          repaired_last_name: 'Федина',
-        }),
-      ],
-      {
-        onConflict:
-          'employee_id,repair_type,source,original_first_name,original_last_name,repaired_first_name,repaired_last_name',
-        ignoreDuplicates: true,
-      }
-    );
+    expect(repairsInsert).toHaveBeenCalledWith([
+      expect.objectContaining({
+        employee_id: 'emp-1',
+        repair_type: 'name_swap',
+        source: 'employee:repair-names',
+        confidence: 'high',
+        original_first_name: 'Федина',
+        original_last_name: 'Инна',
+        repaired_first_name: 'Инна',
+        repaired_last_name: 'Федина',
+      }),
+    ]);
     expect(result.summary.updated_count).toBe(1);
     expect(result.summary.skipped_count).toBe(0);
   });
@@ -184,19 +177,19 @@ describe('employeeNameRepair', () => {
     const chain = createSelectChain(rows);
     const eq = vi.fn().mockResolvedValue({ data: [{ id: 'emp-1' }], error: null });
     const update = vi.fn().mockReturnValue({ eq });
-    const repairsUpsert = vi.fn().mockResolvedValue({ data: null, error: null });
+    const repairsInsert = vi.fn().mockResolvedValue({ data: null, error: null });
     const client = {
       from: vi.fn().mockImplementation(() => ({
         select: chain.select,
         update,
-        upsert: repairsUpsert,
+        insert: repairsInsert,
       })),
     } as any;
 
     const result = await applyEmployeeNameRepairs(client, { confidence: 'all' });
 
     expect(update).toHaveBeenCalledTimes(2);
-    expect(repairsUpsert).toHaveBeenCalledTimes(2);
+    expect(repairsInsert).toHaveBeenCalledTimes(2);
     expect(result.summary.updated_count).toBe(2);
     expect(result.summary.candidate_count).toBe(2);
   });

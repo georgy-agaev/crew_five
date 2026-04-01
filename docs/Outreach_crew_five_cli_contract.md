@@ -841,6 +841,13 @@ Behavior:
 - returns warnings when low-confidence employee name-repair candidates are left unchanged.
 - writes name-repair audit rows when high-confidence employee normalization is applied during save.
 
+Error behavior (when `--error-format json` is used):
+
+- On validation failure, exits non-zero and returns `error.code = "INVALID_PAYLOAD"`.
+- `error.details.warnings`: human-readable reasons.
+- `error.details.missing_fields`: required fields that were missing/empty.
+- `error.details.invalid_fields`: fields that were present but invalid (e.g. invalid emails).
+
 Success response shape:
 
 ```json
@@ -1331,6 +1338,29 @@ Notes:
 
 - `business_description` should not be used
 - `company_research` is included so `Outreach` can build richer `company_confirmed_facts`
+
+`Outreach` and `crew_five` should also rely on `segment_members.snapshot.contact` carrying canonical
+recipient context resolved at snapshot time:
+
+```json
+{
+  "full_name": "Jane Doe",
+  "work_email": "",
+  "generic_email": "info@acme.example",
+  "position": "CEO",
+  "recipient_email": "info@acme.example",
+  "recipient_email_source": "generic",
+  "recipient_email_kind": "generic",
+  "sendable": true
+}
+```
+
+Recipient rules:
+
+- use repo-standard naming: `recipient_email`, not `effective_email`
+- resolve with the shared policy `work_email -> generic_email`
+- persist the resolved recipient inside the snapshot so downstream tools do not have to re-infer it
+  from partial contact payloads
 
 ## Shared-Schema Preconditions
 

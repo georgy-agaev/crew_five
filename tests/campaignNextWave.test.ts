@@ -56,6 +56,9 @@ describe('campaignNextWave', () => {
       sendWindowStartHour: 9,
       sendWindowEndHour: 17,
       sendWeekdaysOnly: true,
+      sendDayCountMode: 'business_days_campaign',
+      sendCalendarCountryCode: 'RU',
+      sendCalendarSubdivisionCode: null,
     });
     vi.mocked(getCampaignMailboxAssignment).mockResolvedValue({
       campaignId: 'camp-source',
@@ -91,6 +94,14 @@ describe('campaignNextWave', () => {
       rows: [
         {
           campaign_id: 'camp-source',
+          company_id: 'company-1',
+          contact_id: 'contact-1',
+          source: 'segment_snapshot',
+          snapshot: null,
+          attached_at: null,
+        },
+        {
+          campaign_id: 'camp-source',
           company_id: 'company-4',
           contact_id: 'contact-4',
           source: 'manual_attach',
@@ -103,10 +114,6 @@ describe('campaignNextWave', () => {
       ],
     } as any);
 
-    const sourceDraftsEq = vi.fn().mockResolvedValue({
-      data: [{ contact_id: 'contact-1' }],
-      error: null,
-    });
     const targetMembersMatch = vi.fn().mockResolvedValue({
       data: [
         {
@@ -241,9 +248,6 @@ describe('campaignNextWave', () => {
         if (table === 'email_events') {
           return { select: () => ({ in: eventsIn }) };
         }
-        if (table === 'drafts') {
-          return { select: () => ({ eq: sourceDraftsEq }) };
-        }
         throw new Error(`Unexpected table ${table}`);
       }),
     } as any;
@@ -272,6 +276,9 @@ describe('campaignNextWave', () => {
         sendWindowStartHour: 9,
         sendWindowEndHour: 17,
         sendWeekdaysOnly: true,
+        sendDayCountMode: 'business_days_campaign',
+        sendCalendarCountryCode: 'RU',
+        sendCalendarSubdivisionCode: null,
       },
       senderPlanSummary: {
         assignmentCount: 1,
@@ -331,6 +338,9 @@ describe('campaignNextWave', () => {
       sendWindowStartHour: 9,
       sendWindowEndHour: 17,
       sendWeekdaysOnly: true,
+      sendDayCountMode: 'business_days_campaign',
+      sendCalendarCountryCode: 'RU',
+      sendCalendarSubdivisionCode: null,
     });
     vi.mocked(getCampaignMailboxAssignment).mockResolvedValue({
       campaignId: 'camp-source',
@@ -364,6 +374,14 @@ describe('campaignNextWave', () => {
         segment_version: 1,
       },
       rows: [
+        {
+          campaign_id: 'camp-source',
+          company_id: 'company-1',
+          contact_id: 'contact-1',
+          source: 'segment_snapshot',
+          snapshot: null,
+          attached_at: null,
+        },
         {
           campaign_id: 'camp-source',
           company_id: 'company-3',
@@ -429,13 +447,12 @@ describe('campaignNextWave', () => {
         sendWindowStartHour: 9,
         sendWindowEndHour: 17,
         sendWeekdaysOnly: true,
+        sendDayCountMode: 'business_days_campaign',
+        sendCalendarCountryCode: 'RU',
+        sendCalendarSubdivisionCode: null,
       },
     } as any);
 
-    const sourceDraftsEq = vi.fn().mockResolvedValue({
-      data: [{ contact_id: 'contact-1' }],
-      error: null,
-    });
     const targetMembersMatch = vi.fn().mockResolvedValue({
       data: [
         {
@@ -485,7 +502,28 @@ describe('campaignNextWave', () => {
       error: null,
     });
     const outboundsIn = vi.fn().mockResolvedValue({
-      data: [],
+      data: [
+        {
+          id: 'out-source',
+          campaign_id: 'camp-source',
+          contact_id: 'contact-1',
+          draft_id: 'draft-source',
+          status: 'sent',
+          sent_at: '2026-03-10T12:00:00Z',
+        },
+      ],
+      error: null,
+    });
+    const campaignsIn = vi.fn().mockResolvedValue({
+      data: [{ id: 'camp-source', offer_id: 'offer-1', icp_hypothesis_id: 'hyp-1' }],
+      error: null,
+    });
+    const offersIn = vi.fn().mockResolvedValue({
+      data: [{ id: 'offer-1', title: 'Offer 1', project_name: 'VoiceXpert' }],
+      error: null,
+    });
+    const hypothesesIn = vi.fn().mockResolvedValue({
+      data: [{ id: 'hyp-1', icp_id: 'icp-1' }],
       error: null,
     });
     const exclusionsInsert = vi.fn().mockResolvedValue({ data: [{ id: 'excl-1' }], error: null });
@@ -505,8 +543,14 @@ describe('campaignNextWave', () => {
         if (table === 'email_events') {
           return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
         }
-        if (table === 'drafts') {
-          return { select: () => ({ eq: sourceDraftsEq }) };
+        if (table === 'campaigns') {
+          return { select: () => ({ in: campaignsIn }) };
+        }
+        if (table === 'offers') {
+          return { select: () => ({ in: offersIn }) };
+        }
+        if (table === 'icp_hypotheses') {
+          return { select: () => ({ in: hypothesesIn }) };
         }
         if (table === 'campaign_member_exclusions') {
           return { insert: exclusionsInsert };
@@ -548,6 +592,9 @@ describe('campaignNextWave', () => {
         sendWindowStartHour: 9,
         sendWindowEndHour: 17,
         sendWeekdaysOnly: true,
+        sendDayCountMode: 'business_days_campaign',
+        sendCalendarCountryCode: 'RU',
+        sendCalendarSubdivisionCode: null,
       })
     );
     expect(exclusionsInsert).toHaveBeenCalledWith([

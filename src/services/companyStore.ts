@@ -44,6 +44,8 @@ export interface CompanyImportInput {
   balance?: number | null;
   net_profit_loss?: number | null;
   sme_registry?: string | null;
+  country_code?: string | null;
+  country_source?: string | null;
   employees?: CompanyImportEmployeeInput[];
 }
 
@@ -154,6 +156,12 @@ function normalizeOptionalNumber(value: unknown): number | null | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function normalizeOptionalCountryCode(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  const normalized = normalizeString(value);
+  return normalized ? normalized.toUpperCase() : null;
+}
+
 function isValidEmail(value: string | null): boolean {
   if (!value) return true;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(value);
@@ -201,6 +209,8 @@ function normalizeCompanyInput(input: CompanyImportInput): NormalizedCompanyImpo
     balance: normalizeOptionalNumber(input.balance),
     net_profit_loss: normalizeOptionalNumber(input.net_profit_loss),
     sme_registry: input.sme_registry === undefined ? undefined : input.sme_registry ?? null,
+    country_code: normalizeOptionalCountryCode(input.country_code),
+    country_source: normalizeOptionalString(input.country_source),
     employees: Array.isArray(input.employees) ? input.employees : [],
   };
 }
@@ -225,6 +235,37 @@ function validateCompanyInput(input: NormalizedCompanyImportInput): string[] {
     }
   }
   return warnings;
+}
+
+function listMissingFields(input: NormalizedCompanyImportInput): string[] {
+  const missing: string[] = [];
+  if (!input.company_name) {
+    missing.push('company.company_name');
+  }
+  input.employees.forEach((employee, index) => {
+    if (!normalizeString(employee.full_name)) {
+      missing.push(`employees[${index}].full_name`);
+    }
+  });
+  return missing;
+}
+
+function listInvalidFields(input: NormalizedCompanyImportInput): string[] {
+  const invalid: string[] = [];
+  if (input.primary_email && !isValidEmail(input.primary_email)) {
+    invalid.push('company.primary_email');
+  }
+  input.employees.forEach((employee, index) => {
+    const workEmail = normalizeEmail(employee.work_email);
+    if (workEmail && !isValidEmail(workEmail)) {
+      invalid.push(`employees[${index}].work_email`);
+    }
+    const genericEmail = normalizeEmail(employee.generic_email);
+    if (genericEmail && !isValidEmail(genericEmail)) {
+      invalid.push(`employees[${index}].generic_email`);
+    }
+  });
+  return invalid;
 }
 
 async function findExistingCompany(client: SupabaseClient, input: NormalizedCompanyImportInput) {
@@ -304,6 +345,8 @@ function buildCompanyPatch(input: NormalizedCompanyImportInput) {
     balance: input.balance,
     net_profit_loss: input.net_profit_loss,
     sme_registry: input.sme_registry,
+    country_code: input.country_code,
+    country_source: input.country_source,
   };
 }
 
@@ -596,7 +639,11 @@ export async function saveProcessedCompany(
   if (warnings.length > 0) {
     const error: any = new Error('processed company payload failed validation');
     error.code = 'INVALID_PAYLOAD';
-    error.details = { warnings };
+    error.details = {
+      warnings,
+      missing_fields: listMissingFields(input),
+      invalid_fields: listInvalidFields(input),
+    };
     throw error;
   }
 

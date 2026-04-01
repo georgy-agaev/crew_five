@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 type EnrichmentStatus = 'fresh' | 'stale' | 'missing';
 type EmailStatus = 'work' | 'generic' | 'missing';
 type EmailDeliverabilityStatus = 'unknown' | 'valid' | 'invalid' | 'bounced';
+const COMPANY_CONTACT_QUERY_CHUNK_SIZE = 100;
 
 export interface DirectoryCompanyView {
   companyId: string;
@@ -143,6 +144,14 @@ function makeSummaryCounts<T extends string>(keys: readonly T[]): Record<T, numb
   return Object.fromEntries(keys.map((key) => [key, 0])) as Record<T, number>;
 }
 
+function chunkValues<T>(values: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
 export async function listDirectoryCompanies(
   client: SupabaseClient,
   filters: {
@@ -166,23 +175,25 @@ export async function listDirectoryCompanies(
   const companyIds = companyRows.map((row) => String(row.id));
   const contactCounts = new Map<string, DirectoryCompanyView['contacts']>();
   if (companyIds.length > 0) {
-    const { data: employees, error: employeeError } = await client
-      .from('employees')
-      .select('company_id,work_email,generic_email')
-      .in('company_id', companyIds);
-    if (employeeError) throw employeeError;
-    for (const row of (employees ?? []) as Array<{ company_id: string; work_email?: string | null; generic_email?: string | null }>) {
-      const current = contactCounts.get(row.company_id) ?? {
-        total: 0,
-        withWorkEmail: 0,
-        withAnyEmail: 0,
-        missingEmail: 0,
-      };
-      current.total += 1;
-      if (row.work_email) current.withWorkEmail += 1;
-      if (row.work_email || row.generic_email) current.withAnyEmail += 1;
-      if (!row.work_email && !row.generic_email) current.missingEmail += 1;
-      contactCounts.set(row.company_id, current);
+    for (const companyIdsChunk of chunkValues(companyIds, COMPANY_CONTACT_QUERY_CHUNK_SIZE)) {
+      const { data: employees, error: employeeError } = await client
+        .from('employees')
+        .select('company_id,work_email,generic_email')
+        .in('company_id', companyIdsChunk);
+      if (employeeError) throw employeeError;
+      for (const row of (employees ?? []) as Array<{ company_id: string; work_email?: string | null; generic_email?: string | null }>) {
+        const current = contactCounts.get(row.company_id) ?? {
+          total: 0,
+          withWorkEmail: 0,
+          withAnyEmail: 0,
+          missingEmail: 0,
+        };
+        current.total += 1;
+        if (row.work_email) current.withWorkEmail += 1;
+        if (row.work_email || row.generic_email) current.withAnyEmail += 1;
+        if (!row.work_email && !row.generic_email) current.missingEmail += 1;
+        contactCounts.set(row.company_id, current);
+      }
     }
   }
 

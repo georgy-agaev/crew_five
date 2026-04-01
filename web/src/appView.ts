@@ -1,4 +1,16 @@
-export type AppView = 'pipeline' | 'icp-discovery' | 'campaigns' | 'builder-v2' | 'inbox-v2' | 'contacts' | 'mailboxes' | 'enrichment' | 'import' | 'home' | 'campaign-ops';
+export type AppView =
+  | 'pipeline'
+  | 'icp-discovery'
+  | 'campaigns'
+  | 'builder-v2'
+  | 'inbox-v2'
+  | 'contacts'
+  | 'mailboxes'
+  | 'enrichment'
+  | 'import'
+  | 'home'
+  | 'campaign-ops'
+  | 'campaign-ledger';
 
 export function resolveViewFromLocation(loc?: Location | URL): AppView {
   if (!loc) return 'home';
@@ -9,6 +21,7 @@ export function resolveViewFromLocation(loc?: Location | URL): AppView {
   if (view === 'pipeline') return 'pipeline';
   if (view === 'icp-discovery') return 'icp-discovery';
   if (view === 'campaign-ops') return 'campaign-ops';
+  if (view === 'campaign-ledger') return 'campaign-ledger';
   if (view === 'campaigns') return 'campaigns';
   if (view === 'builder-v2') return 'builder-v2';
   if (view === 'inbox-v2') return 'inbox-v2';

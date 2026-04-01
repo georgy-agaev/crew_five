@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
   fetchCampaignSendPreflight,
+  triggerCampaignSendExecution,
+  type CampaignSendExecutionResult,
   type CampaignSendPreflightView,
 } from '../apiClient';
 
@@ -25,6 +27,12 @@ const translations: Record<string, Record<string, string>> = {
     senders: 'senders',
     domains: 'Domains',
     noSender: 'No sender assigned',
+    sendNow: 'Send now',
+    sending: 'Sending...',
+    sendFailed: 'Send failed',
+    sentLabel: 'sent',
+    failedLabel: 'failed',
+    skippedLabel: 'skipped',
     selectCampaign: 'Select a campaign to inspect send readiness',
     loading: 'Loading...',
     error: 'Failed to load preflight',
@@ -45,6 +53,12 @@ const translations: Record<string, Record<string, string>> = {
     senders: 'отправителей',
     domains: 'Домены',
     noSender: 'Отправитель не назначен',
+    sendNow: 'Отправить сейчас',
+    sending: 'Отправка...',
+    sendFailed: 'Ошибка отправки',
+    sentLabel: 'отправлено',
+    failedLabel: 'ошибок',
+    skippedLabel: 'пропущено',
     selectCampaign: 'Выберите кампанию для проверки',
     loading: 'Загрузка...',
     error: 'Ошибка загрузки',
@@ -72,6 +86,9 @@ export function CampaignSendPreflightCard({
   const [data, setData] = useState<CampaignSendPreflightView | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sendLoading, setSendLoading] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sendResult, setSendResult] = useState<CampaignSendExecutionResult | null>(null);
 
   useEffect(() => {
     if (!campaignId) {
@@ -135,6 +152,25 @@ export function CampaignSendPreflightCard({
   if (!data) return null;
 
   const { readyToSend, blockers, summary, senderPlan } = data;
+
+  const handleSendNow = async () => {
+    if (!campaignId || sendLoading) return;
+    setSendLoading(true);
+    setSendError(null);
+    try {
+      const result = await triggerCampaignSendExecution(campaignId, {
+        reason: 'auto_send_mixed',
+        batchLimit: Math.max(1, senderPlan.assignmentCount || 1),
+      });
+      setSendResult(result);
+      const refreshed = await fetchCampaignSendPreflight(campaignId);
+      setData(refreshed);
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : t.sendFailed);
+    } finally {
+      setSendLoading(false);
+    }
+  };
 
   return (
     <div className="od-context-block" style={{ borderTop: '1px solid var(--od-border)' }}>
@@ -234,6 +270,40 @@ export function CampaignSendPreflightCard({
           </span>
         )}
       </div>
+
+      {!compact && (
+        <div style={{ marginBottom: 8 }}>
+          <button
+            type="button"
+            onClick={() => { void handleSendNow(); }}
+            disabled={!readyToSend || sendLoading}
+            style={{
+              minHeight: 28,
+              padding: '6px 10px',
+              borderRadius: 8,
+              border: '1px solid var(--od-border)',
+              background: readyToSend ? 'var(--od-success)' : 'var(--od-card)',
+              color: readyToSend ? '#fff' : 'var(--od-text-muted)',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: readyToSend && !sendLoading ? 'pointer' : 'not-allowed',
+              opacity: sendLoading ? 0.8 : 1,
+            }}
+          >
+            {sendLoading ? t.sending : t.sendNow}
+          </button>
+          {sendError && (
+            <div style={{ marginTop: 6, fontSize: 12, color: 'var(--od-error)' }}>{sendError}</div>
+          )}
+          {sendResult && !sendError && (
+            <div style={{ marginTop: 6, fontSize: 12, color: 'var(--od-text-muted)' }}>
+              {`${sendResult.sentCount ?? sendResult.triggered ?? 0} ${t.sentLabel} · ${
+                sendResult.failedCount ?? 0
+              } ${t.failedLabel} · ${sendResult.skippedCount ?? 0} ${t.skippedLabel}`}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Sender plan */}
       {!compact && (

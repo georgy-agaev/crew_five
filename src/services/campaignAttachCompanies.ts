@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { listCampaignAudience } from './campaignAudience.js';
+import { resolveRecipientEmail, type EmailDeliverabilityStatus } from './recipientResolver.js';
 
 export interface AttachCompaniesToCampaignInput {
   campaignId: string;
@@ -41,11 +42,25 @@ function normalizeCompanyIds(companyIds: string[]): string[] {
 }
 
 function buildCompanySnapshot(company: Record<string, any>, employee: Record<string, any>) {
+  const recipient = resolveRecipientEmail({
+    work_email: typeof employee.work_email === 'string' ? employee.work_email : null,
+    work_email_status:
+      (employee.work_email_status as EmailDeliverabilityStatus | null | undefined) ?? null,
+    generic_email: typeof employee.generic_email === 'string' ? employee.generic_email : null,
+    generic_email_status:
+      (employee.generic_email_status as EmailDeliverabilityStatus | null | undefined) ?? null,
+  });
+
   return {
     contact: {
       full_name: typeof employee.full_name === 'string' ? employee.full_name : null,
       work_email: typeof employee.work_email === 'string' ? employee.work_email : null,
+      generic_email: typeof employee.generic_email === 'string' ? employee.generic_email : null,
       position: typeof employee.position === 'string' ? employee.position : null,
+      recipient_email: recipient.recipientEmail,
+      recipient_email_source: recipient.recipientEmailSource,
+      recipient_email_kind: recipient.recipientEmailKind,
+      sendable: recipient.sendable,
     },
     company: {
       id: company.id,
@@ -91,7 +106,7 @@ export async function attachCompaniesToCampaign(
 
   const { data: employeeRows, error: employeeError } = await client
     .from('employees')
-    .select('id,company_id,full_name,position,work_email')
+    .select('id,company_id,full_name,position,work_email,work_email_status,generic_email,generic_email_status')
     .in('company_id', companyIds);
   if (employeeError) {
     throw employeeError;

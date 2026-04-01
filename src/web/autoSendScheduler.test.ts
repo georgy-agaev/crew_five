@@ -131,4 +131,43 @@ describe('autoSendScheduler', () => {
       vi.useRealTimers();
     }
   });
+
+  it('formats non-Error failures instead of logging [object Object]', async () => {
+    vi.useFakeTimers();
+    const runCampaignAutoSendSweep = vi
+      .fn()
+      .mockRejectedValueOnce({ message: 'boom', code: 'ECONNRESET' })
+      .mockResolvedValueOnce({
+        summary: {
+          checkedCount: 1,
+          triggeredCount: 1,
+          introTriggeredCount: 1,
+          bumpTriggeredCount: 0,
+          mixedTriggeredCount: 0,
+          skippedCount: 0,
+          errorCount: 0,
+        },
+        campaigns: [],
+      });
+    const logger = { log: vi.fn(), error: vi.fn() };
+
+    try {
+      const scheduler = startAutoSendScheduler(
+        { runCampaignAutoSendSweep } as any,
+        { intervalMs: 1000, batchLimit: 10, logger }
+      );
+
+      await vi.advanceTimersByTimeAsync(1000);
+      await Promise.resolve();
+      expect(logger.error).toHaveBeenCalledWith(
+        '[web adapter] auto-send sweep failed: boom | code=ECONNRESET'
+      );
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(runCampaignAutoSendSweep).toHaveBeenCalledTimes(2);
+      scheduler?.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

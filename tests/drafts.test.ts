@@ -131,6 +131,242 @@ describe('generateDrafts', () => {
     expect(insertedPayload[0].contact_id).toBe('contact-with-email');
   });
 
+  it('uses employees generic email when snapshot email is missing', async () => {
+    const single = vi.fn().mockResolvedValue({
+      data: {
+        id: 'camp',
+        segment_id: 'seg',
+        segment_version: 1,
+        language: 'en',
+        pattern_mode: 'standard',
+      },
+      error: null,
+    });
+
+    const eq = vi.fn().mockReturnValue({ single });
+
+    const membersLimit = vi.fn().mockResolvedValue({
+      data: [
+        {
+          contact_id: 'contact-generic',
+          company_id: 'company-1',
+          snapshot: {
+            contact: { full_name: 'Generic Only', work_email: '', position: 'CEO' },
+            company: { id: 'company-1', company_name: 'Acme' },
+          },
+        },
+      ],
+      error: null,
+    });
+
+    const membersMatch = vi.fn().mockReturnValue({ limit: membersLimit });
+
+    const insertSelect = vi.fn().mockResolvedValue({ data: [{ id: 'draft-1' }], error: null });
+    const insert = vi.fn().mockReturnValue({ select: insertSelect });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'campaigns') {
+        return { select: () => ({ eq }) } as any;
+      }
+      if (table === 'segments') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }),
+            }),
+          }),
+        } as any;
+      }
+      if (table === 'icp_profiles') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          }),
+        } as any;
+      }
+      if (table === 'segment_members') {
+        return {
+          select: () => ({ match: membersMatch }),
+        } as any;
+      }
+      if (table === 'campaign_member_additions') {
+        return { select: () => ({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      }
+      if (table === 'campaign_member_exclusions') return emptyCampaignExclusionsSelect();
+      if (table === 'app_settings')
+        return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) } as any;
+      if (table === 'companies') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      if (table === 'employees')
+        return {
+          select: () => ({
+            in: vi.fn().mockResolvedValue({
+              data: [
+                {
+                  id: 'contact-generic',
+                  ai_research_data: null,
+                  work_email: '',
+                  work_email_status: null,
+                  generic_email: 'hello@acme.test',
+                  generic_email_status: 'valid',
+                },
+              ],
+              error: null,
+            }),
+          }),
+        } as any;
+      if (table === 'drafts') {
+        return { insert } as any;
+      }
+      throw new Error(`Unexpected table ${table}`);
+    });
+
+    const supabase = { from } as any;
+
+    const aiResponse: EmailDraftResponse = {
+      subject: 'Hello',
+      body: 'Body',
+      metadata: {
+        model: 'mock',
+        language: 'en',
+        pattern_mode: 'standard',
+        email_type: 'intro',
+        coach_prompt_id: 'intro_v1',
+      },
+    };
+    const chatClient: ChatClient = {
+      complete: vi.fn().mockResolvedValue(JSON.stringify(aiResponse)),
+    };
+    const aiClient = new AiClient(chatClient);
+
+    const summary = await generateDrafts(supabase, aiClient, {
+      campaignId: 'camp',
+      limit: 1,
+    });
+
+    expect(summary.generated).toBe(1);
+    expect(summary.skippedNoEmail).toBe(0);
+
+    const insertedPayload = insert.mock.calls[0]?.[0] as any[];
+    expect(insertedPayload).toHaveLength(1);
+    expect(insertedPayload[0].contact_id).toBe('contact-generic');
+  });
+
+  it('uses canonical snapshot recipient email without requiring live employee fallback', async () => {
+    const single = vi.fn().mockResolvedValue({
+      data: {
+        id: 'camp',
+        segment_id: 'seg',
+        segment_version: 1,
+        language: 'en',
+        pattern_mode: 'standard',
+      },
+      error: null,
+    });
+
+    const eq = vi.fn().mockReturnValue({ single });
+
+    const membersLimit = vi.fn().mockResolvedValue({
+      data: [
+        {
+          contact_id: 'contact-snapshot-recipient',
+          company_id: 'company-1',
+          snapshot: {
+            contact: {
+              full_name: 'Snapshot Recipient',
+              work_email: '',
+              generic_email: 'info@acme.test',
+              recipient_email: 'info@acme.test',
+              recipient_email_source: 'generic',
+              recipient_email_kind: 'generic',
+              sendable: true,
+              position: 'CEO',
+            },
+            company: { id: 'company-1', company_name: 'Acme' },
+          },
+        },
+      ],
+      error: null,
+    });
+
+    const membersMatch = vi.fn().mockReturnValue({ limit: membersLimit });
+
+    const insertSelect = vi.fn().mockResolvedValue({ data: [{ id: 'draft-1' }], error: null });
+    const insert = vi.fn().mockReturnValue({ select: insertSelect });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'campaigns') {
+        return { select: () => ({ eq }) } as any;
+      }
+      if (table === 'segments') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: { locale: 'en' }, error: null }),
+            }),
+          }),
+        } as any;
+      }
+      if (table === 'icp_profiles') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          }),
+        } as any;
+      }
+      if (table === 'segment_members') {
+        return {
+          select: () => ({ match: membersMatch }),
+        } as any;
+      }
+      if (table === 'campaign_member_additions') {
+        return { select: () => ({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      }
+      if (table === 'campaign_member_exclusions') return emptyCampaignExclusionsSelect();
+      if (table === 'app_settings')
+        return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }) } as any;
+      if (table === 'companies') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      if (table === 'employees') return { select: () => ({ in: vi.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      if (table === 'drafts') {
+        return { insert } as any;
+      }
+      throw new Error(`Unexpected table ${table}`);
+    });
+
+    const supabase = { from } as any;
+
+    const aiResponse: EmailDraftResponse = {
+      subject: 'Hello',
+      body: 'Body',
+      metadata: {
+        model: 'mock',
+        language: 'en',
+        pattern_mode: 'standard',
+        email_type: 'intro',
+        coach_prompt_id: 'intro_v1',
+      },
+    };
+    const chatClient: ChatClient = {
+      complete: vi.fn().mockResolvedValue(JSON.stringify(aiResponse)),
+    };
+    const aiClient = new AiClient(chatClient);
+
+    const summary = await generateDrafts(supabase, aiClient, {
+      campaignId: 'camp',
+      limit: 1,
+    });
+
+    expect(summary.generated).toBe(1);
+    expect(summary.skippedNoEmail).toBe(0);
+
+    const insertedPayload = insert.mock.calls[0]?.[0] as any[];
+    expect(insertedPayload).toHaveLength(1);
+    expect(insertedPayload[0].contact_id).toBe('contact-snapshot-recipient');
+  });
+
   it('builds requests from segment member snapshot and inserts drafts', async () => {
     const single = vi.fn().mockResolvedValue({
       data: {

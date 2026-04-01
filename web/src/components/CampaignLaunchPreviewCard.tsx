@@ -16,6 +16,12 @@ const translations: Record<string, Record<string, string>> = {
     senders: 'Senders',
     domains: 'Domains',
     noSender: 'No sender assigned',
+    dayCountMode: 'Delay counting',
+    elapsedDays: 'Elapsed days',
+    businessDaysCampaign: 'Business days (campaign)',
+    businessDaysRecipient: 'Business days (recipient)',
+    calendarCountry: 'Calendar country',
+    calendarSubdivision: 'Subdivision',
     warnings: 'Warnings',
   },
   ru: {
@@ -33,6 +39,12 @@ const translations: Record<string, Record<string, string>> = {
     senders: 'Отправители',
     domains: 'Домены',
     noSender: 'Отправитель не назначен',
+    dayCountMode: 'Счёт дней',
+    elapsedDays: 'Обычные дни',
+    businessDaysCampaign: 'Рабочие дни кампании',
+    businessDaysRecipient: 'Рабочие дни получателя',
+    calendarCountry: 'Страна календаря',
+    calendarSubdivision: 'Регион / штат',
     warnings: 'Предупреждения',
   },
 };
@@ -134,6 +146,28 @@ export function CampaignLaunchPreviewCard({
             <span className="od-context-row__label">{language === 'ru' ? 'Только будни' : 'Weekdays only'}</span>
             <span className="od-context-row__value">{preview.sendPolicy.sendWeekdaysOnly ? (language === 'ru' ? 'Да' : 'Yes') : (language === 'ru' ? 'Нет' : 'No')}</span>
           </div>
+          <div className="od-context-row">
+            <span className="od-context-row__label">{t.dayCountMode}</span>
+            <span className="od-context-row__value">
+              {preview.sendPolicy.sendDayCountMode === 'business_days_campaign'
+                ? t.businessDaysCampaign
+                : preview.sendPolicy.sendDayCountMode === 'business_days_recipient'
+                  ? t.businessDaysRecipient
+                  : t.elapsedDays}
+            </span>
+          </div>
+          {preview.sendPolicy.sendCalendarCountryCode && (
+            <div className="od-context-row">
+              <span className="od-context-row__label">{t.calendarCountry}</span>
+              <span className="od-context-row__value">{preview.sendPolicy.sendCalendarCountryCode}</span>
+            </div>
+          )}
+          {preview.sendPolicy.sendCalendarSubdivisionCode && (
+            <div className="od-context-row">
+              <span className="od-context-row__label">{t.calendarSubdivision}</span>
+              <span className="od-context-row__value">{preview.sendPolicy.sendCalendarSubdivisionCode}</span>
+            </div>
+          )}
         </div>
       )}
 

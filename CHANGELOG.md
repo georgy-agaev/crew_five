@@ -2,6 +2,334 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.61] - 2026-03-30
+### Changed
+- `campaign:next-wave` now blocks `target_segment` candidates as `already_used_in_source_wave` when
+  their `company_id` (or `contact_id`) is already present in the source campaign audience, even if
+  the source campaign has not sent yet. This prevents “Wave 2 duplicates Wave 1” when Wave 1 is
+  early.
+- `campaignSendExecution` no longer applies company-level intro suppression; intro eligibility is
+  evaluated per-contact so multiple employees of the same company can be contacted within a single
+  campaign across multiple runs.
+### Docs
+- Added a short handoff note for Outreach maintainers:
+  [outreach_wave_dedupe_handoff_2026-03-30.md](/Users/georgyagaev/crew_five/docs/handoffs/outreach_wave_dedupe_handoff_2026-03-30.md).
+
+## [0.2.60] - 2026-03-29
+### Changed
+- Direct `imap-mcp` inbox polling and send execution now share a single MCP stdio process via
+  `imapMcpTransportManager`, reducing mailbox connection churn and avoiding the failure mode where
+  two separate imap-mcp processes fight over the same accounts.
+### Tests
+- Added a focused transport-manager test asserting send + inbox reuse the same shared MCP client.
+### Docs
+- Updated the Outreach generation validation protocol to avoid using the existing Wave 2 campaign
+  as a “fresh wave” test dataset because it has `wave2Unique=0` vs the base wave.
+
+## [0.2.58] - 2026-03-26
+### Changed
+- Scheduler error logs now format unknown thrown objects via a shared `formatErrorMessage()` helper,
+  avoiding opaque `[object Object]` output for inbox polling and auto-send loops.
+- Direct `imap-mcp` inbox and send transports now retry once on transient mailbox connection failures
+  (`ECONNRESET`, `Connection not available`, `EPIPE`), and the send transport performs a lazy
+  `imap_connect` per mailbox account before sending.
+### Docs
+- Updated the Outreach generation handoff and validation protocol docs with a clearer “machine
+  checks first” validation flow and a transport hardening note.
+
+## [0.2.59] - 2026-03-26
+### Changed
+- Direct `imap-mcp` inbox/send transports now restart the MCP stdio process when imap-mcp reports
+  an unrecoverable reconnect state (`Failed to reconnect: Can not re-use ImapFlow instance`),
+  instead of repeatedly failing the sweep/poll loop.
+- Direct `imap-mcp` inbox/send transports now also treat MCP request timeouts as retryable
+  connection errors, retrying once per operation (`MCP error -32001: Request timed out`).
+- `email_events.event_type` ingestion now trims/normalizes common provider aliases and rejects
+  unsupported event types early, preventing `email_events_event_type_check` constraint violations.
+
+## [0.2.57] - 2026-03-25
+### Changed
+- Draft review status/content updates now return the same enriched draft read-model as
+  `/api/drafts?includeRecipientContext=true`, so Builder V2 no longer loses contact/company labels
+  and falls back to `Unknown contact / Unknown company` after approve/reject/edit actions.
+- Campaign send execution now caps a single run to at most one attempted message per assigned
+  mailbox, so manual `Send now` and scheduler runs no longer try to push whole approved batches in
+  one burst. Adapter send logs now include `selected=...` to make run-level pacing visible.
+- Direct send execution no longer writes the invalid intermediate `drafts.status='sending'`.
+  Drafts stay `approved` until successful delivery and move to `sent` only through outbound
+  recording, which matches the live `drafts_status_check` constraint.
+- Home recent activity now includes only `email_outbound.status='sent'` rows and keeps only the
+  newest successful outbound per draft, so failed attempts no longer appear as duplicate
+  `Intro sent` entries.
+- `campaign:detail` now exposes richer canonical generation context:
+  `project`, expanded `icp_profile` (`description`, `company_criteria`,
+  `persona_criteria`, `phase_outputs`, `learnings`), expanded
+  `icp_hypothesis` (`icp_id`, `search_config`, `targeting_defaults`,
+  `pattern_defaults`, `notes`), and attach-aware audience provenance
+  (`audience_source`, `attached_at`, source counts in `composition_summary`).
+- Fixed the richer `campaign:detail` offer contract so `offer.project_id` is
+  now selected by the read-model instead of being silently omitted from live
+  generation context.
+- Activated the BKC pilot family for generation validation:
+  - created canonical project `voicexpert-vks`
+  - created canonical offer `Комплекты для видеоконференций в переговорные комнаты`
+  - activated and linked the existing hypothesis
+    `ea28784a-24c6-4d7e-a84c-e0ec8ee2c120`
+  - linked the canonical context to the base wave and existing family wave
+  - created a dedicated attach-validation campaign with `manual_attach` audience
+    already prepared
+### Docs
+- Added
+  [icp_profile_storage_guidelines.md](/Users/georgyagaev/crew_five/docs/icp_profile_storage_guidelines.md)
+  to document how new projects and new ICPs should use `description`,
+  `company_criteria`, `persona_criteria`, `offering_domain`, `learnings`, and
+  `phase_outputs`.
+- Added session note
+  [2026-03-25_3_icp_profile_storage_guidance.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-25_3_icp_profile_storage_guidance.md).
+- Linked the ICP discovery workflow to the new storage guidance so the rule is
+  visible from the main ICP flow doc.
+- Added session note
+  [2026-03-25_4_campaign_detail_generation_context.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-25_4_campaign_detail_generation_context.md).
+- Added session note
+  [2026-03-25_5_outreach_generation_contract_ready_handoff.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-25_5_outreach_generation_contract_ready_handoff.md).
+- Added session note
+  [2026-03-25_6_outreach_generation_validation_protocol.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-25_6_outreach_generation_validation_protocol.md).
+- Updated
+  [web_ui_endpoints.md](/Users/georgyagaev/crew_five/docs/web_ui_endpoints.md)
+  so `GET /api/campaigns/:campaignId/detail` documents the richer generation
+  contract (`project`, expanded `icp_profile`, expanded `icp_hypothesis`).
+- Updated
+  [outreach_generation_context_and_runtime_scope_handoff.md](/Users/georgyagaev/crew_five/docs/tasks/outreach_generation_context_and_runtime_scope_handoff.md)
+  with the concrete `campaign:detail` payload now available to `Outreach`,
+  including attach-aware audience provenance and exposure context.
+- Added
+  [outreach_generation_validation_protocol.md](/Users/georgyagaev/crew_five/docs/tasks/outreach_generation_validation_protocol.md)
+  to define the practical wave / attach / next-wave validation flow, with the
+  user limited to final intro-draft reading and quality judgment.
+- Added
+  [bkc_generation_pilot_activation_brief.md](/Users/georgyagaev/crew_five/docs/tasks/bkc_generation_pilot_activation_brief.md)
+  to document the concrete pilot family, canonical IDs, and attach-validation
+  setup prepared for `Outreach`.
+- Added session note
+  [2026-03-25_7_bkc_generation_pilot_activation.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-25_7_bkc_generation_pilot_activation.md).
+- Added
+  [outreach_project_bootstrap_wizard_design.md](/Users/georgyagaev/crew_five/docs/tasks/outreach_project_bootstrap_wizard_design.md)
+  to define the recommended split between a new `Outreach`
+  `/bootstrap-project-context` wizard and a canonical `crew_five`
+  `project:bootstrap --manifest` orchestration command.
+- Added session note
+  [2026-03-25_8_outreach_project_bootstrap_wizard_design.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-25_8_outreach_project_bootstrap_wizard_design.md).
+
+## [0.2.56] - 2026-03-24
+### Added
+- Added direct `imap-mcp` inbox polling support in
+  [imapMcpInboxTransport.ts](/Users/georgyagaev/crew_five/src/web/liveDeps/imapMcpInboxTransport.ts)
+  with focused coverage in
+  [imapMcpInboxTransport.test.ts](/Users/georgyagaev/crew_five/src/web/liveDeps/imapMcpInboxTransport.test.ts).
+- Added internal reply-ingestion orchestration in
+  [processReplies.ts](/Users/georgyagaev/crew_five/src/services/processReplies.ts)
+  plus rule-based obvious reply classification in
+  [replyClassifier.ts](/Users/georgyagaev/crew_five/src/services/replyClassifier.ts).
+- Recipient-country business-day override is now supported end-to-end:
+  - new send policy mode `business_days_recipient`
+  - recipient/company country first, campaign country fallback second
+  - send execution filters recipient-mode sends by recipient business-day availability
+- Added migration
+  [20260324103000_add_company_country_calendar_fields.sql](/Users/georgyagaev/crew_five/supabase/migrations/20260324103000_add_company_country_calendar_fields.sql)
+  with canonical `companies.country_code` and `companies.country_source`.
+- Campaign business-day calendar operator surfaces are now complete for Phase 1:
+  - send policy card supports delay-count mode plus calendar country/subdivision
+  - launch form and launch preview carry the same business-day policy fields
+- Added explicit follow-up task
+  [campaign_business_day_calendar_recipient_override.md](/Users/georgyagaev/crew_five/docs/tasks/campaign_business_day_calendar_recipient_override.md)
+  to track recipient-country override separately from the now-complete campaign-country scope.
+### Changed
+- Segment snapshots now persist canonical recipient context inside `snapshot.contact`:
+  `generic_email`, `recipient_email`, `recipient_email_source`, `recipient_email_kind`, and
+  `sendable`. Snapshot creation now resolves recipient using the shared `work_email -> generic_email`
+  policy, so downstream draft/detail flows no longer have to infer recipient email from sparse
+  `work_email`-only payloads.
+- Directory company loading now batches `employees.company_id in (...)` lookups in
+  [directoryReadModels.ts](/Users/georgyagaev/crew_five/src/services/directoryReadModels.ts),
+  preventing large live company-directory requests from failing inside the Campaign Attach Companies
+  drawer. Manual company attach snapshot payloads now also persist canonical recipient context for
+  attached contacts.
+- `liveDeps.ts` now prefers direct `crew_five` process-replies ingestion via `imap-mcp` and only
+  falls back to the legacy `Outreach` bridge when the direct path is not configured.
+- Hardened direct `imap-mcp` inbox payload parsing so live polling tolerates banner/noise text
+  around JSON tool responses instead of failing whole-mailbox polls with `invalid JSON payload`.
+- Direct inbox polling now surfaces raw `imap-mcp` tool error text for mailbox-connection failures,
+  so live logs and `/api/inbox/poll` show actionable account-level reasons instead of generic JSON
+  parse errors.
+- Direct inbox polling now performs lazy `imap_connect` per mailbox account before search/read/mark
+  operations, matching `imap-mcp` runtime expectations and avoiding `No connection configured for account ...`
+  failures on freshly started adapter processes.
+- Reply matching now resolves outbound recipient email from `email_outbound.metadata.recipient_email`
+  with direct-column fallback, so live process-replies no longer depends on a non-existent
+  `email_outbound.recipient_email` column.
+- `crew_five_execution_layer_migration.md` is now marked complete:
+  `crew_five` owns both send execution and obvious reply ingestion, while `Outreach` remains the
+  intelligence layer for generation / ambiguous judgment.
+- Direct `imap-mcp` send now reuses a shared transport connection inside one adapter process instead
+  of reconnecting on every execution.
+- Added explicit adapter logs for:
+  - direct transport connection
+  - direct send execution summary
+  - fallback to legacy `Outreach` send bridge
+- Fixed `campaign:launch:preview` for large live segments by batching `companies` / `employees`
+  lookup queries instead of issuing one oversized `.in(...)` request.
+- Marked
+  [campaign_business_day_calendar_backend.md](/Users/georgyagaev/crew_five/docs/tasks/campaign_business_day_calendar_backend.md)
+  complete for Phase 1 campaign-country business days and moved recipient override to a separate
+  backlog item.
+- Completed the previously separated follow-up
+  [campaign_business_day_calendar_recipient_override.md](/Users/georgyagaev/crew_five/docs/tasks/campaign_business_day_calendar_recipient_override.md).
+- Live rollout for the two active campaigns now uses recipient-aware business-day policy with `RU`
+  fallback, and their audience companies were backfilled with `companies.country_code = 'RU'`
+  / `country_source = 'campaign_audience_backfill_2026_03_24'`.
+### Docs
+- Updated
+  [2026-03-24_1_manual_send_execution_path.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-24_1_manual_send_execution_path.md)
+  to record the hardening pass.
+- Added session note
+  [2026-03-24_2_business_day_calendar_phase1_complete.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-24_2_business_day_calendar_phase1_complete.md).
+- Added session note
+  [2026-03-24_3_business_day_calendar_recipient_override_complete.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-24_3_business_day_calendar_recipient_override_complete.md).
+- Added session note
+  [2026-03-24_4_process_replies_internal_migration.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-24_4_process_replies_internal_migration.md).
+- Added session note
+  [2026-03-25_1_roadmap_refresh_after_execution_migration.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-25_1_roadmap_refresh_after_execution_migration.md).
+- Added a new coordinated Outreach handoff:
+  [outreach_generation_context_and_runtime_scope_handoff.md](/Users/georgyagaev/crew_five/docs/tasks/outreach_generation_context_and_runtime_scope_handoff.md),
+  plus session note
+  [2026-03-25_2_outreach_generation_context_handoff.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-25_2_outreach_generation_context_handoff.md).
+- Refreshed
+  [roadmap.md](/Users/georgyagaev/crew_five/docs/sessions/roadmap.md)
+  to reflect that execution-layer migration is operationally complete and that
+  the next active block is richer generation context plus automated E2E refresh.
+- Marked stale UI task docs complete:
+  - [campaign_execution_exposure_web_ui.md](/Users/georgyagaev/crew_five/docs/tasks/campaign_execution_exposure_web_ui.md)
+  - [offer_aware_analytics_web_ui.md](/Users/georgyagaev/crew_five/docs/tasks/offer_aware_analytics_web_ui.md)
+
+## [0.2.55] - 2026-03-24
+### Added
+- Added a canonical manual campaign send route:
+  - `POST /api/campaigns/:campaignId/send`
+- Added a manual `Send now` action in
+  [CampaignSendPreflightCard.tsx](/Users/georgyagaev/crew_five/web/src/components/CampaignSendPreflightCard.tsx),
+  wired to the same `crew_five` execution runner used by auto-send.
+### Changed
+- `liveDeps.ts` now exposes `executeCampaignSend(...)`, preferring direct `imap-mcp` execution and
+  falling back to the legacy `Outreach` bridge only when needed.
+### Docs
+- Updated [web_ui_endpoints.md](/Users/georgyagaev/crew_five/docs/web_ui_endpoints.md) for the new
+  manual send endpoint.
+- Added session note
+  [2026-03-24_1_manual_send_execution_path.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-24_1_manual_send_execution_path.md).
+
+## [0.2.54] - 2026-03-23
+### Changed
+- Direct `imap-mcp` send configuration now supports an explicit launcher entry via
+  `IMAP_MCP_SERVER_ENTRY`, allowing live transport to run with source launchers such as
+  `tsx src/index.ts` instead of only `node dist/index.js`.
+### Docs
+- Recorded a successful live direct-send smoke in
+  [2026-03-23_6_direct_imap_mcp_live_smoke.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-23_6_direct_imap_mcp_live_smoke.md),
+  confirming end-to-end delivery to `gagaev@emag.ru` and `georgy.agaev@gmail.com`.
+
+## [0.2.53] - 2026-03-23
+### Added
+- Added direct `imap-mcp` auto-send transport support in
+  [imapMcpSendTransport.ts](/Users/georgyagaev/crew_five/src/web/liveDeps/imapMcpSendTransport.ts)
+  with focused coverage in
+  [imapMcpSendTransport.test.ts](/Users/georgyagaev/crew_five/src/web/liveDeps/imapMcpSendTransport.test.ts).
+- Added the MCP TypeScript SDK dependency used by the direct stdio adapter.
+### Changed
+- [liveDeps.ts](/Users/georgyagaev/crew_five/src/web/liveDeps.ts) now prefers direct `imap-mcp`
+  execution for auto-send when `IMAP_MCP_SERVER_ROOT` and `IMAP_MCP_HOME` are configured, and only
+  falls back to the legacy `Outreach` send bridge otherwise.
+### Docs
+- Updated
+  [crew_five_execution_layer_migration.md](/Users/georgyagaev/crew_five/docs/tasks/crew_five_execution_layer_migration.md)
+  to reflect the new direct adapter stage.
+- Added session note
+  [2026-03-23_5_direct_imap_mcp_send_adapter.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-23_5_direct_imap_mcp_send_adapter.md).
+
+## [0.2.52] - 2026-03-23
+### Added
+- Added the first internal send execution foundation in
+  [campaignSendExecution.ts](/Users/georgyagaev/crew_five/src/services/campaignSendExecution.ts)
+  with focused coverage in
+  [campaignSendExecution.test.ts](/Users/georgyagaev/crew_five/tests/campaignSendExecution.test.ts).
+### Changed
+- `campaignAutoSend` can now prefer an internal deterministic execution callback instead of only an
+  external send bridge trigger.
+- Campaign send policy now supports metadata-backed business-day configuration with:
+  - `sendDayCountMode`
+  - `sendCalendarCountryCode`
+  - `sendCalendarSubdivisionCode`
+- Campaign calendar evaluation is now holiday-aware via `date-holidays`.
+- Bump eligibility now supports campaign-country business-day counting in addition to elapsed days.
+- Launch / next-wave policy contracts and web mocks were updated to carry the expanded send-policy
+  shape.
+### Docs
+- Updated
+  [crew_five_execution_layer_migration.md](/Users/georgyagaev/crew_five/docs/tasks/crew_five_execution_layer_migration.md)
+  and
+  [campaign_business_day_calendar_backend.md](/Users/georgyagaev/crew_five/docs/tasks/campaign_business_day_calendar_backend.md)
+  to reflect in-progress backend foundations.
+- Added session note
+  [2026-03-23_4_execution_migration_and_calendar_foundations.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-23_4_execution_migration_and_calendar_foundations.md).
+
+## [0.2.51] - 2026-03-23
+### Docs
+- Added architectural migration brief for moving routine execution from `Outreach` into `crew_five`:
+  [crew_five_execution_layer_migration.md](/Users/georgyagaev/crew_five/docs/tasks/crew_five_execution_layer_migration.md)
+  and session note
+  [2026-03-23_3_execution_layer_migration_brief.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-23_3_execution_layer_migration_brief.md).
+- Recorded the recommended split:
+  - `crew_five` owns deterministic send/reply execution
+  - `Outreach` remains the generation and judgment layer
+  with migration order:
+  - Phase 1: `send-campaign`
+  - Phase 2: inbox polling + obvious reply processing
+
+## [0.2.50] - 2026-03-23
+### Fixed
+- Post-import company processing no longer rejects large whole-job company sets at the runtime chunk
+  limit.
+- `startCompanyImportProcess()` now separates:
+  - whole-job safety cap via `maxJobCompanyCount` (default `5000`)
+  - runtime chunk cap via `hardMaxBatchSize` (default `20`)
+- Runtime batch size persisted into the async processing job now remains chunk-safe while allowing
+  realistic import selections like `122` persisted companies to start one processing job.
+### Docs
+- Added bug note
+  [company_import_processing_large_job_fix.md](/Users/georgyagaev/crew_five/docs/tasks/company_import_processing_large_job_fix.md)
+  and session log
+  [2026-03-23_2_company_import_processing_large_job_fix.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-23_2_company_import_processing_large_job_fix.md).
+
+## [0.2.49] - 2026-03-23
+### Docs
+- Added next-session backend planning brief for business-day calendar support:
+  [campaign_business_day_calendar_backend.md](/Users/georgyagaev/crew_five/docs/tasks/campaign_business_day_calendar_backend.md)
+  and session log
+  [2026-03-23_1_campaign_business_day_calendar_backend.md](/Users/georgyagaev/crew_five/docs/sessions/2026-03-23_1_campaign_business_day_calendar_backend.md).
+- Documented the recommended two-phase path:
+  - Phase 1: campaign-country business days
+  - Phase 2: recipient-country override
+  while keeping campaign as the runtime source of truth for execution calendar policy.
+
+## [0.2.48] - 2026-03-23
+### Changed
+- Home recent activity now treats real send activity as canonical `email_outbound` events instead of
+  showing sent draft lifecycle rows.
+- Sent activity on Home now renders operator-usable labels and context:
+  - `Intro sent` / `Bump sent` / `Email sent`
+  - `Company · Recipient · Sender identity`
+- Draft activity on Home is now limited to generation/review lifecycle only and excludes `sent`
+  drafts.
+
 ## [0.2.47] - 2026-03-22
 ### Added
 - Added explicit repository licensing under Apache License 2.0:
@@ -575,6 +903,9 @@ All notable changes to this project will be documented in this file.
 - Added [docs/private/2026-03-21_backend_task_auto_send_scheduler.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_backend_task_auto_send_scheduler.md),
   a full backend implementation brief for automatic scheduled intro + bump sending, including
   architecture guidance, guardrails, testing scope, and required frontend/Outreach handoffs.
+- Added [docs/private/2026-03-23_response_to_outreach_evolution_proposal.md](/Users/georgyagaev/crew_five/docs/private/2026-03-23_response_to_outreach_evolution_proposal.md),
+  capturing the formal `crew_five` response to the 2026-03-23 `Outreach` evolution proposal,
+  including accepted directions, deferred items, and the recommended joint execution order.
 - Added [docs/private/2026-03-21_current_stage_action_plan.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_current_stage_action_plan.md),
   a backend-first execution plan for the current product stage with session-by-session sequencing,
   frontend follow-up blocks, and a practical delivery order focused on removing operator routine.
@@ -585,12 +916,32 @@ All notable changes to this project will be documented in this file.
   documenting the current `Outreach` skill/runtime inventory so roadmap planning can avoid duplicating
   existing runtime capabilities in `crew_five`.
 ### Changed
+- Updated [docs/sessions/roadmap.md](/Users/georgyagaev/crew_five/docs/sessions/roadmap.md) to align
+  the public roadmap with the 2026-03-23 agreed `Outreach` split:
+  `send-campaign -> crew_five`, inbox polling + simple reply processing -> `crew_five`, richer
+  execution context before heavier angle/prompt work, and corrected non-true "Completed" status
+  labels.
 - Updated [docs/private/2026-03-20_backend_roadmap_v1.md](/Users/georgyagaev/crew_five/docs/private/2026-03-20_backend_roadmap_v1.md)
   to align backend priorities with the `Outreach` capability inventory and the revised
   semi-automated outbound operating model.
+- Updated [docs/private/2026-03-20_backend_roadmap_v1.md](/Users/georgyagaev/crew_five/docs/private/2026-03-20_backend_roadmap_v1.md)
+  again to reflect the 2026-03-23 joint decision with `Outreach`, adding explicit priority blocks
+  for `send-campaign` ownership transfer, inbox polling/simple reply processing transfer, and
+  richer execution context for generation.
 - Updated [docs/private/2026-03-21_current_stage_action_plan.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_current_stage_action_plan.md)
   to prioritize automatic scheduled intro + bump sending as the urgent first block in the current
   stage because live campaigns already exist and the main pain is manual send supervision.
+- Updated [docs/private/2026-03-21_current_stage_action_plan.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_current_stage_action_plan.md)
+  to align the current-stage execution order with the 2026-03-23 `Outreach` decision memo:
+  `send-campaign` transfer first, then auto-send, then polling/simple replies, then richer
+  generation context.
+- Updated [docs/private/2026-03-21_master_roadmap_index.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_master_roadmap_index.md)
+  so the roadmap index now references the formal response to the `Outreach` evolution proposal and
+  reflects the agreed current-stage execution order.
+- Updated [docs/private/2026-03-21_next_stage_action_plan.md](/Users/georgyagaev/crew_five/docs/private/2026-03-21_next_stage_action_plan.md)
+  to make the next stage sync-ready for `Outreach`, grouping it into reusable execution objects,
+  repeated wave support, and controlled learning/rotation, with explicit sync points and entry
+  criteria tied to the 2026-03-23 joint decision.
 - Rewrote [docs/sessions/roadmap.md](/Users/georgyagaev/crew_five/docs/sessions/roadmap.md) as the
   current public roadmap/navigation document, replacing the outdated phase-oriented plan with the
   agreed semi-automated outbound assistant model, current-stage urgent priorities, and next-stage

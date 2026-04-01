@@ -13,6 +13,9 @@ const REPLY_LABELS = ['all', 'positive', 'negative', 'bounce', 'unclassified'] a
 type ReplyLabelFilter = (typeof REPLY_LABELS)[number];
 type ReplySummaryCounts = Record<ReplyLabelFilter, number>;
 
+const LINKAGE_FILTERS = ['linked', 'all', 'unlinked'] as const;
+type LinkageFilter = (typeof LINKAGE_FILTERS)[number];
+
 // ============================================================
 // Helpers
 // ============================================================
@@ -124,6 +127,8 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
   const [campaignFilter, setCampaignFilter] = usePersistedState('c5:inbox-v2:campaign-filter', 'all');
   const [searchQuery, setSearchQuery] = usePersistedState('c5:inbox-v2:search', '');
   const [handledFilter, setHandledFilter] = usePersistedState<'all' | 'unhandled' | 'handled'>('c5:inbox-v2:handled-filter', 'unhandled');
+  const [linkageFilter, setLinkageFilter] = usePersistedState<LinkageFilter>('c5:inbox-v2:linkage-filter', 'linked');
+  const [limit, setLimit] = usePersistedState<number>('c5:inbox-v2:limit', 50);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -141,8 +146,8 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
       setPollStatus('success');
       setPollMessage(
         result.accepted === false
-          ? 'Outreach acknowledged the request but is not processing right now.'
-          : 'Polling requested. New replies will appear after Outreach processes the inbox.'
+          ? 'Inbox polling is available but not processing right now.'
+          : 'Polling requested. New replies will appear after crew_five processes the inbox.'
       );
       // Best-effort: reload replies after a short delay
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
@@ -153,7 +158,9 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
       const apiError = (err as any)?.apiError;
       if (apiError?.statusCode === 501) {
         setPollStatus('unavailable');
-        setPollMessage('Inbox polling is not configured. Set OUTREACH_PROCESS_REPLIES_URL or OUTREACH_API_BASE on the server.');
+        setPollMessage(
+          'Inbox polling is not configured. Set direct IMAP MCP env vars or an Outreach fallback on the server.'
+        );
       } else {
         setPollStatus('error');
         // Prefer the technical API message over the generic user-friendly one
@@ -226,10 +233,11 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
 
   useEffect(() => {
     let cancelled = false;
-    const opts: { limit: number; replyLabel?: string; handled?: boolean } = { limit: 50 };
+    const opts: { limit: number; replyLabel?: string; handled?: boolean; linkage?: LinkageFilter } = { limit };
     if (labelFilter !== 'all') opts.replyLabel = labelFilter;
     if (handledFilter === 'unhandled') opts.handled = false;
     else if (handledFilter === 'handled') opts.handled = true;
+    if (linkageFilter !== 'all') opts.linkage = linkageFilter;
 
     fetchInboxReplies(opts)
       .then((view) => {
@@ -247,26 +255,37 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [labelFilter, handledFilter, reloadKey]);
+  }, [labelFilter, handledFilter, linkageFilter, limit, reloadKey]);
+
+  const scopedReplies = useMemo(() => {
+    if (linkageFilter === 'all') return replies;
+    if (linkageFilter === 'linked') return replies.filter((r) => r.campaign_id !== null);
+    return replies.filter((r) => r.campaign_id === null);
+  }, [replies, linkageFilter]);
 
   const campaignNames = useMemo(() => {
     const names = new Set<string>();
-    for (const r of replies) {
+    for (const r of scopedReplies) {
       if (r.campaign_name) names.add(r.campaign_name);
     }
     return Array.from(names).sort();
-  }, [replies]);
+  }, [scopedReplies]);
 
   const filteredReplies = useMemo(() => {
     const normalizedQuery = normalizeSearchValue(searchQuery);
-    return replies.filter((reply) => {
+    return scopedReplies.filter((reply) => {
       if (campaignFilter !== 'all' && reply.campaign_name !== campaignFilter) return false;
       return matchesSearch(reply, normalizedQuery);
     });
-  }, [replies, campaignFilter, searchQuery]);
+  }, [scopedReplies, campaignFilter, searchQuery]);
 
-  const replySummary = useMemo(() => buildReplySummary(replies), [replies]);
-  const hasLocalFilters = campaignFilter !== 'all' || normalizeSearchValue(searchQuery).length > 0;
+  const replySummary = useMemo(() => buildReplySummary(scopedReplies), [scopedReplies]);
+  const hasLocalFilters =
+    linkageFilter !== 'linked' ||
+    handledFilter !== 'unhandled' ||
+    labelFilter !== 'all' ||
+    campaignFilter !== 'all' ||
+    normalizeSearchValue(searchQuery).length > 0;
 
   const selectedReply = useMemo(
     () => filteredReplies.find((r) => r.id === selectedReplyId) ?? filteredReplies[0] ?? null,
@@ -330,6 +349,33 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
               title={filterTitles[label]}
             >
               {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Scope filter bar */}
+      <div className="od-filterbar">
+        {LINKAGE_FILTERS.map((scope) => {
+          const scopeTitles: Record<LinkageFilter, string> = {
+            linked: 'Show only replies linked to a campaign (matched to our outbound ledger + campaign context).',
+            all: 'Show all reply-type mailbox events we ingested (campaign-linked + not linked to a campaign).',
+            unlinked: 'Show only mailbox events not linked to a campaign (e.g. inbox placeholder outbounds).',
+          };
+          const scopeLabels: Record<LinkageFilter, string> = {
+            linked: 'campaign-linked',
+            all: 'all mail',
+            unlinked: 'unlinked',
+          };
+          return (
+            <button
+              key={scope}
+              type="button"
+              className={`od-filter-chip${linkageFilter === scope ? ' od-filter-chip--active' : ''}`}
+              onClick={() => { setLoading(true); setLinkageFilter(scope); }}
+              title={scopeTitles[scope]}
+            >
+              {scopeLabels[scope]}
             </button>
           );
         })}
@@ -399,6 +445,18 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
           placeholder="Search contact, company, subject, or reply"
           style={{ flex: '1 1 280px' }}
         />
+        <select
+          aria-label="Inbox limit"
+          title="How many items to load from the server (newest first)"
+          className="od-search__input"
+          value={String(limit)}
+          onChange={(e) => { setLoading(true); setLimit(Number(e.target.value)); }}
+          style={{ flex: '0 0 140px' }}
+        >
+          {[50, 100, 200, 500].map((n) => (
+            <option key={n} value={String(n)}>{n} loaded</option>
+          ))}
+        </select>
         {campaignNames.length > 1 && (
           <select
             aria-label="Campaign filter"
@@ -434,7 +492,7 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
           <span className="od-empty__text">
             {hasLocalFilters
               ? 'No replies match the current filters.'
-              : 'No replies yet. Replies appear here after Outreach processes inbox events.'}
+              : 'No replies yet. Replies appear here after crew_five processes inbox events.'}
           </span>
         </div>
       )}

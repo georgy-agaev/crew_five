@@ -15,8 +15,10 @@ function odCssVars(isDark: boolean): React.CSSProperties {
   } as React.CSSProperties;
 }
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return 'n/a';
   const diff = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(diff)) return 'n/a';
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
@@ -37,6 +39,7 @@ const STATUS_TOOLTIPS: Record<string, string> = {
 const QUICK_LINKS = [
   { label: 'Builder', href: '?view=builder-v2', desc: 'Campaign lifecycle + draft review' },
   { label: 'Campaigns', href: '?view=campaign-ops', desc: 'Campaign operator desk' },
+  { label: 'Ledger', href: '?view=campaign-ledger', desc: 'Campaign sends, outbounds, and events' },
   { label: 'Inbox', href: '?view=inbox-v2', desc: 'Reply inbox + poll' },
   { label: 'Contacts', href: '?view=contacts', desc: 'Company & contact directory' },
   { label: 'Mailboxes', href: '?view=mailboxes', desc: 'Sender planning + observed usage' },
@@ -160,8 +163,16 @@ export function HomeWorkspacePage({ isDark = false }: { isDark?: boolean }) {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span
-                        className={`od-status-badge od-status-badge--${item.kind === 'reply' ? 'review' : item.kind === 'draft' ? 'generating' : 'draft'}`}
-                        title={item.kind === 'reply' ? 'Email reply event' : item.kind === 'draft' ? 'Draft lifecycle event' : 'Campaign event'}
+                        className={`od-status-badge od-status-badge--${item.kind === 'reply' ? 'review' : item.kind === 'draft' ? 'generating' : item.kind === 'outbound' ? 'sending' : 'draft'}`}
+                        title={
+                          item.kind === 'reply'
+                            ? 'Email reply event'
+                            : item.kind === 'draft'
+                              ? 'Draft lifecycle event'
+                              : item.kind === 'outbound'
+                                ? 'Sent email event'
+                                : 'Campaign event'
+                        }
                       >
                         {item.kind}
                       </span>
