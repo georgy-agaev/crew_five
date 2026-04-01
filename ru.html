@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>crew_five — система исполнения outbound-кампаний</title>
+    <meta
+      name="description"
+      content="crew_five — каноническая система исполнения outbound: кампании, волны, политика отправки, прямая доставка через imap-mcp, опрос почтовых ящиков, обработка ответов и операторские интерфейсы."
+    />
+    <link rel="canonical" href="https://georgy-agaev.github.io/crew_five/ru.html" />
+    <meta property="og:title" content="crew_five" />
+    <meta property="og:description" content="Каноническая система исполнения outbound-кампаний." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://georgy-agaev.github.io/crew_five/ru.html" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,700;12..96,800&family=DM+Sans:wght@400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="accent-bar" aria-hidden="true"></div>
+
+    <nav class="nav">
+      <div class="nav-inner">
+        <a class="brand" href="#">
+          <span class="logo" aria-hidden="true"></span>
+          <span class="brand-copy">
+            <span class="brand-name">crew_five</span>
+            <span class="brand-sub">система исполнения outbound-кампаний</span>
+          </span>
+        </a>
+
+        <div class="nav-links">
+          <a href="#system">Система</a>
+          <a href="#workflow">Процесс</a>
+          <a href="#runbook">Запуск</a>
+          <a href="#docs">Документы</a>
+        </div>
+
+        <div class="nav-actions">
+          <a class="btn btn-ghost btn-sm" href="index.html">EN</a>
+          <a class="btn btn-ghost btn-sm" href="https://github.com/georgy-agaev/crew_five">GitHub</a>
+          <button class="hamburger" type="button" aria-label="Меню" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="mobile-menu" hidden>
+        <a href="#system">Система</a>
+        <a href="#workflow">Процесс</a>
+        <a href="#runbook">Запуск</a>
+        <a href="#docs">Документы</a>
+        <a href="index.html">EN</a>
+        <a href="https://github.com/georgy-agaev/crew_five">GitHub</a>
+      </div>
+    </nav>
+
+    <main class="wrap">
+      <header class="hero">
+        <div class="hero-copy reveal">
+          <p class="eyebrow">Outbound-операции, а не теория</p>
+          <h1>
+            crew_five —
+            <span class="hero-dim">система, которая реально исполняет цикл кампаний</span>
+          </h1>
+          <p class="hero-text">
+            Хранит каноническую GTM-цепочку в Supabase, владеет состоянием кампаний, отправляет
+            письма через прямой почтовый транспорт, опрашивает входящие, обрабатывает ответы и
+            предоставляет операторский интерфейс через Web UI и CLI.
+          </p>
+
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#runbook">Запустить локально</a>
+            <a class="btn btn-outline" href="#docs">Документация</a>
+            <a class="btn btn-ghost" href="https://github.com/georgy-agaev/crew_five">Репозиторий</a>
+          </div>
+
+          <div class="pill-row" aria-label="highlights">
+            <span class="pill"><b>Live runtime</b> crew_five → imap-mcp</span>
+            <span class="pill"><b>Каноническая цепочка</b> campaign → drafts → outbound → events</span>
+            <span class="pill"><b>Оператор в центре</b> отправка, опрос, ревью, трейс</span>
+          </div>
+        </div>
+
+        <aside class="hero-panel reveal">
+          <div class="status-card">
+            <div class="status-head">
+              <span class="status-dot ok"></span>
+              <span>Текущее состояние</span>
+            </div>
+            <div class="status-grid">
+              <div class="status-item">
+                <span class="label">Runtime</span>
+                <span class="value">crew_five → imap-mcp</span>
+              </div>
+              <div class="status-item">
+                <span class="label">Генерация</span>
+                <span class="value">Outreach</span>
+              </div>
+              <div class="status-item">
+                <span class="label">Модель кампаний</span>
+                <span class="value">Замороженные волны</span>
+              </div>
+              <div class="status-item">
+                <span class="label">Текущий фокус</span>
+                <span class="value">Исполнение + удобство оператора</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </header>
+
+      <section id="system" class="section reveal">
+        <div class="section-header">
+          <h2>Границы системы</h2>
+          <p class="lead">
+            Важно не количество модулей, а граница: что принадлежит этому репозиторию, что он
+            выставляет наружу, и что остаётся за его пределами.
+          </p>
+        </div>
+
+        <div class="grid">
+          <article class="card col-6" data-accent="orange">
+            <h3>crew_five владеет</h3>
+            <ul class="list">
+              <li>запуск кампаний, attach, next-wave, предпросмотр ротации</li>
+              <li>назначение почтовых ящиков, send preflight, политика отправки, бизнес-день календарь</li>
+              <li>ручная и автоматическая отправка</li>
+              <li>опрос входящих и обработка очевидных ответов</li>
+              <li>каноническая GTM-цепочка и операторские интерфейсы</li>
+            </ul>
+          </article>
+
+          <article class="card col-6" data-accent="slate">
+            <h3>Outreach владеет</h3>
+            <ul class="list">
+              <li>создание и структурирование ICP (7-фазный коуч)</li>
+              <li>обработка компаний (L1 scrape + L2 анализ)</li>
+              <li>стратегический слой (L3 — кому писать, кого пропустить)</li>
+              <li>генерация писем (персонализированный cold email, 9 паттернов)</li>
+              <li>генерация follow-up (bump-письма)</li>
+              <li>ревью и контроль качества черновиков</li>
+              <li>классификация неоднозначных ответов</li>
+            </ul>
+          </article>
+
+          <article class="card col-12 soft">
+            <h3>Каноническая модель</h3>
+            <div class="spine">
+              <span>project</span>
+              <span>icp_profile</span>
+              <span>offer</span>
+              <span>icp_hypothesis</span>
+              <span>segment</span>
+              <span>campaign</span>
+              <span>drafts</span>
+              <span>email_outbound</span>
+              <span>email_events</span>
+            </div>
+            <p class="muted">
+              Цепочка исполнения важнее любого отдельного экрана. Она связывает запуск, отправку,
+              обработку ответов, аналитику и операторские решения.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="workflow" class="section reveal">
+        <div class="section-header">
+          <h2>Операторский процесс</h2>
+          <p class="lead">
+            Проект сфокусирован на надёжности реального цикла: импорт, обработка, подключение,
+            генерация, ревью, отправка, опрос, работа с ответами.
+          </p>
+        </div>
+
+        <div class="workflow">
+          <div class="flow-card">
+            <span class="step">01</span>
+            <h3>Аудитория</h3>
+            <p>Импорт, дедупликация, обработка компаний и подключение в нужную волну кампании.</p>
+          </div>
+          <div class="flow-card">
+            <span class="step">02</span>
+            <h3>Контекст зафиксирован</h3>
+            <p>Кампания, оффер, гипотеза, контекст получателя и политика отправки становятся каноническими.</p>
+          </div>
+          <div class="flow-card">
+            <span class="step">03</span>
+            <h3>Исполнение</h3>
+            <p>Проверка готовности, ручная отправка и планировщик работают через прямой почтовый транспорт.</p>
+          </div>
+          <div class="flow-card">
+            <span class="step">04</span>
+            <h3>Ответы</h3>
+            <p>Опрос входящих записывает события ответов в ту же цепочку для операторов и автоматизации.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section reveal">
+        <div class="section-header">
+          <h2>Цикл исполнения</h2>
+          <p class="lead">
+            Каждый шаг — каноническая операция. crew_five владеет цепочкой, Outreach владеет интеллектом.
+          </p>
+        </div>
+
+        <article class="card col-12 soft" style="margin-bottom:2rem">
+          <div class="spine">
+            <span>ICP</span>
+            <span>Сегмент</span>
+            <span>Обогащение</span>
+            <span>Кампания</span>
+            <span>Генерация</span>
+            <span>Ревью</span>
+            <span>Отправка</span>
+            <span>Ответы</span>
+            <span style="color:var(--orange)">Обучение</span>
+          </div>
+          <p class="muted" style="margin-top:.75rem">
+            Обучение возвращается в уточнение ICP. Цикл не останавливается — каждая волна
+            производит данные для следующей.
+          </p>
+        </article>
+
+        <div class="grid">
+          <article class="card col-12 soft" style="margin-bottom:0">
+            <h3>Архитектура</h3>
+            <div class="terminal">
+              <div class="terminal-bar">
+                <span class="terminal-dot"></span>
+                <span class="terminal-dot"></span>
+                <span class="terminal-dot"></span>
+                <span class="terminal-label">runtime</span>
+              </div>
+              <pre><code>Оператор
+  ↓
+Claude Code (навыки Outreach — 11 команд)
+  ↓ читает/пишет через
+crew_five CLI (pnpm cli &lt;command&gt;)
+  ↓
+Supabase (каноническая модель)
+  ↓
+imap-mcp (прямой почтовый транспорт)</code></pre>
+            </div>
+            <p class="muted" style="margin-top:.75rem">
+              Нет API-сервера между Outreach и crew_five. Нет деплоя. Навыки компонуются:
+              <code>/launch-campaign</code> → <code>/process-batch</code> → <code>/generate-drafts</code>
+              → <code>/review-drafts</code> → <code>/send-campaign</code> → <code>/process-replies</code>.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section reveal">
+        <div class="section-header">
+          <h2>Интеллектуальный слой (Outreach)</h2>
+          <p class="lead">
+            Навыки Claude Code, которые исполняют полный цикл интеллекта. Каждый навык читает из
+            канонической модели crew_five и пишет в неё через CLI.
+          </p>
+        </div>
+
+        <div class="grid">
+          <article class="card col-4">
+            <h3>/create-icp</h3>
+            <p>7-фазный диалог → структурированный ICP-профиль: критерии компаний, критерии персон, правила квалификации.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/create-segment</h3>
+            <p>ICP-профиль → подходящие компании + контакты → сегмент с точечным снимком.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/enrich-segment</h3>
+            <p>Запуск Exa/Firecrawl по компаниям сегмента. Заполняет контент сайтов, описания бизнеса, контакты.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/launch-campaign</h3>
+            <p>5-фазный визард: ICP → гипотеза → сегмент → кампания. Также <code>--next-wave</code> для повторных волн.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/process-batch</h3>
+            <p><b>L1</b> (Python, 0 токенов): скрейпинг, rusprofile, извлечение email.<br>
+            <b>L2</b> (Sonnet, ~23K/комп.): описание бизнеса, юридическая верификация, валидация контактов.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/generate-drafts</h3>
+            <p><b>L3 Стратегия</b> (Opus): кому писать, кого пропустить (~50% фильтрация).<br>
+            <b>Черновики</b> (Opus): персонализированные cold intro, 9 паттернов, русский язык.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/generate-bumps</h3>
+            <p>Follow-up для одобренных intro без ответов. Пакетная архитектура по компаниям для максимальной вариативности.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/review-drafts</h3>
+            <p>Инлайн-ревью черновиков: одобрить, отклонить (14 кодов причин), перегенерировать. Группировка по компаниям.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/send-campaign</h3>
+            <p>Одобренные черновики → imap-mcp. Консистентность ящиков, проверка доставки, threading bump-as-reply.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/process-replies</h3>
+            <p>Опрос входящих → классификация: интерес, отказ, баунс, отпуск, увольнение.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/import-xlsx</h3>
+            <p>Контур.Компас xlsx → компании + сотрудники. 28 колонок, 7-точечная валидация, дедупликация по ИНН.</p>
+          </article>
+          <article class="card col-4" data-accent="orange">
+            <h3>Боевые цифры</h3>
+            <ul class="list">
+              <li><b>209</b> компаний обработано</li>
+              <li><b>133</b> intro-письма сгенерированы</li>
+              <li><b>118</b> писем отправлено</li>
+              <li><b>~50%</b> фильтрация на L3</li>
+              <li><b>10</b> обнаруженных MISMATCH</li>
+            </ul>
+            <p class="muted small">Из одного боевого запуска, март 2026.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section reveal">
+        <div class="section-header">
+          <h2>Что работает сейчас</h2>
+        </div>
+
+        <div class="grid">
+          <article class="card col-4">
+            <h3>Композиция кампаний</h3>
+            <ul class="list">
+              <li>предпросмотр + создание</li>
+              <li>ручное подключение компаний</li>
+              <li>next-wave предпросмотр + создание</li>
+              <li>предпросмотр ротации</li>
+            </ul>
+          </article>
+          <article class="card col-4">
+            <h3>Runtime исполнения</h3>
+            <ul class="list">
+              <li>назначение почтовых ящиков</li>
+              <li>проверка готовности (preflight)</li>
+              <li>ручная отправка</li>
+              <li>авто-отправка intro + bump</li>
+            </ul>
+          </article>
+          <article class="card col-4">
+            <h3>Входящие</h3>
+            <ul class="list">
+              <li>прямой опрос</li>
+              <li>триггер <code>Poll now</code></li>
+              <li>обработка очевидных ответов</li>
+              <li>операторские интерфейсы</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="runbook" class="section reveal">
+        <div class="section-header">
+          <h2>Быстрый старт</h2>
+          <p class="lead">Минимальная настройка для локальной работы в live-режиме.</p>
+        </div>
+
+        <div class="grid">
+          <article class="card col-5 soft">
+            <h3>Необходимые переменные</h3>
+            <ul class="list">
+              <li><code>SUPABASE_URL</code></li>
+              <li><code>SUPABASE_SERVICE_ROLE_KEY</code></li>
+              <li><code>IMAP_MCP_SERVER_ROOT</code></li>
+              <li><code>IMAP_MCP_HOME</code></li>
+            </ul>
+            <p class="muted small">
+              Дополнительные переключатели: <code>IMAP_MCP_SERVER_COMMAND</code>,
+              <code>IMAP_MCP_SERVER_ENTRY</code>, <code>AUTO_SEND_*</code>, <code>INBOX_POLL_*</code>.
+            </p>
+          </article>
+
+          <article class="card col-7">
+            <h3>Основные команды</h3>
+            <div class="terminal">
+              <div class="terminal-bar">
+                <span class="terminal-dot"></span>
+                <span class="terminal-dot"></span>
+                <span class="terminal-dot"></span>
+                <span class="terminal-label">zsh</span>
+              </div>
+              <pre data-copy><code>pnpm install
+pnpm dev:web:live
+
+pnpm build
+pnpm lint
+pnpm test
+pnpm run scan:ast-grep
+pnpm run audit</code></pre>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="docs" class="section reveal">
+        <div class="section-header">
+          <h2>Читать далее</h2>
+          <p class="lead">
+            Эта страница даёт быструю ориентацию. Детальные контракты и инженерные заметки —
+            в документах ниже.
+          </p>
+        </div>
+
+        <div class="grid">
+          <a class="card link-card col-6" href="https://github.com/georgy-agaev/crew_five/blob/main/docs/Outreach_crew_five_cli_contract.md">
+            <h3>Контракт Outreach ↔ crew_five CLI</h3>
+            <p>Каноническая граница runtime, поверхность команд, семантика next-wave, контекст генерации.</p>
+          </a>
+          <a class="card link-card col-6" href="https://github.com/georgy-agaev/crew_five/blob/main/docs/sessions/roadmap.md">
+            <h3>Текущий roadmap</h3>
+            <p>Что сделано, что активно сейчас и что не должно доминировать на следующем этапе.</p>
+          </a>
+          <a class="card link-card col-6" href="https://github.com/georgy-agaev/crew_five/blob/main/docs/web_ui_endpoints.md">
+            <h3>Каталог HTTP-эндпоинтов</h3>
+            <p>Маршруты адаптера, payload'ы, live/fallback поведение, точки интеграции Web UI.</p>
+          </a>
+          <a class="card link-card col-6" href="https://github.com/georgy-agaev/crew_five/blob/main/docs/Database_Description.md">
+            <h3>Описание базы данных</h3>
+            <p>Справочник по схеме канонической GTM-цепочки и связанных сущностей.</p>
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        <p>
+          crew_five — слой исполнения для текущего операторского процесса. Outreach остаётся
+          внешним runtime генерации и оркестрации.
+        </p>
+        <div class="footer-links">
+          <a href="https://github.com/georgy-agaev/crew_five">GitHub</a>
+          <a href="https://github.com/georgy-agaev/crew_five/blob/main/README.md">README</a>
+          <a href="https://github.com/georgy-agaev/crew_five/blob/main/CHANGELOG.md">Changelog</a>
+        </div>
+      </div>
+    </footer>
+
+    <script src="script.js"></script>
+  </body>
+</html>

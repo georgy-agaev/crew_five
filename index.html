@@ -46,6 +46,7 @@
         </div>
 
         <div class="nav-actions">
+          <a class="btn btn-ghost btn-sm" href="ru.html">RU</a>
           <a class="btn btn-ghost btn-sm" href="https://github.com/georgy-agaev/crew_five">GitHub</a>
           <button class="hamburger" type="button" aria-label="Toggle menu" aria-expanded="false">
             <span></span><span></span><span></span>
@@ -141,10 +142,13 @@
           <article class="card col-6" data-accent="slate">
             <h3>Outreach owns</h3>
             <ul class="list">
-              <li>company processing</li>
-              <li>generation and review runtime</li>
-              <li>ambiguous reply interpretation</li>
-              <li>follow-up drafting on top of canonical crew_five state</li>
+              <li>ICP creation and structuring (7-phase coach)</li>
+              <li>company processing (L1 scrape + L2 analysis)</li>
+              <li>strategy layer (L3 — who to write, who to skip)</li>
+              <li>draft generation (personalized cold emails, 9 patterns)</li>
+              <li>follow-up generation (bump emails)</li>
+              <li>draft review and quality control</li>
+              <li>ambiguous reply classification</li>
             </ul>
           </article>
 
@@ -199,6 +203,131 @@
             <h3>Replies back</h3>
             <p>Inbox polling writes obvious reply events into the same spine for operators and automation.</p>
           </div>
+        </div>
+      </section>
+
+      <section class="section reveal">
+        <div class="section-header">
+          <h2>The execution loop</h2>
+          <p class="lead">
+            Every step is a canonical operation. crew_five owns the spine, Outreach owns the brain.
+          </p>
+        </div>
+
+        <article class="card col-12 soft" style="margin-bottom:2rem">
+          <div class="spine">
+            <span>ICP</span>
+            <span>Segment</span>
+            <span>Enrich</span>
+            <span>Campaign</span>
+            <span>Generate</span>
+            <span>Review</span>
+            <span>Send</span>
+            <span>Replies</span>
+            <span style="color:var(--orange)">Learnings</span>
+          </div>
+          <p class="muted" style="margin-top:.75rem">
+            Learnings feed back into ICP refinement. The loop never stops — each wave produces data
+            for the next.
+          </p>
+        </article>
+
+        <div class="grid">
+          <article class="card col-12 soft" style="margin-bottom:0">
+            <h3>Architecture</h3>
+            <div class="terminal">
+              <div class="terminal-bar">
+                <span class="terminal-dot"></span>
+                <span class="terminal-dot"></span>
+                <span class="terminal-dot"></span>
+                <span class="terminal-label">runtime</span>
+              </div>
+              <pre><code>Operator
+  ↓
+Claude Code (Outreach skills — 11 operator-invocable commands)
+  ↓ reads/writes via
+crew_five CLI (pnpm cli &lt;command&gt;)
+  ↓
+Supabase (canonical model)
+  ↓
+imap-mcp (direct mailbox transport)</code></pre>
+            </div>
+            <p class="muted" style="margin-top:.75rem">
+              No API server between Outreach and crew_five. No deploy. Skills compose:
+              <code>/launch-campaign</code> → <code>/process-batch</code> → <code>/generate-drafts</code>
+              → <code>/review-drafts</code> → <code>/send-campaign</code> → <code>/process-replies</code>.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section reveal">
+        <div class="section-header">
+          <h2>Intelligence layer (Outreach)</h2>
+          <p class="lead">
+            Claude Code skills that run the full intelligence loop. Each skill reads from and writes
+            to the crew_five canonical model via CLI.
+          </p>
+        </div>
+
+        <div class="grid">
+          <article class="card col-4">
+            <h3>/create-icp</h3>
+            <p>7-phase guided dialogue → structured ICP profile with company criteria, persona criteria, qualification rules.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/create-segment</h3>
+            <p>ICP profile → matching companies + contacts → segment with point-in-time snapshot.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/enrich-segment</h3>
+            <p>Runs Exa/Firecrawl against segment companies. Fills website content, business descriptions, contacts.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/launch-campaign</h3>
+            <p>5-phase wizard: ICP → hypothesis → segment → campaign. Also <code>--next-wave</code> for follow-ups.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/process-batch</h3>
+            <p><b>L1</b> (Python, 0 tokens): scrape, rusprofile, email extraction.<br>
+            <b>L2</b> (Sonnet, ~23K/co): business description, legal verification, contact validation.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/generate-drafts</h3>
+            <p><b>L3 Strategy</b> (Opus): who to write, who to skip (~50% filter rate).<br>
+            <b>Drafts</b> (Opus): personalized cold intros, 9 pattern library, Russian.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/generate-bumps</h3>
+            <p>Follow-up emails for approved intros without replies. Batch-per-company for maximum variability.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/review-drafts</h3>
+            <p>Inline draft review: approve, reject (14 reason codes), regenerate. Grouped by company.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/send-campaign</h3>
+            <p>Approved drafts → imap-mcp. Mailbox consistency, inbox delivery check, bump-as-reply threading.</p>
+          </article>
+          <article class="card col-4">
+            <h3>/process-replies</h3>
+            <p>Inbox poll → rule-based classification (interested, decline, bounce, vacation, resignation).</p>
+          </article>
+          <article class="card col-4">
+            <h3>/import-xlsx</h3>
+            <p>Контур.Компас xlsx → companies + employees. 28 columns, 7-point name validation, TIN dedup.</p>
+          </article>
+          <article class="card col-4" data-accent="orange">
+            <h3>Production numbers</h3>
+            <ul class="list">
+              <li><b>209</b> companies processed</li>
+              <li><b>133</b> intro emails generated</li>
+              <li><b>118</b> emails sent</li>
+              <li><b>~50%</b> L3 filter rate</li>
+              <li><b>10</b> MISMATCH detections</li>
+            </ul>
+            <p class="muted small">From a single production run, March 2026.</p>
+          </article>
         </div>
       </section>
 
