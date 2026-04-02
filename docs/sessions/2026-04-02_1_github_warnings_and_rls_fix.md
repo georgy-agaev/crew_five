@@ -1,7 +1,7 @@
 # Session Note - GitHub Warnings And RLS Fix
 
 **Date:** 2026-04-02  
-**Status:** In Progress
+**Status:** Completed
 
 ## Completed
 
@@ -24,16 +24,13 @@
 - Added migration
   [20260402101500_enable_public_table_rls.sql](/Users/georgyagaev/crew_five/supabase/migrations/20260402101500_enable_public_table_rls.sql)
   to enable RLS on all remaining exposed `public` tables flagged by Supabase Security Advisors.
+- Applied the migration to remote project `mxkouaqjvwmsdpdrdamo` and verified the remote
+  migration history now includes `20260402101500`.
+- Re-checked Supabase Security Advisors and confirmed the `rls_disabled_in_public` errors are
+  resolved.
 
-## To Do
+## Follow-up
 
-- Push the GitHub workflow cleanup commit and confirm a warning-free run on `main`.
-- Apply the pending RLS migration to remote project `mxkouaqjvwmsdpdrdamo`.
-- Re-run Supabase Security Advisors and confirm `rls_disabled_in_public` is gone.
-
-## Blockers
-
-- `supabase db push --linked` currently fails against the linked project with:
-  `password authentication failed for user "cli_login_postgres" (SQLSTATE 28P01)`.
-- The repo is linked to the correct project, but the locally cached DB login password must be
-  refreshed before the remote migration can be applied through Supabase CLI.
+- Remaining Supabase security advisories are non-blocking follow-up hardening items:
+  `rls_enabled_no_policy`, `security_definer_view`, `function_search_path_mutable`,
+  permissive RLS policies on `companies` / `employees`, and the managed Postgres upgrade warning.

@@ -1,7 +1,7 @@
 # Security: RLS disabled on Enrichment Supabase project
 
 **Date:** 2026-04-01
-**Status:** In Progress
+**Status:** Completed
 **Owner:** backend / Codex
 **Severity:** Critical — Supabase sends weekly warnings since January 2026
 
@@ -79,14 +79,21 @@ After enabling RLS:
 - Re-verified the current advisory state via Supabase Security Advisors and confirmed these are the
   only remaining `rls_disabled_in_public` tables.
 
-### To Do
+### Completed Verification
 
-- Apply the migration to remote project `mxkouaqjvwmsdpdrdamo`.
-- Re-run Security Advisors and confirm `rls_disabled_in_public` is cleared.
+- Applied the migration to remote project `mxkouaqjvwmsdpdrdamo` via:
+  `supabase db push --linked`
+- Confirmed `supabase migration list --linked` shows
+  `20260402101500_enable_public_table_rls.sql` on both local and remote.
+- Re-checked table state: all nine previously affected tables now have `rowsecurity = true`.
+- Re-ran Supabase Security Advisors and confirmed `rls_disabled_in_public` findings are gone.
 
-### Blocker
+### Remaining Security Work
 
-- Local `supabase db push --linked` currently fails with:
-  `password authentication failed for user "cli_login_postgres" (SQLSTATE 28P01)`.
-- The repository is linked to the correct project, but the locally cached DB login password is
-  stale and must be refreshed before the remote migration can be applied through the CLI.
+The critical exposed-table issue is closed. Remaining advisor items are follow-up hardening work:
+
+- `rls_enabled_no_policy` informational findings on RLS-enabled tables
+- `security_definer_view` on `public.outreach_campaigns` and `public.analytics_events_flat`
+- `function_search_path_mutable` on trigger/helper functions
+- permissive RLS policy warnings on `public.companies` and `public.employees`
+- `vulnerable_postgres_version`
