@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Fixed
+- `runCampaignAutoSendSweep` now executes automatic bump-draft generation before campaign send
+  calendar gating. This keeps semi-automatic bump review flowing even outside the send window while
+  preserving the existing calendar block for actual message sending.
 
 ## [0.2.62] - 2026-04-02
 ### Changed

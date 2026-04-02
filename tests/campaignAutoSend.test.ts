@@ -515,7 +515,15 @@ describe('runCampaignAutoSendSweep', () => {
     expect(result.summary.triggeredCount).toBe(1);
   });
 
-  it('skips auto-send outside campaign-local send window before eligibility checks', async () => {
+  it('runs bump generation outside campaign-local send window but keeps sending blocked', async () => {
+    vi.mocked(runCampaignBumpAutoGeneration).mockResolvedValue({
+      triggered: true,
+      candidateCount: 5,
+      eligibleCount: 2,
+      requestedContactCount: 2,
+      requestedContactIds: ['contact-bump-1', 'contact-bump-2'],
+      triggerResult: { generated: 2, skipped: 0 },
+    } as any);
     const client = createCampaignListClient([
       {
         id: 'camp-8',
@@ -539,11 +547,22 @@ describe('runCampaignAutoSendSweep', () => {
 
     expect(getCampaignSendPreflight).not.toHaveBeenCalled();
     expect(listCampaignFollowupCandidates).not.toHaveBeenCalled();
+    expect(runCampaignBumpAutoGeneration).toHaveBeenCalledWith(client, {
+      campaignId: 'camp-8',
+      minDaysSinceIntro: 3,
+      limit: undefined,
+      now: new Date('2026-03-23T14:30:00Z'),
+    });
     expect(triggerSendCampaign).not.toHaveBeenCalled();
     expect(result.campaigns[0]).toMatchObject({
       campaignId: 'camp-8',
       triggered: false,
       skipReason: 'calendar_outside_send_window',
+      generation: {
+        triggered: true,
+        requestedContactCount: 2,
+        requestedContactIds: ['contact-bump-1', 'contact-bump-2'],
+      },
     });
   });
 

@@ -259,45 +259,16 @@ export async function runCampaignAutoSendSweep(
 
   for (const campaign of campaigns) {
     summary.checkedCount += 1;
-  const calendar = evaluateCampaignSendCalendar(
-    resolveCampaignSendPolicy({
-      sendTimezone: campaign.send_timezone ?? undefined,
-      sendWindowStartHour: campaign.send_window_start_hour ?? undefined,
-      sendWindowEndHour: campaign.send_window_end_hour ?? undefined,
-      sendWeekdaysOnly: campaign.send_weekdays_only ?? undefined,
-      ...readSendPolicyMetadata(campaign.metadata),
-    }),
-    now ?? new Date()
-  );
-
-    if (!calendar.allowed) {
-      summary.skippedCount += 1;
-      results.push({
-        campaignId: campaign.id,
-        campaignName: campaign.name,
-        campaignStatus: campaign.status,
-        triggered: false,
-        skipReason:
-          calendar.reason === 'non_workday'
-            ? 'calendar_non_workday'
-            : 'calendar_outside_send_window',
-        triggerReason: null,
-        intro: {
-          enabled: Boolean(campaign.auto_send_intro),
-          shouldTrigger: false,
-          blockers: [],
-        },
-        bump: {
-          enabled: Boolean(campaign.auto_send_bump),
-          shouldTrigger: false,
-          eligibleCandidateCount: 0,
-          totalCandidateCount: 0,
-        },
-        generation: buildEmptyGeneration(Boolean(campaign.auto_send_bump)),
-        calendar,
-      });
-      continue;
-    }
+    const calendar = evaluateCampaignSendCalendar(
+      resolveCampaignSendPolicy({
+        sendTimezone: campaign.send_timezone ?? undefined,
+        sendWindowStartHour: campaign.send_window_start_hour ?? undefined,
+        sendWindowEndHour: campaign.send_window_end_hour ?? undefined,
+        sendWeekdaysOnly: campaign.send_weekdays_only ?? undefined,
+        ...readSendPolicyMetadata(campaign.metadata),
+      }),
+      now ?? new Date()
+    );
 
     let generation = buildEmptyGeneration(Boolean(campaign.auto_send_bump));
     if (campaign.auto_send_bump) {
@@ -322,6 +293,35 @@ export async function runCampaignAutoSendSweep(
           error: error instanceof Error ? error.message : String(error),
         };
       }
+    }
+
+    if (!calendar.allowed) {
+      summary.skippedCount += 1;
+      results.push({
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignStatus: campaign.status,
+        triggered: false,
+        skipReason:
+          calendar.reason === 'non_workday'
+            ? 'calendar_non_workday'
+            : 'calendar_outside_send_window',
+        triggerReason: null,
+        intro: {
+          enabled: Boolean(campaign.auto_send_intro),
+          shouldTrigger: false,
+          blockers: [],
+        },
+        bump: {
+          enabled: Boolean(campaign.auto_send_bump),
+          shouldTrigger: false,
+          eligibleCandidateCount: 0,
+          totalCandidateCount: 0,
+        },
+        generation,
+        calendar,
+      });
+      continue;
     }
 
     const intro = await evaluateIntroAutoSend(client, campaign);
