@@ -88,12 +88,30 @@ After enabling RLS:
 - Re-checked table state: all nine previously affected tables now have `rowsecurity = true`.
 - Re-ran Supabase Security Advisors and confirmed `rls_disabled_in_public` findings are gone.
 
+### Completed Follow-up Hardening
+
+- Added repo migration
+  [20260402143000_harden_remaining_security_advisors.sql](/Users/georgyagaev/crew_five/supabase/migrations/20260402143000_harden_remaining_security_advisors.sql)
+  to clear the remaining SQL-level security findings:
+  - recreated `public.analytics_events_flat` with `security_invoker = true`
+  - recreated `public.outreach_campaigns` with `security_invoker = true`
+  - recreated `public.set_updated_at()` with `SET search_path = ''`
+  - recreated `public.update_updated_at_column()` with `SET search_path = ''`
+  - dropped the overly permissive `Allow all for authenticated users` policies on
+    `public.companies` and `public.employees`
+- Applied the migration to remote project `mxkouaqjvwmsdpdrdamo` via:
+  `supabase db push --linked`
+- Re-checked Supabase Security Advisors and confirmed these findings are gone:
+  - `security_definer_view`
+  - `function_search_path_mutable`
+  - `rls_policy_always_true`
+
 ### Remaining Security Work
 
-The critical exposed-table issue is closed. Remaining advisor items are follow-up hardening work:
+The critical exposed-table issue and the SQL-level hardening issues are now closed. Remaining
+advisor output is:
 
 - `rls_enabled_no_policy` informational findings on RLS-enabled tables
-- `security_definer_view` on `public.outreach_campaigns` and `public.analytics_events_flat`
-- `function_search_path_mutable` on trigger/helper functions
-- permissive RLS policy warnings on `public.companies` and `public.employees`
+  These are expected for our `service_role`-only backend pattern and do not expose browser access.
 - `vulnerable_postgres_version`
+  This is platform-managed and requires a Supabase Postgres upgrade, not a repo migration.

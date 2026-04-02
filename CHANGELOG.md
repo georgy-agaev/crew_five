@@ -75,6 +75,14 @@ All notable changes to this project will be documented in this file.
   has now been applied remotely, clearing the `rls_disabled_in_public` advisor findings. Remaining
   database security work is follow-up hardening and is tracked in
   [security_fix_supabase_rls_enrichment.md](/Users/georgyagaev/crew_five/docs/tasks/security_fix_supabase_rls_enrichment.md).
+- Added and applied follow-up hardening migration
+  [20260402143000_harden_remaining_security_advisors.sql](/Users/georgyagaev/crew_five/supabase/migrations/20260402143000_harden_remaining_security_advisors.sql)
+  for the Enrichment project. It removes the remaining SQL-level advisor findings by switching
+  `public.analytics_events_flat` and `public.outreach_campaigns` to `security_invoker`,
+  pinning `search_path` on `public.set_updated_at()` and `public.update_updated_at_column()`, and
+  dropping the permissive authenticated RLS policies on `public.companies` and
+  `public.employees`. The remaining advisor output is now limited to informational
+  `rls_enabled_no_policy` entries plus the platform-managed Postgres upgrade warning.
 
 ## [0.2.61] - 2026-04-01
 ### Changed

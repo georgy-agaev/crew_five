@@ -28,9 +28,18 @@
   migration history now includes `20260402101500`.
 - Re-checked Supabase Security Advisors and confirmed the `rls_disabled_in_public` errors are
   resolved.
+- Added and applied follow-up migration
+  [20260402143000_harden_remaining_security_advisors.sql](/Users/georgyagaev/crew_five/supabase/migrations/20260402143000_harden_remaining_security_advisors.sql)
+  to remove the remaining SQL-level security warnings:
+  - `security_definer_view` on `public.analytics_events_flat` and `public.outreach_campaigns`
+  - `function_search_path_mutable` on `public.set_updated_at` and
+    `public.update_updated_at_column`
+  - overly permissive authenticated RLS policies on `public.companies` and `public.employees`
+- Verified both public views now carry `security_invoker=true`, both helper functions have
+  `SET search_path TO ''`, and the permissive `authenticated -> TRUE` policies are gone.
 
 ## Follow-up
 
-- Remaining Supabase security advisories are non-blocking follow-up hardening items:
-  `rls_enabled_no_policy`, `security_definer_view`, `function_search_path_mutable`,
-  permissive RLS policies on `companies` / `employees`, and the managed Postgres upgrade warning.
+- Remaining Supabase security advisories are now:
+  - `rls_enabled_no_policy` informational findings on RLS-enabled tables
+  - the managed Postgres upgrade warning `vulnerable_postgres_version`
