@@ -11,6 +11,9 @@
 - Updated GitHub workflow configuration to run on Node 24 action/runtime in:
   - [security-checks.yml](/Users/georgyagaev/crew_five/.github/workflows/security-checks.yml)
   - [pages.yml](/Users/georgyagaev/crew_five/.github/workflows/pages.yml)
+- Narrowed dependency-audit suppression to the single upstream
+  `date-holidays -> lodash` advisory `GHSA-r5fr-rjxr-66jc` so CI remains blocking for all other
+  new high-severity production issues.
 - Removed the stale tracked `.orchestrator-kit` gitlink from the repository index and added
   `.orchestrator-kit/` to
   [\.gitignore](/Users/georgyagaev/crew_five/.gitignore) so Actions no longer treats it as a
