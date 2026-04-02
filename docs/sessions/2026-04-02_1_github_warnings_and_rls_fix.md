@@ -11,6 +11,9 @@
 - Updated GitHub workflow configuration to run on Node 24 action/runtime in:
   - [security-checks.yml](/Users/georgyagaev/crew_five/.github/workflows/security-checks.yml)
   - [pages.yml](/Users/georgyagaev/crew_five/.github/workflows/pages.yml)
+- Replaced deprecated `pnpm/action-setup` and `gitleaks-action` workflow usage in the security job
+  with `corepack`-managed pnpm setup and direct `gitleaks` CLI execution, removing the remaining
+  Node 20 action-runtime warnings.
 - Narrowed dependency-audit suppression to the single upstream
   `date-holidays -> lodash` advisory `GHSA-r5fr-rjxr-66jc` so CI remains blocking for all other
   new high-severity production issues.

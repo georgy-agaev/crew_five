@@ -47,6 +47,8 @@ All notable changes to this project will be documented in this file.
   - narrowed dependency-audit suppression to the single upstream `date-holidays -> lodash`
     advisory `GHSA-r5fr-rjxr-66jc`, so `Security Checks` stays blocking for any new high-severity
     findings while documenting the current unfixable transitive issue,
+  - replaced deprecated GitHub Action runtimes for pnpm and gitleaks in the security workflow with
+    `corepack`-managed pnpm setup and direct `gitleaks` CLI execution,
   - removed the stale tracked `.orchestrator-kit` gitlink from the repo index and ignored it
     locally, eliminating the checkout/submodule warning source in Actions.
 - Rewired `POST /api/drafts/generate` in live mode to the Outreach-owned draft-generation runtime
