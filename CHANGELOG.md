@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Changed
+- Bump auto-send now runs with a canonical same-day approval cooling gate: approved bump drafts are
+  sendable only after the next campaign-local day, while legacy approved bumps without
+  `metadata.approved_at` remain sendable for backcompat.
+- `GET /api/drafts?includeRecipientContext=true` now exposes backend-computed bump review/send
+  visibility for operator surfaces via `bump_lifecycle_state`, `bump_can_send_now`,
+  `bump_send_block_reasons`, and `bump_approved_at`.
 ### Docs
 - Added a public static landing page at the repository root for GitHub Pages:
   [index.html](/Users/georgyagaev/crew_five/index.html),
@@ -13,10 +20,55 @@ All notable changes to this project will be documented in this file.
 - Linked the public landing page from [README.md](/Users/georgyagaev/crew_five/README.md).
 - Added session note
   [2026-04-01_2_public_landing_page.md](/Users/georgyagaev/crew_five/docs/sessions/2026-04-01_2_public_landing_page.md).
+- Documented the new live adapter draft-generation env in
+  [\.env.example](/Users/georgyagaev/crew_five/.env.example) and updated
+  [docs/web_ui_endpoints.md](/Users/georgyagaev/crew_five/docs/web_ui_endpoints.md) to reflect
+  Outreach ownership of `/api/drafts/generate`.
+- Added an Outreach-facing operational handoff for the new draft-generation command bridge:
+  [2026-04-01_outreach_generate_drafts_bridge_handoff.md](/Users/georgyagaev/crew_five/docs/handoffs/2026-04-01_outreach_generate_drafts_bridge_handoff.md).
+- Added a coordinated planning package for automatic bump generation with operator review and a
+  next-day send gate:
+  - [campaign_bump_auto_generation_program.md](/Users/georgyagaev/crew_five/docs/tasks/campaign_bump_auto_generation_program.md)
+  - [campaign_bump_auto_generation_backend.md](/Users/georgyagaev/crew_five/docs/tasks/campaign_bump_auto_generation_backend.md)
+  - [campaign_bump_review_queue_web_ui.md](/Users/georgyagaev/crew_five/docs/tasks/campaign_bump_review_queue_web_ui.md)
+  - [2026-04-01_outreach_generate_bumps_bridge_handoff.md](/Users/georgyagaev/crew_five/docs/handoffs/2026-04-01_outreach_generate_bumps_bridge_handoff.md)
+  - [2026-04-01_operator_bump_validation_protocol.md](/Users/georgyagaev/crew_five/docs/handoffs/2026-04-01_operator_bump_validation_protocol.md)
+  - [2026-04-01_3_bump_auto_generation_planning.md](/Users/georgyagaev/crew_five/docs/sessions/2026-04-01_3_bump_auto_generation_planning.md)
 ### Fixed
 - Replaced the failing legacy branch-based GitHub Pages publication with a dedicated workflow
   [pages.yml](/Users/georgyagaev/crew_five/.github/workflows/pages.yml) that deploys only the
   landing-page artifact (`index.html`, `style.css`, `script.js`, `.nojekyll`, `assets/`).
+- GitHub automation cleanup:
+  - declared browser globals for the public landing-page script in
+    [eslint.config.js](/Users/georgyagaev/crew_five/eslint.config.js), clearing the failing
+    `Security Checks` lint job,
+  - moved workflow execution to Node 24 action runtime and Node 24 project runtime for security and
+    Pages workflows,
+  - removed the stale tracked `.orchestrator-kit` gitlink from the repo index and ignored it
+    locally, eliminating the checkout/submodule warning source in Actions.
+- Rewired `POST /api/drafts/generate` in live mode to the Outreach-owned draft-generation runtime
+  via `OUTREACH_GENERATE_DRAFTS_CMD` instead of the local `crew_five` draft service, matching the
+  current execution split and unblocking Builder/Campaigns draft-generation buttons.
+- Fixed backend inbox/dashboard filtering gaps:
+  - `/api/inbox/replies` now supports server-side `category` filtering with canonical UI mapping
+    (`positive`, `negative`, `bounce`, `unclassified`)
+  - campaign-linked vs unlinked inbox filtering is enforced server-side through the existing
+    `linkage` parameter
+  - `/api/dashboard/overview` now excludes unlinked reply events from `recentActivity`
+  - `pending.inboxReplies` now counts only campaign-linked unhandled reply-type events
+- Implemented backend bump auto-generation:
+  - added canonical bump-generation candidate detection with duplicate blocking for active bump
+    drafts and exact `contactIds` bridge payloads
+  - integrated bump auto-generation into the existing auto-send sweep via
+    `OUTREACH_GENERATE_BUMPS_CMD`
+  - stamped canonical review metadata on approve/reject updates so backend cooling logic does not
+    rely on client-provided timestamps
+  - enforced late reply/bounce/unsubscribe suppression even after bump approval
+- Added repo migration
+  [20260402101500_enable_public_table_rls.sql](/Users/georgyagaev/crew_five/supabase/migrations/20260402101500_enable_public_table_rls.sql)
+  to enable RLS on the remaining exposed `public` tables in the Enrichment project. Remote apply is
+  currently blocked by stale local Supabase CLI DB credentials and is tracked in
+  [security_fix_supabase_rls_enrichment.md](/Users/georgyagaev/crew_five/docs/tasks/security_fix_supabase_rls_enrichment.md).
 
 ## [0.2.61] - 2026-04-01
 ### Changed

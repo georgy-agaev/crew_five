@@ -8,6 +8,7 @@ AGENTS.md
 CLAUDE.md
 .github/agents/
 .agents/
+.orchestrator-kit/
 
 # Dependencies
 node_modules
