@@ -3,6 +3,8 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+
+## [0.2.62] - 2026-04-02
 ### Changed
 - Bump auto-send now runs with a canonical same-day approval cooling gate: approved bump drafts are
   sendable only after the next campaign-local day, while legacy approved bumps without
