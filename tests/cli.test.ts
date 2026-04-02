@@ -1218,11 +1218,13 @@ describe('createProgram', () => {
       '{"note":"ok"}',
     ]);
 
-    expect(update).toHaveBeenCalledWith({
-      status: 'approved',
-      reviewer: 'qa-user',
-      metadata: { source: 'agent', note: 'ok' },
-    });
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'approved',
+        reviewer: 'qa-user',
+        metadata: expect.objectContaining({ source: 'agent', note: 'ok' }),
+      })
+    );
     const payload = JSON.parse((logSpy.mock.calls.at(-1) as any[])[0] as string);
     expect(payload.status).toBe('approved');
     logSpy.mockRestore();

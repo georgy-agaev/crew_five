@@ -8,8 +8,13 @@ vi.mock('../src/services/campaignFollowupCandidates', () => ({
   listCampaignFollowupCandidates: vi.fn(),
 }));
 
+vi.mock('../src/services/campaignBumpAutoGeneration.js', () => ({
+  runCampaignBumpAutoGeneration: vi.fn(),
+}));
+
 const { getCampaignSendPreflight } = await import('../src/services/campaignSendPreflight');
 const { listCampaignFollowupCandidates } = await import('../src/services/campaignFollowupCandidates');
+const { runCampaignBumpAutoGeneration } = await import('../src/services/campaignBumpAutoGeneration.js');
 
 import { runCampaignAutoSendSweep } from '../src/services/campaignAutoSend';
 
@@ -29,6 +34,13 @@ function createCampaignListClient(rows: Array<Record<string, unknown>>) {
 describe('runCampaignAutoSendSweep', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(runCampaignBumpAutoGeneration).mockResolvedValue({
+      triggered: false,
+      candidateCount: 0,
+      eligibleCount: 0,
+      requestedContactCount: 0,
+      requestedContactIds: [],
+    } as any);
   });
 
   it('triggers intro auto-send only when send preflight passes', async () => {
@@ -188,6 +200,55 @@ describe('runCampaignAutoSendSweep', () => {
       batchLimit: undefined,
     });
     expect(result.summary.bumpTriggeredCount).toBe(1);
+  });
+
+  it('triggers bump auto-generation before send evaluation when configured', async () => {
+    vi.mocked(runCampaignBumpAutoGeneration).mockResolvedValue({
+      triggered: true,
+      candidateCount: 3,
+      eligibleCount: 1,
+      requestedContactCount: 1,
+      requestedContactIds: ['contact-gen-1'],
+      triggerResult: { generated: 1, skipped: 0 },
+    } as any);
+    vi.mocked(listCampaignFollowupCandidates).mockResolvedValue([] as any);
+
+    const client = createCampaignListClient([
+      {
+        id: 'camp-gen-1',
+        name: 'Generator',
+        status: 'sending',
+        auto_send_intro: false,
+        auto_send_bump: true,
+        bump_min_days_since_intro: 4,
+      },
+    ]);
+    const triggerGenerateBumps = vi.fn().mockResolvedValue({ generated: 1, skipped: 0 });
+    const triggerSendCampaign = vi.fn();
+
+    const result = await runCampaignAutoSendSweep(client, {
+      triggerGenerateBumps,
+      triggerSendCampaign,
+      batchLimit: 10,
+      now: new Date('2026-04-01T09:00:00Z'),
+    });
+
+    expect(runCampaignBumpAutoGeneration).toHaveBeenCalledWith(client, {
+      campaignId: 'camp-gen-1',
+      minDaysSinceIntro: 4,
+      limit: 10,
+      now: new Date('2026-04-01T09:00:00Z'),
+      triggerGenerateBumps,
+    });
+    expect(triggerSendCampaign).not.toHaveBeenCalled();
+    expect(result.campaigns[0]).toMatchObject({
+      campaignId: 'camp-gen-1',
+      generation: {
+        triggered: true,
+        requestedContactCount: 1,
+        requestedContactIds: ['contact-gen-1'],
+      },
+    });
   });
 
   it('skips bump auto-send when no canonical candidates are eligible', async () => {

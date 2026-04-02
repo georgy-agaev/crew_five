@@ -30,7 +30,7 @@ function formatCampaignLocalTime(now: Date, timeZone: string): string {
   return formatter.format(now).replace(' ', 'T');
 }
 
-function getLocalDateKey(now: Date, timeZone: string): string {
+export function getCampaignLocalDateKey(now: Date, timeZone: string): string {
   return new Intl.DateTimeFormat('sv-SE', {
     timeZone,
     year: 'numeric',
@@ -135,7 +135,7 @@ function isCampaignBusinessDayForLocalDateKey(
 }
 
 export function isCampaignBusinessDay(policy: CampaignSendPolicy, now: Date): boolean {
-  return isCampaignBusinessDayForLocalDateKey(policy, getLocalDateKey(now, policy.sendTimezone));
+  return isCampaignBusinessDayForLocalDateKey(policy, getCampaignLocalDateKey(now, policy.sendTimezone));
 }
 
 export function isBusinessDayForCampaignRecipient(
@@ -143,7 +143,11 @@ export function isBusinessDayForCampaignRecipient(
   now: Date,
   override: CampaignBusinessCalendarOverride | null = null
 ): boolean {
-  return isCampaignBusinessDayForLocalDateKey(policy, getLocalDateKey(now, policy.sendTimezone), override);
+  return isCampaignBusinessDayForLocalDateKey(
+    policy,
+    getCampaignLocalDateKey(now, policy.sendTimezone),
+    override
+  );
 }
 
 export function countCampaignBusinessDaysBetween(
@@ -152,8 +156,8 @@ export function countCampaignBusinessDaysBetween(
   now: Date,
   override: CampaignBusinessCalendarOverride | null = null
 ): number {
-  const introDateKey = getLocalDateKey(introSentAt, policy.sendTimezone);
-  const nowDateKey = getLocalDateKey(now, policy.sendTimezone);
+  const introDateKey = getCampaignLocalDateKey(introSentAt, policy.sendTimezone);
+  const nowDateKey = getCampaignLocalDateKey(now, policy.sendTimezone);
 
   if (nowDateKey <= introDateKey) {
     return 0;

@@ -67,6 +67,15 @@ export interface InboxRepliesView {
   total: number;
 }
 
+export type InboxReplyCategory = 'positive' | 'negative' | 'bounce' | 'unclassified';
+
+function mapInboxReplyCategory(reply: Pick<InboxReplyRecord, 'reply_label' | 'event_type'>): InboxReplyCategory {
+  if (reply.reply_label === 'positive') return 'positive';
+  if (reply.reply_label === 'negative') return 'negative';
+  if (reply.event_type === 'bounced') return 'bounce';
+  return 'unclassified';
+}
+
 function extractReplyText(payload: Record<string, unknown> | null): string | null {
   if (!payload) return null;
   const candidates = [payload.reply_text, payload.text, payload.body];
@@ -147,6 +156,7 @@ export async function listInboxReplies(
     limit?: number;
     campaignId?: string;
     replyLabel?: string;
+    category?: InboxReplyCategory;
     handled?: boolean;
     linkage?: 'all' | 'linked' | 'unlinked';
   } = {}
@@ -385,7 +395,8 @@ export async function listInboxReplies(
         company_name: company?.company_name ?? null,
       } satisfies InboxReplyRecord;
     })
-    .filter((row): row is InboxReplyRecord => row !== null);
+    .filter((row): row is InboxReplyRecord => row !== null)
+    .filter((row) => (filters.category ? mapInboxReplyCategory(row) === filters.category : true));
 
   return {
     replies,

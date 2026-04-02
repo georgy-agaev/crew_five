@@ -249,6 +249,10 @@ export type DraftRow = {
   recipient_email_source?: string | null;
   recipient_email_kind?: string | null;
   sendable?: boolean;
+  bump_lifecycle_state?: 'generated_pending_review' | 'approved_waiting_next_day' | 'approved_sendable' | null;
+  bump_can_send_now?: boolean;
+  bump_send_block_reasons?: string[];
+  bump_approved_at?: string | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -335,6 +339,7 @@ export type AdapterDeps = {
     limit?: number;
     campaignId?: string;
     replyLabel?: string;
+    category?: 'positive' | 'negative' | 'bounce' | 'unclassified';
     handled?: boolean;
     linkage?: 'all' | 'linked' | 'unlinked';
   }) => Promise<InboxRepliesView>;

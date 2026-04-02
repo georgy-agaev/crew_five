@@ -33,6 +33,9 @@ import { CampaignEmployeeDetailsDrawer } from '../components/CampaignEmployeeDet
 import { CampaignNextWaveDrawer } from '../components/CampaignNextWaveDrawer';
 import { CampaignRotationPreviewDrawer } from '../components/CampaignRotationPreviewDrawer';
 import { CampaignAutoSendCard } from '../components/CampaignAutoSendCard';
+import { CampaignBumpQueueCard } from '../components/CampaignBumpQueueCard';
+import { CampaignDraftGenerateCard } from '../components/CampaignDraftGenerateCard';
+import { CampaignExecutionSummaryCard } from '../components/CampaignExecutionSummaryCard';
 import { CampaignLaunchDrawer } from '../components/CampaignLaunchDrawer';
 import { CampaignSendPolicyCard } from '../components/CampaignSendPolicyCard';
 import { CampaignSendPreflightCard } from '../components/CampaignSendPreflightCard';
@@ -409,7 +412,10 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
   const [events, setEvents] = useState<CampaignEvent[]>([]);
 
   // ---- Selection (always-pinned: click sets, never unsets) ----
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('campaign') || null;
+  });
   const [pinnedCompanyId, setPinnedCompanyId] = useState<string | null>(null);
   const [pinnedEmployeeId, setPinnedEmployeeId] = useState<string | null>(null);
 
@@ -513,6 +519,22 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
   const [rotationOpen, setRotationOpen] = useState(false);
   const [launchSegments, setLaunchSegments] = useState<{ id: string; name?: string | null }[]>([]);
   const [launchMailboxes, setLaunchMailboxes] = useState<MailboxRow[]>([]);
+
+  // ---- Keyboard shortcuts ----
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (employeeDetailsOpen) { setEmployeeDetailsOpen(false); return; }
+        if (drawerOpen) { setDrawerOpen(false); return; }
+        if (launchOpen) { setLaunchOpen(false); return; }
+        if (nextWaveOpen) { setNextWaveOpen(false); return; }
+        if (rotationOpen) { setRotationOpen(false); return; }
+        if (attachOpen) { setAttachOpen(false); return; }
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [employeeDetailsOpen, drawerOpen, launchOpen, nextWaveOpen, rotationOpen, attachOpen]);
 
   // ---- Fetch campaigns on mount ----
   useEffect(() => {
@@ -885,7 +907,7 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
           </div>
 
           {/* Context block (scrollable) */}
-          <div style={{ overflowY: 'auto', flex: '0 1 auto', maxHeight: '50%' }}>
+          <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
           <div className="od-context-block">
             <p className="od-context-block__title">{t.context}</p>
             {!selectedCampaign ? (
@@ -957,8 +979,13 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
             )}
           </div>
 
+          {/* Execution summary */}
+          <CampaignExecutionSummaryCard campaignId={selectedCampaignId ?? undefined} language={language} />
+
           {/* Send preflight */}
           <CampaignSendPreflightCard campaignId={selectedCampaignId ?? undefined} compact language={language} />
+          <CampaignDraftGenerateCard campaignId={selectedCampaignId ?? undefined} language={language} />
+          <CampaignBumpQueueCard campaignId={selectedCampaignId ?? undefined} language={language} />
           <CampaignAutoSendCard campaignId={selectedCampaignId ?? undefined} language={language} />
           <CampaignSendPolicyCard campaignId={selectedCampaignId ?? undefined} language={language} />
           </div>
@@ -1243,6 +1270,27 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
             <span className="od-col-title">{t.messages}</span>
           </div>
 
+          {/* Breadcrumb */}
+          {(selectedCampaign || activeCompany || activeEmployee) && (
+            <div style={{ padding: '0 10px 4px', fontSize: 10, color: 'var(--od-text-muted)', display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+              {selectedCampaign && (
+                <span style={{ maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={selectedCampaign.name}>{selectedCampaign.name}</span>
+              )}
+              {activeCompany && (
+                <>
+                  <span style={{ color: 'var(--od-border)' }}>/</span>
+                  <span style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={activeCompany.company_name ?? undefined}>{activeCompany.company_name ?? '...'}</span>
+                </>
+              )}
+              {activeEmployee && (
+                <>
+                  <span style={{ color: 'var(--od-border)' }}>/</span>
+                  <span style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={activeEmployee.full_name}>{activeEmployee.full_name}</span>
+                </>
+              )}
+            </div>
+          )}
+
           <div className="od-messages-toolbar">
             {/* Status segmented control */}
             <div className="segmented-control">
@@ -1412,6 +1460,9 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
                             <span className="od-message-list-item__type">
                               {draft.email_type === 'bump' ? t.email2 : t.email1}
                             </span>
+                            {draft.email_type === 'bump' && (draft.metadata as any)?.source?.includes('auto') && (
+                              <span style={{ fontSize: 8, color: 'var(--od-orange)', fontWeight: 600 }}>AUTO</span>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1519,6 +1570,11 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
         executionExposures={
           activeEmployeeId && activeCompany?.employees
             ? activeCompany.employees.find((e) => e.contact_id === activeEmployeeId)?.execution_exposures
+            : undefined
+        }
+        contactEvents={
+          activeEmployeeId
+            ? events.filter((e) => e.contact_id === activeEmployeeId)
             : undefined
         }
         onClose={() => setEmployeeDetailsOpen(false)}
@@ -1697,6 +1753,22 @@ function MessageCard({ draft, t, onApprove, onReject, onSave, onViewTrace }: Mes
             >
               Missing recipient
             </span>
+          )}
+          {draft.email_type === 'bump' && !editing && (
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+              {(draft.metadata as any)?.source?.includes('auto') && (
+                <span className="od-count-chip" style={{ fontSize: 9, color: 'var(--od-orange)' }}>Auto-generated</span>
+              )}
+              {draft.status === 'approved' && draft.updated_at && (() => {
+                const d = new Date(draft.updated_at);
+                const now = new Date();
+                return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+              })() && (
+                <span className="od-count-chip" style={{ fontSize: 9, color: 'var(--od-orange)' }}>
+                  {language === 'ru' ? 'Отправка завтра' : 'Sendable tomorrow'}
+                </span>
+              )}
+            </div>
           )}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>

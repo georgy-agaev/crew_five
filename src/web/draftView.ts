@@ -1,5 +1,11 @@
 import type { DraftRow } from './types.js';
 
+const bumpLifecycleStates = new Set([
+  'generated_pending_review',
+  'approved_waiting_next_day',
+  'approved_sendable',
+] as const);
+
 export function toDraftView(row: Record<string, any>): DraftRow {
   const contact = row.contact && typeof row.contact === 'object' ? row.contact : null;
   const company = row.company && typeof row.company === 'object' ? row.company : null;
@@ -31,6 +37,17 @@ export function toDraftView(row: Record<string, any>): DraftRow {
     recipient_email_kind:
       typeof row.recipient_email_kind === 'string' ? row.recipient_email_kind : null,
     sendable: typeof row.sendable === 'boolean' ? row.sendable : undefined,
+    bump_lifecycle_state:
+      typeof row.bump_lifecycle_state === 'string' && bumpLifecycleStates.has(row.bump_lifecycle_state as any)
+        ? (row.bump_lifecycle_state as DraftRow['bump_lifecycle_state'])
+        : null,
+    bump_can_send_now:
+      typeof row.bump_can_send_now === 'boolean' ? row.bump_can_send_now : undefined,
+    bump_send_block_reasons: Array.isArray(row.bump_send_block_reasons)
+      ? row.bump_send_block_reasons.filter((value: unknown): value is string => typeof value === 'string')
+      : [],
+    bump_approved_at:
+      typeof row.bump_approved_at === 'string' ? row.bump_approved_at : null,
     metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata : null,
   };
 }

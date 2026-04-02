@@ -809,6 +809,7 @@ export async function fetchInboxMessages(opts: { status?: string; limit?: number
 export async function fetchInboxReplies(opts: {
   campaignId?: string;
   replyLabel?: string;
+  category?: 'positive' | 'negative' | 'bounce' | 'unclassified';
   handled?: boolean;
   linkage?: 'all' | 'linked' | 'unlinked';
   limit?: number;
@@ -816,6 +817,7 @@ export async function fetchInboxReplies(opts: {
   const params = new URLSearchParams();
   if (opts.campaignId) params.set('campaignId', opts.campaignId);
   if (opts.replyLabel) params.set('replyLabel', opts.replyLabel);
+  if (opts.category) params.set('category', opts.category);
   if (typeof opts.handled === 'boolean') params.set('handled', String(opts.handled));
   if (opts.linkage) params.set('linkage', opts.linkage);
   if (opts.limit) params.set('limit', String(opts.limit));

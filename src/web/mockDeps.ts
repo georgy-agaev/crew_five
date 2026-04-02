@@ -677,6 +677,14 @@ export function createMockDeps(): AdapterDeps {
             eligibleCandidateCount: 0,
             totalCandidateCount: 0,
           },
+          generation: {
+            enabled: false,
+            triggered: false,
+            candidateCount: 0,
+            eligibleCount: 0,
+            requestedContactCount: 0,
+            requestedContactIds: [],
+          },
           calendar: {
             allowed: false,
             campaignLocalTime: '2026-03-21T08:00:00',

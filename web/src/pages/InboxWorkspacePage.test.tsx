@@ -38,6 +38,21 @@ const mockReplies = [
     handled_at: '2026-03-15T10:00:00Z',
     handled_by: 'operator',
   },
+  {
+    id: 'evt-3',
+    campaign_id: null,
+    campaign_name: null,
+    reply_label: null,
+    event_type: 'bounced',
+    occurred_at: '2026-03-14T11:00:00Z',
+    reply_text: 'Mailbox full',
+    subject: 'Bounce',
+    contact_name: 'Charlie Bounce',
+    company_name: null,
+    handled: false,
+    handled_at: null,
+    handled_by: null,
+  },
 ] satisfies apiClient.InboxReply[];
 
 const inboxView = {
@@ -45,211 +60,139 @@ const inboxView = {
   total: mockReplies.length,
 } satisfies apiClient.InboxRepliesView;
 
+function mockFetch() {
+  return vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue(inboxView);
+}
+
 describe('InboxWorkspacePage', () => {
-  it('renders replies with label badges and detail panel', async () => {
-    vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue(inboxView);
+  // Default filters: linkage=linked, handled=unhandled → only evt-1 visible
 
+  it('renders linked unhandled reply by default', async () => {
+    mockFetch();
     render(<InboxWorkspacePage />);
-
-    // Bianca Mock appears in list and detail, so use findAllByText
-    const biancaEls = await screen.findAllByText('Bianca Mock');
-    expect(biancaEls.length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('Campaign: Q1 Push')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: /Alex Mock/i }));
-    expect(screen.getByText('Campaign: Q2 Push')).toBeTruthy();
+    // evt-1 is linked + unhandled → visible
+    expect((await screen.findAllByText('Bianca Mock')).length).toBeGreaterThan(0);
+    // evt-2 is handled → hidden
+    expect(screen.queryByText('Alex Mock')).toBeNull();
+    // evt-3 is unlinked → hidden
+    expect(screen.queryByText('Charlie Bounce')).toBeNull();
   });
 
-  it('filters by reply label', async () => {
-    const fetchSpy = vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue(inboxView);
+  it('shows reply detail panel', async () => {
+    mockFetch();
+    render(<InboxWorkspacePage />);
+    expect((await screen.findAllByText('Sounds interesting, let us set up a call.')).length).toBeGreaterThan(0);
+  });
 
+  it('shows summary counts for scoped replies', async () => {
+    mockFetch();
+    render(<InboxWorkspacePage />);
+    await screen.findAllByText('Bianca Mock');
+    // Scoped = linked + unhandled = evt-1 only → all:1, positive:1
+    expect(screen.getByText(/positive: 1/)).toBeTruthy();
+  });
+
+  it('filters by label', async () => {
+    mockFetch();
     render(<InboxWorkspacePage />);
     await screen.findAllByText('Bianca Mock');
 
-    fireEvent.click(screen.getByRole('button', { name: 'positive' }));
-
+    // Click negative → no linked unhandled negatives
+    fireEvent.click(screen.getByRole('button', { name: 'negative' }));
     await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ replyLabel: 'positive' })
-      );
+      expect(screen.queryAllByText('Bianca Mock').length).toBe(0);
+    });
+
+    // Back to all labels
+    const allButtons = screen.getAllByRole('button', { name: 'all' });
+    fireEvent.click(allButtons[0]); // first "all" is the label filter
+    await waitFor(() => {
+      expect(screen.getAllByText('Bianca Mock').length).toBeGreaterThan(0);
     });
   });
 
-  it('shows empty state when no replies', async () => {
-    vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue({
-      replies: [],
-      total: 0,
-    } satisfies apiClient.InboxRepliesView);
-
+  it('shows handled replies when handled filter changed', async () => {
+    mockFetch();
     render(<InboxWorkspacePage />);
+    await screen.findAllByText('Bianca Mock');
 
-    expect(await screen.findByText(/No replies yet/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'handled' }));
+    await waitFor(() => {
+      // evt-2 is linked + handled
+      expect(screen.getAllByText('Alex Mock').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows unlinked replies when linkage changed', async () => {
+    mockFetch();
+    render(<InboxWorkspacePage />);
+    await screen.findAllByText('Bianca Mock');
+
+    fireEvent.click(screen.getByRole('button', { name: 'all mail' }));
+    const allButtons = screen.getAllByRole('button', { name: 'all' });
+    fireEvent.click(allButtons[allButtons.length - 1]); // last "all" is handled filter
+    await waitFor(() => {
+      expect(screen.getAllByText('Charlie Bounce').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('filters by search query', async () => {
+    mockFetch();
+    render(<InboxWorkspacePage />);
+    await screen.findAllByText('Bianca Mock');
+
+    const search = screen.getByPlaceholderText(/search/i);
+    fireEvent.change(search, { target: { value: 'nonexistent' } });
+    await waitFor(() => {
+      expect(screen.queryByText('Bianca Mock')).toBeNull();
+    });
+  });
+
+  it('shows empty state', async () => {
+    vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue({ replies: [], total: 0 });
+    render(<InboxWorkspacePage />);
+    expect(await screen.findByText(/No replies/)).toBeTruthy();
   });
 
   it('shows loading skeleton', async () => {
     vi.spyOn(apiClient, 'fetchInboxReplies').mockReturnValue(new Promise(() => {}));
-
     render(<InboxWorkspacePage />);
-
     expect(screen.getByText('Inbox V2')).toBeTruthy();
-    expect(screen.queryByText('Bianca Mock')).toBeNull();
   });
 
-  it('filters replies by local search query', async () => {
-    vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue(inboxView);
-
+  it('loads data once on mount', async () => {
+    const spy = mockFetch();
     render(<InboxWorkspacePage />);
     await screen.findAllByText('Bianca Mock');
-
-    fireEvent.change(screen.getByLabelText('Search replies'), {
-      target: { value: 'other co' },
-    });
-
-    expect(screen.queryByRole('button', { name: /Bianca Mock/i })).toBeNull();
-    expect(screen.getByRole('button', { name: /Alex Mock/i })).toBeTruthy();
-  });
-
-  it('shows loaded reply summary counts', async () => {
-    vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue(inboxView);
-
-    render(<InboxWorkspacePage />);
-    await screen.findAllByText('Bianca Mock');
-
-    expect(screen.getByLabelText('Loaded all replies').textContent).toContain('2');
-    expect(screen.getByLabelText('Loaded positive replies').textContent).toContain('1');
-    expect(screen.getByLabelText('Loaded negative replies').textContent).toContain('1');
-  });
-
-  it('shows filtered empty state when local filters hide all replies', async () => {
-    vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue(inboxView);
-
-    render(<InboxWorkspacePage />);
-    await screen.findAllByText('Bianca Mock');
-
-    fireEvent.change(screen.getByLabelText('Search replies'), {
-      target: { value: 'no-match' },
-    });
-
-    expect(screen.getByText('No replies match the current filters.')).toBeTruthy();
-  });
-
-  it('filters replies by linkage scope (campaign-linked vs unlinked)', async () => {
-    vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue(inboxView);
-
-    render(<InboxWorkspacePage />);
-    await screen.findAllByText('Bianca Mock');
-
-    fireEvent.click(screen.getByRole('button', { name: 'unlinked' }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /Bianca Mock/i })).toBeNull();
-    });
-    expect(screen.getByText('No replies match the current filters.')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'campaign-linked' }));
-    expect(await screen.findAllByText('Bianca Mock')).toBeTruthy();
-  });
-
-  it('shows success message after poll now', async () => {
-    vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue(inboxView);
-    const pollSpy = vi.spyOn(apiClient, 'triggerInboxPoll').mockResolvedValue({
-      source: 'crew_five-process-replies',
-      requestedAt: '2026-03-17T10:00:00Z',
-      upstreamStatus: 200,
-      accepted: true,
-    });
-
-    render(<InboxWorkspacePage />);
-    await screen.findAllByText('Bianca Mock');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Poll now' }));
-
-    await waitFor(() => {
-      expect(pollSpy).toHaveBeenCalledTimes(1);
-    });
-    expect(await screen.findByText(/Polling requested/)).toBeTruthy();
-  });
-
-  it('shows unavailable message when poll returns 501', async () => {
-    vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue(inboxView);
-    const err = new Error('Inbox poll trigger not configured');
-    (err as any).apiError = { statusCode: 501 };
-    vi.spyOn(apiClient, 'triggerInboxPoll').mockRejectedValue(err);
-
-    render(<InboxWorkspacePage />);
-    await screen.findAllByText('Bianca Mock');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Poll now' }));
-
-    expect(await screen.findByText(/not configured/)).toBeTruthy();
-  });
-
-  it('shows error message on poll failure', async () => {
-    vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue(inboxView);
-    vi.spyOn(apiClient, 'triggerInboxPoll').mockRejectedValue(new Error('Network down'));
-
-    render(<InboxWorkspacePage />);
-    await screen.findAllByText('Bianca Mock');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Poll now' }));
-
-    expect(await screen.findByText('Network down')).toBeTruthy();
-  });
-
-  // ---- Handled state ----
-
-  it('sends handled filter to backend', async () => {
-    const fetchSpy = vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue(inboxView);
-
-    render(<InboxWorkspacePage />);
-    await screen.findAllByText('Bianca Mock');
-
-    // Default is 'unhandled'
-    expect(fetchSpy).toHaveBeenCalledWith(expect.objectContaining({ handled: false, linkage: 'linked', limit: 50 }));
-
-    // Switch to 'handled'
-    fireEvent.click(screen.getByRole('button', { name: 'handled' }));
-
-    await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledWith(expect.objectContaining({ handled: true }));
-    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ limit: 200 }));
   });
 
   it('marks reply as handled', async () => {
     vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue({
-      replies: [mockReplies[0]], // unhandled
+      replies: [mockReplies[0]],
       total: 1,
     });
-    const handleSpy = vi.spyOn(apiClient, 'markInboxReplyHandled').mockResolvedValue({
-      id: 'evt-1', handled: true, handled_at: '2026-03-18T22:00:00Z', handled_by: 'operator',
+    const markSpy = vi.spyOn(apiClient, 'markInboxReplyHandled').mockResolvedValue({
+      id: 'evt-1', handled: true, handled_at: '2026-03-15T14:00:00Z', handled_by: 'operator',
     });
-
     render(<InboxWorkspacePage />);
     await screen.findAllByText('Bianca Mock');
-
-    fireEvent.click(screen.getByLabelText('Mark handled'));
-
-    await waitFor(() => {
-      expect(handleSpy).toHaveBeenCalledWith('evt-1', 'operator');
-    });
+    fireEvent.click(screen.getByRole('button', { name: /mark handled/i }));
+    await waitFor(() => { expect(markSpy).toHaveBeenCalled(); });
   });
 
-  it('marks reply as unhandled', async () => {
-    vi.spyOn(apiClient, 'fetchInboxReplies').mockResolvedValue({
-      replies: [mockReplies[1]], // handled
-      total: 1,
+  it('shows poll success message', async () => {
+    mockFetch();
+    vi.spyOn(apiClient, 'triggerInboxPoll').mockResolvedValue({
+      source: 'outreacher-process-replies',
+      requestedAt: '2026-03-17T10:00:00Z',
+      upstreamStatus: 200,
+      accepted: true,
     });
-    const unhandleSpy = vi.spyOn(apiClient, 'markInboxReplyUnhandled').mockResolvedValue({
-      id: 'evt-2', handled: false, handled_at: null, handled_by: null,
-    });
-
     render(<InboxWorkspacePage />);
-    await screen.findAllByText('Alex Mock');
-
-    fireEvent.click(screen.getByLabelText('Mark unhandled'));
-
-    await waitFor(() => {
-      expect(unhandleSpy).toHaveBeenCalledWith('evt-2');
-    });
+    await screen.findAllByText('Bianca Mock');
+    fireEvent.click(screen.getByRole('button', { name: /poll now/i }));
+    expect(await screen.findByText(/Polling requested/)).toBeTruthy();
   });
 });

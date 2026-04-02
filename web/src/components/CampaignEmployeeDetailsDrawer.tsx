@@ -1,4 +1,4 @@
-import type { DraftRow } from '../apiClient';
+import type { CampaignEvent, DraftRow } from '../apiClient';
 
 const translations: Record<string, Record<string, string>> = {
   en: {
@@ -107,6 +107,7 @@ export function CampaignEmployeeDetailsDrawer({
   eligibleForNewIntro,
   exposureSummary,
   executionExposures,
+  contactEvents,
   onClose,
   language = 'en',
 }: {
@@ -133,6 +134,7 @@ export function CampaignEmployeeDetailsDrawer({
     unsubscribed: boolean;
     last_sent_at: string;
   }>;
+  contactEvents?: CampaignEvent[];
   onClose: () => void;
   language?: string;
 }) {
@@ -292,6 +294,41 @@ export function CampaignEmployeeDetailsDrawer({
               </div>
             )}
           </div>
+
+          {/* Contact events (replies, bounces) */}
+          {contactEvents && contactEvents.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--od-border)', marginTop: 8, paddingTop: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--od-text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                {language === 'ru' ? 'События' : 'Events'}
+              </span>
+              <div style={{ marginTop: 6 }}>
+                {contactEvents.map((ev) => (
+                  <div key={ev.id} style={{ padding: '3px 0', borderBottom: '1px solid var(--od-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <span className={`od-status-badge od-status-badge--${ev.event_type === 'replied' ? 'review' : ev.event_type === 'bounced' ? 'generating' : 'draft'}`} style={{ fontSize: 9 }}>
+                        {ev.event_type}
+                      </span>
+                      {ev.outcome_classification && (
+                        <span style={{ fontSize: 10, color: ev.outcome_classification === 'positive' ? 'var(--od-success)' : ev.outcome_classification === 'negative' ? 'var(--od-error)' : 'var(--od-text-muted)' }}>
+                          {ev.outcome_classification}
+                        </span>
+                      )}
+                      {ev.subject && (
+                        <span style={{ fontSize: 10, color: 'var(--od-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
+                          {ev.subject}
+                        </span>
+                      )}
+                    </div>
+                    {ev.occurred_at && (
+                      <span style={{ fontSize: 9, color: 'var(--od-text-muted)', flexShrink: 0 }}>
+                        {new Date(ev.occurred_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Exposure summary */}
           {exposureSummary && exposureSummary.total_exposures > 0 && (

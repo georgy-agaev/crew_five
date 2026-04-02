@@ -1,5 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { evaluateBumpDraftState } from './campaignBumpDraftState.js';
+import { listCampaignFollowupCandidates, type CampaignFollowupCandidate } from './campaignFollowupCandidates.js';
+import { getCampaignSendPolicy } from './campaignSendPolicy.js';
 import { resolveRecipientEmail } from './recipientResolver';
 
 export type DraftStatus = 'generated' | 'approved' | 'rejected' | 'sent';
@@ -49,6 +52,14 @@ export interface DraftBatchUpdateStatusOptions {
   status: DraftStatus;
   reviewer?: string;
   metadata?: Record<string, unknown>;
+}
+
+interface DraftRecipientContextRow extends Record<string, any> {
+  campaign_id?: string | null;
+  contact_id?: string | null;
+  email_type?: string | null;
+  status?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 function pickFirst<T>(...values: Array<T | undefined>): T | undefined {
@@ -157,12 +168,81 @@ async function loadDraftByIdWithRecipientContext(client: SupabaseClient, draftId
   }
 
   const row = data as Record<string, any>;
+  return decorateDraftWithRecipientContext(client, row as DraftRecipientContextRow);
+}
+
+function buildCanonicalReviewMetadata(status: DraftStatus, reviewer: string | undefined): Record<string, unknown> {
+  if (status !== 'approved' && status !== 'rejected') {
+    return {};
+  }
+
+  const reviewedAt = new Date().toISOString();
+  return {
+    reviewed_at: reviewedAt,
+    ...(reviewer ? { reviewed_by: reviewer } : {}),
+    ...(status === 'approved' ? { approved_at: reviewedAt } : {}),
+  };
+}
+
+async function loadBumpFollowupContext(
+  client: SupabaseClient,
+  campaignId: string,
+  rows: DraftRecipientContextRow[]
+): Promise<{
+  sendTimezone: string | null;
+  followupsByContact: Map<string, CampaignFollowupCandidate>;
+}> {
+  const bumpContactIds = rows
+    .map((row) => row.email_type === 'bump' && typeof row.contact_id === 'string' ? row.contact_id : null)
+    .filter((value): value is string => Boolean(value));
+  if (bumpContactIds.length < 1) {
+    return {
+      sendTimezone: null,
+      followupsByContact: new Map(),
+    };
+  }
+
+  const [sendPolicy, followups] = await Promise.all([
+    getCampaignSendPolicy(client, campaignId),
+    listCampaignFollowupCandidates(client, campaignId),
+  ]);
+
+  return {
+    sendTimezone: sendPolicy.sendTimezone,
+    followupsByContact: new Map(followups.map((row) => [row.contact_id, row] as const)),
+  };
+}
+
+async function decorateDraftWithRecipientContext(
+  client: SupabaseClient,
+  row: DraftRecipientContextRow,
+  bumpContext?: {
+    sendTimezone: string | null;
+    followupsByContact: Map<string, CampaignFollowupCandidate>;
+  }
+) {
   const contact = row.contact ?? null;
   const resolution = resolveRecipientEmail({
     work_email: contact?.work_email,
     work_email_status: contact?.work_email_status,
     generic_email: contact?.generic_email,
     generic_email_status: contact?.generic_email_status,
+  });
+  const effectiveBumpContext =
+    bumpContext ??
+    (typeof row.campaign_id === 'string'
+      ? await loadBumpFollowupContext(client, row.campaign_id, [row])
+      : { sendTimezone: null, followupsByContact: new Map<string, CampaignFollowupCandidate>() });
+  const bumpState = evaluateBumpDraftState({
+    emailType: row.email_type,
+    status: row.status,
+    metadata: row.metadata,
+    followupCandidate:
+      typeof row.contact_id === 'string'
+        ? effectiveBumpContext.followupsByContact.get(row.contact_id) ?? null
+        : null,
+    sendTimezone: effectiveBumpContext.sendTimezone ?? 'UTC',
+    now: new Date(),
   });
 
   return {
@@ -171,6 +251,7 @@ async function loadDraftByIdWithRecipientContext(client: SupabaseClient, draftId
     recipient_email_source: resolution.recipientEmailSource,
     recipient_email_kind: resolution.recipientEmailKind,
     sendable: resolution.sendable,
+    ...bumpState,
   };
 }
 
@@ -201,29 +282,26 @@ async function loadDraftsWithRecipientContext(client: SupabaseClient, options: D
   }
 
   const rows = (data ?? []) as Array<Record<string, any>>;
-  return rows.map((row) => {
-    const contact = row.contact ?? null;
-    const resolution = resolveRecipientEmail({
-      work_email: contact?.work_email,
-      work_email_status: contact?.work_email_status,
-      generic_email: contact?.generic_email,
-      generic_email_status: contact?.generic_email_status,
-    });
+  const bumpContext = await loadBumpFollowupContext(
+    client,
+    options.campaignId,
+    rows as DraftRecipientContextRow[]
+  );
 
-    return {
-      ...row,
-      recipient_email: resolution.recipientEmail,
-      recipient_email_source: resolution.recipientEmailSource,
-      recipient_email_kind: resolution.recipientEmailKind,
-      sendable: resolution.sendable,
-    };
-  });
+  return Promise.all(
+    rows.map((row) =>
+      decorateDraftWithRecipientContext(client, row as DraftRecipientContextRow, bumpContext)
+    )
+  );
 }
 
 export async function updateDraftStatus(client: SupabaseClient, options: DraftUpdateStatusOptions) {
   let mergedMetadata: Record<string, unknown> | undefined;
+  const canonicalReviewMetadata = buildCanonicalReviewMetadata(options.status, options.reviewer);
+  const shouldMergeMetadata =
+    Boolean(options.metadata) || Object.keys(canonicalReviewMetadata).length > 0;
 
-  if (options.metadata) {
+  if (shouldMergeMetadata) {
     const { data: current, error: currentError } = await client
       .from('drafts')
       .select('metadata')
@@ -237,6 +315,7 @@ export async function updateDraftStatus(client: SupabaseClient, options: DraftUp
     mergedMetadata = {
       ...((current.metadata as Record<string, unknown> | null) ?? {}),
       ...options.metadata,
+      ...canonicalReviewMetadata,
     };
   }
 

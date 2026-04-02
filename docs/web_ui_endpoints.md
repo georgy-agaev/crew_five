@@ -329,6 +329,10 @@
     - `contact_id`, `contact_name`, `contact_position`
     - `company_id`, `company_name`
     - `recipient_email`, `recipient_email_source`, `recipient_email_kind`, `sendable`
+    - when `email_type=bump` and `includeRecipientContext=true`, backend-computed bump review/send
+      visibility:
+      `bump_lifecycle_state` (`generated_pending_review` | `approved_waiting_next_day` |
+      `approved_sendable`), `bump_can_send_now`, `bump_send_block_reasons`, `bump_approved_at`
     - `metadata`
   - Used by: `fetchDrafts`, including the Campaigns review surface.
 - `POST /api/drafts/:draftId/status`
@@ -336,6 +340,9 @@
   - Behaviour:
     - Updates a draft review status via the existing draft store.
     - Merges `metadata` into existing draft metadata instead of replacing it.
+    - On `approved` / `rejected`, backend also stamps canonical review metadata so review/send
+      gates do not depend on browser timestamps:
+      `reviewed_at`, `reviewed_by`, and for approvals `approved_at`.
     - `Campaigns` uses this path to persist reject-review metadata such as
       `review_reason_code`, `review_reason_codes`, `review_reason_text`,
       `reviewed_at`, and `reviewed_by`.
@@ -357,7 +364,12 @@
     - ICP / coach prompt fields (`icpProfileId`, `icpHypothesisId`,
       `coachPromptStep`, `explicitCoachPromptId`),
     - provider/model hints.
-  - Returns: `{ generated, dryRun, gracefulUsed? }` summary.
+  - Behaviour:
+    - In live mode this endpoint delegates draft generation to the Outreach-owned runtime via
+      `OUTREACH_GENERATE_DRAFTS_CMD`.
+    - `crew_five` acts as the web adapter/bridge only; it does not run local intro generation for
+      this endpoint anymore.
+  - Returns: `{ generated, dryRun, gracefulUsed?, failed?, skipped?, error? }` summary.
   - Used by: `triggerDraftGenerate`.
 
 ### Segments and enrichment
@@ -925,8 +937,8 @@ Component: `web/src/pages/WorkflowZeroPage.tsx`
   - `GET /api/contacts` – fetch contacts for selected company ids.
 - Campaign + draft generation:
   - `GET /api/campaigns` – list campaigns tied to segments.
-  - `POST /api/drafts/generate` – generate drafts for the selected
-    campaign and prompt.
+  - `POST /api/drafts/generate` – trigger Outreach draft generation for the selected campaign via
+    the web adapter bridge.
 - Smartlead integration:
   - `GET /api/smartlead/campaigns` – available Smartlead campaigns.
   - `POST /api/smartlead/campaigns` – create Smartlead campaign (with

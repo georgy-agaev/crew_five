@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { evaluateBumpDraftState } from './campaignBumpDraftState.js';
 import { getCampaignMailboxAssignment } from './campaignMailboxAssignments.js';
 import {
   isBusinessDayForCampaignRecipient,
@@ -284,13 +285,30 @@ function filterBumpDrafts(params: {
   sendWindowEndHour: number;
   sendWeekdaysOnly: boolean;
 }): EligibleDraft[] {
-  const eligibleContacts = new Set(
-    params.eligibleFollowups.filter((row) => row.eligible).map((row) => row.contact_id)
+  const followupsByContact = new Map(
+    params.eligibleFollowups.map((row) => [row.contact_id, row] as const)
   );
   const eligible: EligibleDraft[] = [];
 
   for (const draft of params.drafts) {
-    if (!isApprovedDraft(draft, 'bump') || !draft.contact_id || !eligibleContacts.has(draft.contact_id)) {
+    if (!isApprovedDraft(draft, 'bump') || !draft.contact_id) {
+      continue;
+    }
+
+    const followupCandidate = followupsByContact.get(draft.contact_id);
+    if (!followupCandidate) {
+      continue;
+    }
+
+    const bumpState = evaluateBumpDraftState({
+      emailType: draft.email_type,
+      status: draft.status,
+      metadata: draft.metadata,
+      followupCandidate,
+      sendTimezone: params.sendTimezone,
+      now: params.now,
+    });
+    if (!bumpState.bump_can_send_now) {
       continue;
     }
 

@@ -229,4 +229,101 @@ describe('campaignEventReadModels', () => {
     expect(unlinked.total).toBe(1);
     expect(unlinked.replies[0].id).toBe('evt-unlinked');
   });
+
+  it('supports mapped inbox category filter server-side', async () => {
+    const emailEventsQuery = {
+      select: vi.fn(() => emailEventsQuery),
+      in: vi.fn(() => emailEventsQuery),
+      order: vi.fn(() => emailEventsQuery),
+      is: vi.fn(() => emailEventsQuery),
+      not: vi.fn(() => emailEventsQuery),
+      limit: vi.fn(async () => ({
+        data: [
+          {
+            id: 'evt-positive',
+            outbound_id: 'out-1',
+            event_type: 'replied',
+            reply_label: 'positive',
+            handled_at: null,
+            handled_by: null,
+            occurred_at: '2026-03-18T21:00:00Z',
+            outcome_classification: 'soft_interest',
+            payload: { reply_text: 'Interested' },
+            draft_id: null,
+          },
+          {
+            id: 'evt-bounce',
+            outbound_id: 'out-2',
+            event_type: 'bounced',
+            reply_label: null,
+            handled_at: null,
+            handled_by: null,
+            occurred_at: '2026-03-18T20:00:00Z',
+            outcome_classification: null,
+            payload: { reply_text: 'Delivery failed' },
+            draft_id: null,
+          },
+          {
+            id: 'evt-unclassified',
+            outbound_id: 'out-3',
+            event_type: 'replied',
+            reply_label: null,
+            handled_at: null,
+            handled_by: null,
+            occurred_at: '2026-03-18T19:00:00Z',
+            outcome_classification: null,
+            payload: { reply_text: 'Please send details' },
+            draft_id: null,
+          },
+        ],
+        error: null,
+      })),
+    };
+
+    const emailOutboundQuery: any = {
+      select: vi.fn(() => emailOutboundQuery),
+      in: vi.fn(() => emailOutboundQuery),
+      eq: vi.fn(() => emailOutboundQuery),
+      is: vi.fn(() => emailOutboundQuery),
+      not: vi.fn(() => emailOutboundQuery),
+      then: (onFulfilled: any, onRejected: any) =>
+        Promise.resolve({
+          data: [
+            { id: 'out-1', campaign_id: 'camp-1', draft_id: null, contact_id: null, company_id: null, sender_identity: null, metadata: null },
+            { id: 'out-2', campaign_id: 'camp-1', draft_id: null, contact_id: null, company_id: null, sender_identity: null, metadata: null },
+            { id: 'out-3', campaign_id: 'camp-1', draft_id: null, contact_id: null, company_id: null, sender_identity: null, metadata: null },
+          ],
+          error: null,
+        }).then(onFulfilled, onRejected),
+    };
+
+    const campaignsQuery = {
+      select: vi.fn(() => campaignsQuery),
+      in: vi.fn(async () => ({
+        data: [{ id: 'camp-1', name: 'Alpha' }],
+        error: null,
+      })),
+    };
+
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table === 'email_events') return emailEventsQuery;
+        if (table === 'email_outbound') return emailOutboundQuery;
+        if (table === 'campaigns') return campaignsQuery;
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    } as any;
+
+    const bounced = await listInboxReplies(client, { category: 'bounce', limit: 10 });
+    expect(bounced.total).toBe(1);
+    expect(bounced.replies[0].id).toBe('evt-bounce');
+
+    const unclassified = await listInboxReplies(client, { category: 'unclassified', limit: 10 });
+    expect(unclassified.total).toBe(1);
+    expect(unclassified.replies[0].id).toBe('evt-unclassified');
+
+    const positive = await listInboxReplies(client, { category: 'positive', limit: 10 });
+    expect(positive.total).toBe(1);
+    expect(positive.replies[0].id).toBe('evt-positive');
+  });
 });

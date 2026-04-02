@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
-import { fetchServices, type ServiceConfig } from '../apiClient';
+import { fetchDashboardOverview, fetchServices, type DashboardOverview, type ServiceConfig } from '../apiClient';
 import { getWorkspaceColors } from '../theme';
 import type { AppView } from '../appView';
 
@@ -161,6 +161,7 @@ export function AppShell({
   const [showServices, setShowServices] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
   const [services, setServices] = useState<ServiceConfig[]>([]);
+  const [pending, setPending] = useState<DashboardOverview['pending'] | null>(null);
 
   const loadServices = useCallback(() => {
     fetchServices()
@@ -169,6 +170,12 @@ export function AppShell({
   }, []);
 
   useEffect(() => { loadServices(); }, [loadServices]);
+  useEffect(() => {
+    // Dashboard now returns campaign-linked-only counts from backend
+    fetchDashboardOverview()
+      .then((d) => setPending(d.pending))
+      .catch(() => {});
+  }, []);
 
   const btnH = 32;
 
@@ -213,6 +220,10 @@ export function AppShell({
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3, padding: '10px 6px', overflowY: 'auto' }}>
           {NAV_ITEMS.map((item) => {
             const isActive = currentView === item.view;
+            const badge =
+              pending && item.view === 'builder-v2' && pending.draftsOnReview > 0 ? pending.draftsOnReview
+              : pending && item.view === 'inbox-v2' && pending.inboxReplies > 0 ? pending.inboxReplies
+              : null;
             return (
               <a
                 key={item.view}
@@ -232,9 +243,30 @@ export function AppShell({
                   border: `1px solid ${isActive ? colors.orange : 'transparent'}`,
                   transition: 'all 0.15s ease',
                   whiteSpace: 'nowrap',
+                  position: 'relative',
                 }}
               >
                 {sidebarExpanded ? item.label : item.short}
+                {badge != null && (
+                  <span style={{
+                    position: 'absolute',
+                    top: 2,
+                    right: sidebarExpanded ? 8 : 4,
+                    minWidth: 16,
+                    height: 16,
+                    borderRadius: 8,
+                    background: colors.warning,
+                    color: '#fff',
+                    fontSize: 9,
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 4px',
+                  }}>
+                    {badge}
+                  </span>
+                )}
               </a>
             );
           })}

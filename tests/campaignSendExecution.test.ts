@@ -528,6 +528,281 @@ describe('executeCampaignSendRun', () => {
     });
   });
 
+  it('does not send approved bumps on the same local campaign day as approval', async () => {
+    const { client } = createClient({
+      mailboxAssignments: [
+        {
+          id: 'a-1',
+          campaign_id: 'camp-cooldown',
+          mailbox_account_id: 'mbox-1',
+          sender_identity: 'sales@example.com',
+          provider: 'imap_mcp',
+          source: 'manual',
+          assigned_at: '2026-03-23T08:00:00Z',
+          metadata: null,
+        },
+      ],
+      drafts: [
+        {
+          id: 'draft-bump-cooldown',
+          campaign_id: 'camp-cooldown',
+          contact_id: 'contact-1',
+          company_id: 'company-1',
+          email_type: 'bump',
+          status: 'approved',
+          subject: 'Bump 1',
+          body: 'Body 1',
+          metadata: { approved_at: '2026-04-01T07:30:00Z' },
+        },
+      ],
+      employees: [
+        { id: 'contact-1', work_email: 'one@example.com', work_email_status: 'valid', generic_email: null, generic_email_status: null },
+      ],
+      companies: [{ id: 'company-1', country_code: 'RU' }],
+      outbounds: [],
+      events: [],
+    });
+
+    vi.mocked(listCampaignFollowupCandidates).mockResolvedValue([
+      {
+        contact_id: 'contact-1',
+        company_id: 'company-1',
+        intro_sent: true,
+        intro_sent_at: '2026-03-28T10:00:00Z',
+        intro_sender_identity: 'sales@example.com',
+        reply_received: false,
+        bounce: false,
+        unsubscribed: false,
+        bump_draft_exists: true,
+        bump_draft_approved: true,
+        bump_sent: false,
+        eligible: true,
+        days_since_intro: 4,
+        auto_reply: null,
+      },
+    ] as any);
+
+    const transport = {
+      send: vi.fn().mockResolvedValue({ provider: 'imap_mcp', providerMessageId: 'msg-cooldown' }),
+    };
+
+    const result = await executeCampaignSendRun(client, transport, {
+      campaignId: 'camp-cooldown',
+      reason: 'auto_send_bump',
+      now: new Date('2026-04-01T12:00:00Z'),
+    });
+
+    expect(transport.send).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      selectedCount: 0,
+      sentCount: 0,
+      failedCount: 0,
+    });
+  });
+
+  it('sends approved bumps starting on the next local campaign day', async () => {
+    const { client } = createClient({
+      mailboxAssignments: [
+        {
+          id: 'a-1',
+          campaign_id: 'camp-next-day',
+          mailbox_account_id: 'mbox-1',
+          sender_identity: 'sales@example.com',
+          provider: 'imap_mcp',
+          source: 'manual',
+          assigned_at: '2026-03-23T08:00:00Z',
+          metadata: null,
+        },
+      ],
+      drafts: [
+        {
+          id: 'draft-bump-next-day',
+          campaign_id: 'camp-next-day',
+          contact_id: 'contact-1',
+          company_id: 'company-1',
+          email_type: 'bump',
+          status: 'approved',
+          subject: 'Bump 1',
+          body: 'Body 1',
+          metadata: { approved_at: '2026-03-31T17:30:00Z' },
+        },
+      ],
+      employees: [
+        { id: 'contact-1', work_email: 'one@example.com', work_email_status: 'valid', generic_email: null, generic_email_status: null },
+      ],
+      companies: [{ id: 'company-1', country_code: 'RU' }],
+      outbounds: [],
+      events: [],
+    });
+
+    vi.mocked(listCampaignFollowupCandidates).mockResolvedValue([
+      {
+        contact_id: 'contact-1',
+        company_id: 'company-1',
+        intro_sent: true,
+        intro_sent_at: '2026-03-28T10:00:00Z',
+        intro_sender_identity: 'sales@example.com',
+        reply_received: false,
+        bounce: false,
+        unsubscribed: false,
+        bump_draft_exists: true,
+        bump_draft_approved: true,
+        bump_sent: false,
+        eligible: true,
+        days_since_intro: 4,
+        auto_reply: null,
+      },
+    ] as any);
+
+    const transport = {
+      send: vi.fn().mockResolvedValue({ provider: 'imap_mcp', providerMessageId: 'msg-next-day' }),
+    };
+
+    const result = await executeCampaignSendRun(client, transport, {
+      campaignId: 'camp-next-day',
+      reason: 'auto_send_bump',
+      now: new Date('2026-04-01T12:00:00Z'),
+    });
+
+    expect(transport.send).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      selectedCount: 1,
+      sentCount: 1,
+    });
+  });
+
+  it('still blocks approved bumps when reply, bounce, or unsubscribe arrives after approval', async () => {
+    const { client } = createClient({
+      mailboxAssignments: [
+        {
+          id: 'a-1',
+          campaign_id: 'camp-late-block',
+          mailbox_account_id: 'mbox-1',
+          sender_identity: 'sales@example.com',
+          provider: 'imap_mcp',
+          source: 'manual',
+          assigned_at: '2026-03-23T08:00:00Z',
+          metadata: null,
+        },
+      ],
+      drafts: [
+        {
+          id: 'draft-bump-reply',
+          campaign_id: 'camp-late-block',
+          contact_id: 'contact-reply',
+          company_id: 'company-1',
+          email_type: 'bump',
+          status: 'approved',
+          subject: 'Reply blocked',
+          body: 'Body 1',
+          metadata: { approved_at: '2026-03-31T09:00:00Z' },
+        },
+        {
+          id: 'draft-bump-bounce',
+          campaign_id: 'camp-late-block',
+          contact_id: 'contact-bounce',
+          company_id: 'company-2',
+          email_type: 'bump',
+          status: 'approved',
+          subject: 'Bounce blocked',
+          body: 'Body 2',
+          metadata: { approved_at: '2026-03-31T09:00:00Z' },
+        },
+        {
+          id: 'draft-bump-unsub',
+          campaign_id: 'camp-late-block',
+          contact_id: 'contact-unsub',
+          company_id: 'company-3',
+          email_type: 'bump',
+          status: 'approved',
+          subject: 'Unsub blocked',
+          body: 'Body 3',
+          metadata: { approved_at: '2026-03-31T09:00:00Z' },
+        },
+      ],
+      employees: [
+        { id: 'contact-reply', work_email: 'reply@example.com', work_email_status: 'valid', generic_email: null, generic_email_status: null },
+        { id: 'contact-bounce', work_email: 'bounce@example.com', work_email_status: 'valid', generic_email: null, generic_email_status: null },
+        { id: 'contact-unsub', work_email: 'unsub@example.com', work_email_status: 'valid', generic_email: null, generic_email_status: null },
+      ],
+      companies: [
+        { id: 'company-1', country_code: 'RU' },
+        { id: 'company-2', country_code: 'RU' },
+        { id: 'company-3', country_code: 'RU' },
+      ],
+      outbounds: [],
+      events: [],
+    });
+
+    vi.mocked(listCampaignFollowupCandidates).mockResolvedValue([
+      {
+        contact_id: 'contact-reply',
+        company_id: 'company-1',
+        intro_sent: true,
+        intro_sent_at: '2026-03-28T10:00:00Z',
+        intro_sender_identity: 'sales@example.com',
+        reply_received: true,
+        bounce: false,
+        unsubscribed: false,
+        bump_draft_exists: true,
+        bump_draft_approved: true,
+        bump_sent: false,
+        eligible: false,
+        days_since_intro: 4,
+        auto_reply: null,
+      },
+      {
+        contact_id: 'contact-bounce',
+        company_id: 'company-2',
+        intro_sent: true,
+        intro_sent_at: '2026-03-28T10:00:00Z',
+        intro_sender_identity: 'sales@example.com',
+        reply_received: false,
+        bounce: true,
+        unsubscribed: false,
+        bump_draft_exists: true,
+        bump_draft_approved: true,
+        bump_sent: false,
+        eligible: false,
+        days_since_intro: 4,
+        auto_reply: null,
+      },
+      {
+        contact_id: 'contact-unsub',
+        company_id: 'company-3',
+        intro_sent: true,
+        intro_sent_at: '2026-03-28T10:00:00Z',
+        intro_sender_identity: 'sales@example.com',
+        reply_received: false,
+        bounce: false,
+        unsubscribed: true,
+        bump_draft_exists: true,
+        bump_draft_approved: true,
+        bump_sent: false,
+        eligible: false,
+        days_since_intro: 4,
+        auto_reply: null,
+      },
+    ] as any);
+
+    const transport = {
+      send: vi.fn().mockResolvedValue({ provider: 'imap_mcp', providerMessageId: 'msg-late-block' }),
+    };
+
+    const result = await executeCampaignSendRun(client, transport, {
+      campaignId: 'camp-late-block',
+      reason: 'auto_send_bump',
+      now: new Date('2026-04-01T12:00:00Z'),
+    });
+
+    expect(transport.send).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      selectedCount: 0,
+      sentCount: 0,
+      failedCount: 0,
+    });
+  });
+
   it('applies batch limit to mixed intro and bump execution', async () => {
     const { client } = createClient({
       mailboxAssignments: [

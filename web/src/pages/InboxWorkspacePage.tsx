@@ -68,6 +68,15 @@ function matchesSearch(reply: InboxReply, query: string): boolean {
   return haystack.includes(query);
 }
 
+function classifyReply(reply: InboxReply): ReplyLabelFilter {
+  const label = reply.reply_label;
+  if (label === 'positive') return 'positive';
+  if (label === 'negative') return 'negative';
+  if (label === 'bounce' || reply.event_type === 'bounced') return 'bounce';
+  if (label === 'unsubscribed' || reply.event_type === 'unsubscribed') return 'negative';
+  return 'unclassified';
+}
+
 function buildReplySummary(replies: InboxReply[]): ReplySummaryCounts {
   const summary: ReplySummaryCounts = {
     all: replies.length,
@@ -78,12 +87,8 @@ function buildReplySummary(replies: InboxReply[]): ReplySummaryCounts {
   };
 
   for (const reply of replies) {
-    const label = reply.reply_label ?? 'unclassified';
-    if (label === 'positive' || label === 'negative' || label === 'bounce') {
-      summary[label] += 1;
-      continue;
-    }
-    summary.unclassified += 1;
+    const cat = classifyReply(reply);
+    if (cat !== 'all') summary[cat] += 1;
   }
 
   return summary;
@@ -123,14 +128,15 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
   const [selectedReplyId, setSelectedReplyId] = usePersistedState('c5:inbox-v2:reply', '');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [labelFilter, setLabelFilter] = usePersistedState<ReplyLabelFilter>('c5:inbox-v2:label-filter', 'all');
-  const [campaignFilter, setCampaignFilter] = usePersistedState('c5:inbox-v2:campaign-filter', 'all');
-  const [searchQuery, setSearchQuery] = usePersistedState('c5:inbox-v2:search', '');
-  const [handledFilter, setHandledFilter] = usePersistedState<'all' | 'unhandled' | 'handled'>('c5:inbox-v2:handled-filter', 'unhandled');
-  const [linkageFilter, setLinkageFilter] = usePersistedState<LinkageFilter>('c5:inbox-v2:linkage-filter', 'linked');
-  const [limit, setLimit] = usePersistedState<number>('c5:inbox-v2:limit', 50);
+  const [labelFilter, setLabelFilter] = useState<ReplyLabelFilter>('all');
+  const [campaignFilter, setCampaignFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [handledFilter, setHandledFilter] = useState<'all' | 'unhandled' | 'handled'>('unhandled');
+  const [linkageFilter, setLinkageFilter] = useState<LinkageFilter>('linked');
+  const [limit, setLimit] = usePersistedState<number>('c5:inbox-v2:limit-v3', 50);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(30);
 
   // ---- Poll state ----
   type PollStatus = 'idle' | 'submitting' | 'success' | 'unavailable' | 'error';
@@ -231,15 +237,11 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
     [listWidth]
   );
 
+  // Load all replies once on mount (and on reload). All filtering is client-side.
   useEffect(() => {
     let cancelled = false;
-    const opts: { limit: number; replyLabel?: string; handled?: boolean; linkage?: LinkageFilter } = { limit };
-    if (labelFilter !== 'all') opts.replyLabel = labelFilter;
-    if (handledFilter === 'unhandled') opts.handled = false;
-    else if (handledFilter === 'handled') opts.handled = true;
-    if (linkageFilter !== 'all') opts.linkage = linkageFilter;
-
-    fetchInboxReplies(opts)
+    setLoading(true);
+    fetchInboxReplies({ limit: 200 })
       .then((view) => {
         if (cancelled) return;
         setReplies(view.replies);
@@ -255,37 +257,60 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [labelFilter, handledFilter, linkageFilter, limit, reloadKey]);
+  }, [reloadKey]);
 
-  const scopedReplies = useMemo(() => {
-    if (linkageFilter === 'all') return replies;
-    if (linkageFilter === 'linked') return replies.filter((r) => r.campaign_id !== null);
-    return replies.filter((r) => r.campaign_id === null);
-  }, [replies, linkageFilter]);
-
-  const campaignNames = useMemo(() => {
-    const names = new Set<string>();
-    for (const r of scopedReplies) {
-      if (r.campaign_name) names.add(r.campaign_name);
-    }
-    return Array.from(names).sort();
-  }, [scopedReplies]);
-
-  const filteredReplies = useMemo(() => {
+  // All filtering is client-side for instant responsiveness
+  const { filteredReplies, replySummary, campaignNames, hasLocalFilters } = useMemo(() => {
     const normalizedQuery = normalizeSearchValue(searchQuery);
-    return scopedReplies.filter((reply) => {
-      if (campaignFilter !== 'all' && reply.campaign_name !== campaignFilter) return false;
-      return matchesSearch(reply, normalizedQuery);
-    });
-  }, [scopedReplies, campaignFilter, searchQuery]);
+    const summary: ReplySummaryCounts = { all: 0, positive: 0, negative: 0, bounce: 0, unclassified: 0 };
+    const names = new Set<string>();
+    const filtered: InboxReply[] = [];
 
-  const replySummary = useMemo(() => buildReplySummary(scopedReplies), [scopedReplies]);
-  const hasLocalFilters =
-    linkageFilter !== 'linked' ||
-    handledFilter !== 'unhandled' ||
-    labelFilter !== 'all' ||
-    campaignFilter !== 'all' ||
-    normalizeSearchValue(searchQuery).length > 0;
+    for (const reply of replies) {
+      // Linkage
+      if (linkageFilter === 'linked' && reply.campaign_id === null) continue;
+      if (linkageFilter === 'unlinked' && reply.campaign_id !== null) continue;
+
+      // Handled
+      if (handledFilter === 'unhandled' && reply.handled) continue;
+      if (handledFilter === 'handled' && !reply.handled) continue;
+
+      // Classify and count (after scope filters, before label filter)
+      const cat = classifyReply(reply);
+      summary.all += 1;
+      if (cat !== 'all') summary[cat] += 1;
+      if (reply.campaign_name) names.add(reply.campaign_name);
+
+      // Label + campaign + search
+      if (labelFilter !== 'all' && cat !== labelFilter) continue;
+      if (campaignFilter !== 'all' && reply.campaign_name !== campaignFilter) continue;
+      if (normalizedQuery && !matchesSearch(reply, normalizedQuery)) continue;
+
+      filtered.push(reply);
+    }
+
+    return {
+      filteredReplies: filtered,
+      replySummary: summary,
+      campaignNames: Array.from(names).sort(),
+      hasLocalFilters:
+        linkageFilter !== 'linked' ||
+        handledFilter !== 'unhandled' ||
+        labelFilter !== 'all' ||
+        campaignFilter !== 'all' ||
+        normalizedQuery.length > 0,
+    };
+  }, [replies, linkageFilter, handledFilter, labelFilter, campaignFilter, searchQuery]);
+
+  // Reset pagination when filters change
+  const filteredCount = filteredReplies.length;
+  const prevCountRef = useRef(filteredCount);
+  if (prevCountRef.current !== filteredCount) {
+    prevCountRef.current = filteredCount;
+    if (visibleCount > 30) setVisibleCount(30);
+  }
+
+  const visibleReplies = filteredReplies.slice(0, visibleCount);
 
   const selectedReply = useMemo(
     () => filteredReplies.find((r) => r.id === selectedReplyId) ?? filteredReplies[0] ?? null,
@@ -342,7 +367,6 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
               type="button"
               className={`od-filter-chip${labelFilter === label ? ' od-filter-chip--active' : ''}`}
               onClick={() => {
-                setLoading(true);
                 setLabelFilter(label);
                 setCampaignFilter('all');
               }}
@@ -372,7 +396,7 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
               key={scope}
               type="button"
               className={`od-filter-chip${linkageFilter === scope ? ' od-filter-chip--active' : ''}`}
-              onClick={() => { setLoading(true); setLinkageFilter(scope); }}
+              onClick={() => setLinkageFilter(scope)}
               title={scopeTitles[scope]}
             >
               {scopeLabels[scope]}
@@ -394,7 +418,7 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
               key={h}
               type="button"
               className={`od-filter-chip${handledFilter === h ? ' od-filter-chip--active' : ''}`}
-              onClick={() => { setLoading(true); setHandledFilter(h); }}
+              onClick={() => setHandledFilter(h)}
               title={handledTitles[h]}
             >
               {h}
@@ -450,7 +474,7 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
           title="How many items to load from the server (newest first)"
           className="od-search__input"
           value={String(limit)}
-          onChange={(e) => { setLoading(true); setLimit(Number(e.target.value)); }}
+          onChange={(e) => setLimit(Number(e.target.value))}
           style={{ flex: '0 0 140px' }}
         >
           {[50, 100, 200, 500].map((n) => (
@@ -507,7 +531,7 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
               <span className="od-count-chip">{filteredReplies.length}</span>
             </div>
             <div className="od-col-body">
-              {filteredReplies.map((reply) => (
+              {visibleReplies.map((reply) => (
                 <button
                   key={reply.id}
                   type="button"
@@ -557,6 +581,16 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
                   </div>
                 </button>
               ))}
+              {filteredReplies.length > visibleCount && (
+                <button
+                  type="button"
+                  className="od-btn od-btn--ghost"
+                  style={{ width: '100%', fontSize: 11, padding: '6px', marginTop: 4 }}
+                  onClick={() => setVisibleCount((c) => c + 30)}
+                >
+                  Show more ({filteredReplies.length - visibleCount} remaining)
+                </button>
+              )}
             </div>
           </div>
 

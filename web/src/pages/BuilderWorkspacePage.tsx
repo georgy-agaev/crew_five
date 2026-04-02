@@ -20,6 +20,9 @@ import {
 } from '../apiClient';
 import { BuilderDraftReview } from '../components/BuilderDraftReview';
 import { CampaignAutoSendCard } from '../components/CampaignAutoSendCard';
+import { CampaignBumpQueueCard } from '../components/CampaignBumpQueueCard';
+import { CampaignDraftGenerateCard } from '../components/CampaignDraftGenerateCard';
+import { CampaignExecutionSummaryCard } from '../components/CampaignExecutionSummaryCard';
 import { CampaignLaunchDrawer } from '../components/CampaignLaunchDrawer';
 import { CampaignNextWaveDrawer } from '../components/CampaignNextWaveDrawer';
 import { CampaignRotationPreviewDrawer } from '../components/CampaignRotationPreviewDrawer';
@@ -736,8 +739,17 @@ export function BuilderWorkspacePage({
                 )}
               </div>
 
+              {/* ---- Execution summary ---- */}
+              <CampaignExecutionSummaryCard campaignId={selectedCampaignId} language={language} />
+
               {/* ---- Send preflight ---- */}
               <CampaignSendPreflightCard campaignId={selectedCampaignId} language={language} />
+
+              {/* ---- Draft generation ---- */}
+              <CampaignDraftGenerateCard campaignId={selectedCampaignId} language={language} />
+
+              {/* ---- Bump queue ---- */}
+              <CampaignBumpQueueCard campaignId={selectedCampaignId} language={language} />
 
               {/* ---- Auto-send settings ---- */}
               <CampaignAutoSendCard campaignId={selectedCampaignId} language={language} />

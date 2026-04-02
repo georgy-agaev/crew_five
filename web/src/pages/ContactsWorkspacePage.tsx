@@ -212,7 +212,7 @@ export function ContactsWorkspacePage({ isDark = false }: { isDark?: boolean }) 
   useEffect(() => {
     let cancelled = false;
     setLoadingCompanies(true);
-    const opts: Parameters<typeof fetchDirectoryCompanies>[0] = { limit: 200 };
+    const opts: Parameters<typeof fetchDirectoryCompanies>[0] = { limit: 1000 };
     if (search) opts.q = search;
     if (enrichFilter !== 'all') opts.enrichmentStatus = enrichFilter;
 

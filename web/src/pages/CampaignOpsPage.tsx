@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   fetchCampaignAudit,
@@ -16,52 +16,56 @@ import {
   type CampaignOutbound,
   type DraftRow,
 } from '../apiClient';
-import { Alert } from '../components/Alert';
 import { CampaignAuditPanel } from '../components/CampaignAuditPanel';
-import { CampaignDraftReview, type DraftReviewFilter } from '../components/CampaignDraftReview';
-import { CampaignEventLedger, type CampaignEventFilter } from '../components/CampaignEventLedger';
-import { CampaignOutboundLedger, type OutboundLedgerFilter } from '../components/CampaignOutboundLedger';
-import {
-  findDraftForEvent,
-  findDraftForOutbound,
-  findEventForOutbound,
-  findOutboundForDraft,
-  findOutboundForEvent,
-} from '../components/campaignTrace';
-import {
-  filterAndSortCampaignCompanies,
-  filterAndSortCampaigns,
-  type CampaignListSort,
-  type CampaignListStatusFilter,
-  type CompanyResearchFilter,
-  type CompanySort,
-} from './campaignOpsFilters';
+import { getWorkspaceColors } from '../theme';
+import './CampaignOperatorDesk.css';
+
+// ============================================================
+// Helpers
+// ============================================================
+
+function odCssVars(isDark: boolean): React.CSSProperties {
+  const c = getWorkspaceColors(isDark);
+  return {
+    '--od-bg': c.bg, '--od-card': c.card, '--od-card-hover': c.cardHover,
+    '--od-text': c.text, '--od-text-muted': c.textMuted, '--od-border': c.border,
+    '--od-orange': c.orange, '--od-orange-light': c.orangeLight,
+    '--od-sidebar': c.sidebar, '--od-success': c.success,
+    '--od-warning': c.warning, '--od-error': c.error,
+  } as React.CSSProperties;
+}
+
+function StatusBadge({ status }: { status?: string }) {
+  if (!status) return <span className="od-status-badge od-status-badge--draft">n/a</span>;
+  return <span className={`od-status-badge od-status-badge--${status}`}>{status}</span>;
+}
+
+function truncate(s: string, len: number) {
+  return s.length > len ? s.slice(0, len) + '...' : s;
+}
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  } catch { return iso; }
+}
+
+type LedgerTab = 'drafts' | 'outbounds' | 'events';
 
 export function getCampaignCompanyResearchStatus(company: CampaignCompany): 'enriched' | 'missing' {
   return company.company_research ? 'enriched' : 'missing';
 }
 
-export function formatEnrichmentStateLabel(status: CampaignCompany['enrichment']['status']) {
-  if (status === 'fresh') return 'fresh';
-  if (status === 'stale') return 'stale';
-  return 'missing';
+export function formatEnrichmentStateLabel(state: CampaignCompany['enrichment']['status']): string {
+  return state;
 }
 
-export function summarizeCampaignCompanies(view: CampaignCompaniesView | null) {
-  if (!view) {
-    return {
-      companyCount: 0,
-      contactCount: 0,
-      enrichedCount: 0,
-      missingResearchCount: 0,
-      freshCount: 0,
-      staleCount: 0,
-    };
-  }
-
+export function summarizeCampaignCompanies(view: CampaignCompaniesView) {
   const companyCount = view.companies.length;
   const contactCount = view.companies.reduce((sum, company) => sum + company.contact_count, 0);
   const enrichedCount = view.companies.filter((company) => getCampaignCompanyResearchStatus(company) === 'enriched').length;
+  const missingResearchCount = companyCount - enrichedCount;
   const freshCount = view.companies.filter((company) => company.enrichment.status === 'fresh').length;
   const staleCount = view.companies.filter((company) => company.enrichment.status === 'stale').length;
 
@@ -69,602 +73,409 @@ export function summarizeCampaignCompanies(view: CampaignCompaniesView | null) {
     companyCount,
     contactCount,
     enrichedCount,
-    missingResearchCount: companyCount - enrichedCount,
+    missingResearchCount,
     freshCount,
     staleCount,
   };
 }
 
-function StatusPill({ status }: { status?: string }) {
-  const normalized = (status ?? 'n/a').toLowerCase();
-  const className =
-    normalized === 'review' || normalized === 'ready'
-      ? 'pill pill--accent'
-      : normalized === 'paused'
-        ? 'pill pill--warn'
-        : 'pill pill--subtle';
+// ============================================================
+// Main
+// ============================================================
 
-  return <span className={className}>{status ?? 'n/a'}</span>;
-}
-
-export function CampaignOpsPage() {
+export function CampaignOpsPage({ isDark = false }: { isDark?: boolean }) {
+  // ---- State ----
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
+  const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [companiesView, setCompaniesView] = useState<CampaignCompaniesView | null>(null);
   const [auditView, setAuditView] = useState<CampaignAuditView | null>(null);
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
   const [outbounds, setOutbounds] = useState<CampaignOutbound[]>([]);
   const [events, setEvents] = useState<CampaignEvent[]>([]);
-  const [selectedDraftId, setSelectedDraftId] = useState<string>('');
-  const [selectedOutboundId, setSelectedOutboundId] = useState<string>('');
-  const [selectedEventId, setSelectedEventId] = useState<string>('');
-  const [draftFilter, setDraftFilter] = useState<DraftReviewFilter>('all');
-  const [outboundFilter, setOutboundFilter] = useState<OutboundLedgerFilter>('all');
-  const [eventFilter, setEventFilter] = useState<CampaignEventFilter>('all');
-  const [campaignSearch, setCampaignSearch] = useState('');
-  const [campaignStatusFilter, setCampaignStatusFilter] = useState<CampaignListStatusFilter>('all');
-  const [campaignSort, setCampaignSort] = useState<CampaignListSort>('name');
-  const [companySearch, setCompanySearch] = useState('');
-  const [companyResearchFilter, setCompanyResearchFilter] = useState<CompanyResearchFilter>('all');
-  const [companySort, setCompanySort] = useState<CompanySort>('name');
-  const [listLoading, setListLoading] = useState(true);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [auditLoading, setAuditLoading] = useState(false);
-  const [draftLoading, setDraftLoading] = useState(false);
-  const [outboundLoading, setOutboundLoading] = useState(false);
-  const [eventLoading, setEventLoading] = useState(false);
-  const [reviewBusyId, setReviewBusyId] = useState<string | null>(null);
-  const [listError, setListError] = useState<string | null>(null);
-  const [detailError, setDetailError] = useState<string | null>(null);
-  const [auditError, setAuditError] = useState<string | null>(null);
-  const [draftError, setDraftError] = useState<string | null>(null);
-  const [outboundError, setOutboundError] = useState<string | null>(null);
-  const [eventError, setEventError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [ledgerTab, setLedgerTab] = useState<LedgerTab>('drafts');
+  const [selectedItemId, setSelectedItemId] = useState('');
 
+  // ---- Resizable columns ----
+  const [colWidths, setColWidths] = useState([280, 400]);
+  const dragRef = useRef<{ colIndex: number; startX: number; startWidths: number[] } | null>(null);
+
+  const handleResizeStart = useCallback(
+    (colIndex: number, e: React.MouseEvent) => {
+      e.preventDefault();
+      dragRef.current = { colIndex, startX: e.clientX, startWidths: [...colWidths] };
+      const onMouseMove = (ev: MouseEvent) => {
+        if (!dragRef.current) return;
+        const delta = ev.clientX - dragRef.current.startX;
+        const next = [...dragRef.current.startWidths];
+        next[colIndex] = Math.max(200, dragRef.current.startWidths[colIndex] + delta);
+        setColWidths(next);
+      };
+      const onMouseUp = () => {
+        dragRef.current = null;
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    },
+    [colWidths]
+  );
+
+  // ---- Load campaigns ----
   useEffect(() => {
-    setListLoading(true);
-    setListError(null);
+    let cancelled = false;
+    setLoading(true);
     fetchCampaigns()
       .then((rows) => {
+        if (cancelled) return;
         setCampaigns(rows);
-        setSelectedCampaignId((current) => current || rows[0]?.id || '');
+        setSelectedCampaignId((c) => c || rows[0]?.id || '');
       })
-      .catch((err) => setListError(err?.message ?? 'Failed to load campaigns'))
-      .finally(() => setListLoading(false));
+      .catch((err) => { if (!cancelled) setError(err?.message ?? 'Failed'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
+  // ---- Load campaign data ----
   useEffect(() => {
     if (!selectedCampaignId) {
-      setCompaniesView(null);
+      setCompaniesView(null); setAuditView(null); setDrafts([]); setOutbounds([]); setEvents([]);
       return;
     }
-
-    setDetailLoading(true);
-    setDetailError(null);
-    fetchCampaignCompanies(selectedCampaignId)
-      .then(setCompaniesView)
-      .catch((err) => {
-        setCompaniesView(null);
-        setDetailError(err?.message ?? 'Failed to load campaign companies');
-      })
-      .finally(() => setDetailLoading(false));
+    let cancelled = false;
+    fetchCampaignCompanies(selectedCampaignId).then((v) => { if (!cancelled) setCompaniesView(v); }).catch(() => {});
+    fetchCampaignAudit(selectedCampaignId).then((v) => { if (!cancelled) setAuditView(v); }).catch(() => {});
+    fetchDrafts(selectedCampaignId, undefined, true).then((v) => { if (!cancelled) setDrafts(v); }).catch(() => {});
+    fetchCampaignOutbounds(selectedCampaignId).then((v) => { if (!cancelled) setOutbounds(v.outbounds); }).catch(() => {});
+    fetchCampaignEvents(selectedCampaignId).then((v) => { if (!cancelled) setEvents(v.events); }).catch(() => {});
+    return () => { cancelled = true; };
   }, [selectedCampaignId]);
 
+  const selectedCampaign = campaigns.find((c) => c.id === selectedCampaignId);
+  const filteredCampaigns = useMemo(() => {
+    if (!search) return campaigns;
+    const q = search.toLowerCase();
+    return campaigns.filter((c) => c.name.toLowerCase().includes(q));
+  }, [campaigns, search]);
+
+  // ---- Ledger items ----
+  const ledgerItems = useMemo(() => {
+    if (ledgerTab === 'drafts') return drafts.map((d) => ({ id: d.id, type: 'draft' as const, label: d.subject ?? '—', status: d.status, email_type: d.email_type, contact: d.contact_name, company: d.company_name, date: d.updated_at }));
+    if (ledgerTab === 'outbounds') return outbounds.map((o) => ({ id: o.id, type: 'outbound' as const, label: o.subject ?? '—', status: o.status, email_type: o.draft_email_type, contact: o.contact_name, company: o.company_name, date: o.sent_at ?? o.created_at }));
+    return events.map((e) => ({ id: e.id, type: 'event' as const, label: e.event_type ?? '—', status: e.outcome_classification, email_type: null, contact: e.contact_name, company: e.company_name, date: e.occurred_at }));
+  }, [ledgerTab, drafts, outbounds, events]);
+
+  const selectedItem = ledgerItems.find((i) => i.id === selectedItemId);
+  const selectedDraft = ledgerTab === 'drafts' ? drafts.find((d) => d.id === selectedItemId) : null;
+  const selectedOutbound = ledgerTab === 'outbounds' ? outbounds.find((o) => o.id === selectedItemId) : null;
+  const selectedEvent = ledgerTab === 'events' ? events.find((e) => e.id === selectedItemId) : null;
+
+  // Auto-select first item when tab changes
   useEffect(() => {
-    if (!selectedCampaignId) {
-      setAuditView(null);
-      return;
+    if (ledgerItems.length > 0 && !ledgerItems.some((i) => i.id === selectedItemId)) {
+      setSelectedItemId(ledgerItems[0].id);
     }
+  }, [ledgerItems]);
 
-    setAuditLoading(true);
-    setAuditError(null);
-    fetchCampaignAudit(selectedCampaignId)
-      .then(setAuditView)
-      .catch((err) => {
-        setAuditView(null);
-        setAuditError(err?.message ?? 'Failed to load campaign audit');
-      })
-      .finally(() => setAuditLoading(false));
-  }, [selectedCampaignId]);
-
-  useEffect(() => {
-    if (!selectedCampaignId) {
-      setDrafts([]);
-      setSelectedDraftId('');
-      return;
-    }
-
-    setDraftLoading(true);
-    setDraftError(null);
-    fetchDrafts(selectedCampaignId, undefined, true)
-      .then((rows) => {
-        setDrafts(rows);
-        setSelectedDraftId((current) => current || rows[0]?.id || '');
-      })
-      .catch((err) => {
-        setDrafts([]);
-        setSelectedDraftId('');
-        setDraftError(err?.message ?? 'Failed to load drafts');
-      })
-      .finally(() => setDraftLoading(false));
-  }, [selectedCampaignId]);
-
-  useEffect(() => {
-    if (!selectedCampaignId) {
-      setOutbounds([]);
-      setSelectedOutboundId('');
-      return;
-    }
-
-    setOutboundLoading(true);
-    setOutboundError(null);
-    fetchCampaignOutbounds(selectedCampaignId)
-      .then((view) => {
-        setOutbounds(view.outbounds);
-        setSelectedOutboundId((current) => current || view.outbounds[0]?.id || '');
-      })
-      .catch((err) => {
-        setOutbounds([]);
-        setSelectedOutboundId('');
-        setOutboundError(err?.message ?? 'Failed to load outbound ledger');
-      })
-      .finally(() => setOutboundLoading(false));
-  }, [selectedCampaignId]);
-
-  useEffect(() => {
-    if (!selectedCampaignId) {
-      setEvents([]);
-      setSelectedEventId('');
-      return;
-    }
-
-    setEventLoading(true);
-    setEventError(null);
-    fetchCampaignEvents(selectedCampaignId)
-      .then((view) => {
-        setEvents(view.events);
-        setSelectedEventId((current) => current || view.events[0]?.id || '');
-      })
-      .catch((err) => {
-        setEvents([]);
-        setSelectedEventId('');
-        setEventError(err?.message ?? 'Failed to load campaign events');
-      })
-      .finally(() => setEventLoading(false));
-  }, [selectedCampaignId]);
-
-  const visibleCampaigns = useMemo(
-    () => filterAndSortCampaigns(campaigns, campaignSearch, campaignStatusFilter, campaignSort),
-    [campaignSearch, campaignSort, campaignStatusFilter, campaigns]
-  );
-  const visibleCompanies = useMemo(
-    () => filterAndSortCampaignCompanies(companiesView, companySearch, companyResearchFilter, companySort),
-    [companiesView, companyResearchFilter, companySearch, companySort]
-  );
-  const summary = useMemo(
-    () =>
-      companiesView
-        ? summarizeCampaignCompanies({
-            ...companiesView,
-            companies: visibleCompanies,
-          })
-        : summarizeCampaignCompanies(null),
-    [companiesView, visibleCompanies]
-  );
-  const visibleDrafts = useMemo(() => {
-    if (draftFilter === 'all') {
-      return drafts;
-    }
-    return drafts.filter((draft) => draft.status === draftFilter);
-  }, [draftFilter, drafts]);
-
-  const visibleOutbounds = useMemo(() => {
-    if (outboundFilter === 'all') {
-      return outbounds;
-    }
-    return outbounds.filter((outbound) => outbound.status === outboundFilter);
-  }, [outboundFilter, outbounds]);
-  const visibleEvents = useMemo(() => {
-    if (eventFilter === 'all') {
-      return events;
-    }
-    return events.filter((event) => event.event_type === eventFilter);
-  }, [eventFilter, events]);
-  const selectedDraft = useMemo(
-    () => drafts.find((draft) => draft.id === selectedDraftId) ?? null,
-    [drafts, selectedDraftId]
-  );
-  const selectedOutbound = useMemo(
-    () => outbounds.find((outbound) => outbound.id === selectedOutboundId) ?? null,
-    [outbounds, selectedOutboundId]
-  );
-  const selectedEvent = useMemo(
-    () => events.find((event) => event.id === selectedEventId) ?? null,
-    [events, selectedEventId]
-  );
-  const linkedOutboundForDraft = useMemo(
-    () => findOutboundForDraft(selectedDraft, outbounds),
-    [outbounds, selectedDraft]
-  );
-  const linkedEventForDraft = useMemo(
-    () => findEventForOutbound(linkedOutboundForDraft, events),
-    [events, linkedOutboundForDraft]
-  );
-  const linkedDraftForOutbound = useMemo(
-    () => findDraftForOutbound(selectedOutbound, drafts),
-    [drafts, selectedOutbound]
-  );
-  const linkedEventForOutbound = useMemo(
-    () => findEventForOutbound(selectedOutbound, events),
-    [events, selectedOutbound]
-  );
-  const linkedOutboundForEvent = useMemo(
-    () => findOutboundForEvent(selectedEvent, outbounds),
-    [outbounds, selectedEvent]
-  );
-  const linkedDraftForEvent = useMemo(
-    () => findDraftForEvent(selectedEvent, drafts),
-    [drafts, selectedEvent]
-  );
-
-  useEffect(() => {
-    if (visibleDrafts.length === 0) {
-      setSelectedDraftId('');
-      return;
-    }
-    if (!visibleDrafts.some((draft) => draft.id === selectedDraftId)) {
-      setSelectedDraftId(visibleDrafts[0].id);
-    }
-  }, [selectedDraftId, visibleDrafts]);
-
-  useEffect(() => {
-    if (visibleOutbounds.length === 0) {
-      setSelectedOutboundId('');
-      return;
-    }
-    if (!visibleOutbounds.some((outbound) => outbound.id === selectedOutboundId)) {
-      setSelectedOutboundId(visibleOutbounds[0].id);
-    }
-  }, [selectedOutboundId, visibleOutbounds]);
-
-  useEffect(() => {
-    if (visibleEvents.length === 0) {
-      setSelectedEventId('');
-      return;
-    }
-    if (!visibleEvents.some((event) => event.id === selectedEventId)) {
-      setSelectedEventId(visibleEvents[0].id);
-    }
-  }, [selectedEventId, visibleEvents]);
-
-  const handleReviewDraft = async (
-    draftId: string,
-    review: {
-      status: 'approved' | 'rejected';
-      metadata?: Record<string, unknown>;
-    }
-  ) => {
-    setReviewBusyId(draftId);
-    setDraftError(null);
+  // ---- Review handler ----
+  const handleReview = useCallback(async (draftId: string, status: 'approved' | 'rejected') => {
     try {
-      const updated = await reviewDraftStatus(draftId, {
-        status: review.status,
-        reviewer: 'campaigns-ui',
-        metadata: {
-          review_surface: 'campaigns',
-          reviewed_at: new Date().toISOString(),
-          reviewed_by: 'campaigns-ui',
-          ...(review.status === 'approved'
-            ? {
-                review_reason_code: null,
-                review_reason_codes: [],
-                review_reason_text: null,
-              }
-            : {}),
-          ...(review.metadata ?? {}),
-        },
-      });
-      setDrafts((rows) =>
-        rows.map((row) =>
-          row.id === draftId
-            ? {
-                ...row,
-                ...updated,
-                contact_name: row.contact_name,
-                contact_position: row.contact_position,
-                company_name: row.company_name,
-                recipient_email: row.recipient_email,
-                recipient_email_source: row.recipient_email_source,
-                recipient_email_kind: row.recipient_email_kind,
-                sendable: row.sendable,
-              }
-            : row
-        )
-      );
-    } catch (err: any) {
-      setDraftError(err?.message ?? 'Failed to update draft review');
-    } finally {
-      setReviewBusyId(null);
+      const updated = await reviewDraftStatus(draftId, { status, reviewer: 'ledger-ui', metadata: { review_surface: 'ledger', reviewed_at: new Date().toISOString() } });
+      setDrafts((prev) => prev.map((d) => d.id === draftId ? { ...d, ...updated, contact_name: d.contact_name, company_name: d.company_name, recipient_email: d.recipient_email } : d));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Review failed');
     }
-  };
+  }, []);
 
-  const handleOpenDraft = (draftId: string) => {
-    setDraftFilter('all');
-    setSelectedDraftId(draftId);
-  };
+  const gridTemplate = `${colWidths[0]}px 4px ${colWidths[1]}px 4px 1fr`;
 
-  const handleOpenOutbound = (outboundId: string) => {
-    setOutboundFilter('all');
-    setSelectedOutboundId(outboundId);
-  };
-
-  const handleOpenEvent = (eventId: string) => {
-    setEventFilter('all');
-    setSelectedEventId(eventId);
-  };
-
+  // ---- Render ----
   return (
-    <section style={{ padding: '24px 28px 40px' }}>
-      <div className="topbar">
-        <div>
-          <p className="eyebrow">Operator Console</p>
-          <h1>Campaign Ops</h1>
-          <p className="muted">
-            Review campaign composition, drafts, and recorded sends from a single campaign surface.
-          </p>
-        </div>
+    <div className="operator-desk" style={odCssVars(isDark)}>
+      <div style={{ padding: '10px 16px 8px', flexShrink: 0 }}>
+        <h1 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Campaign Ledger</h1>
       </div>
 
-      {listError && <Alert kind="error">{listError}</Alert>}
-      {(listLoading || detailLoading || auditLoading || draftLoading || outboundLoading || eventLoading) && (
-        <Alert>Loading...</Alert>
-      )}
+      {error && <div className="od-error-banner" role="alert">{error}</div>}
 
-      <div className="grid two-column" style={{ alignItems: 'start' }}>
-        <div className="card">
-          <div className="card__header">
-            <div>
-              <h2>Campaigns</h2>
-              <p className="muted small">Choose a campaign to inspect its bound snapshot companies.</p>
-            </div>
-            <span className="pill">
-              {visibleCampaigns.length}/{campaigns.length}
-            </span>
+      <div className="operator-desk__grid" style={{ gridTemplateColumns: gridTemplate, flex: 1 }}>
+
+        {/* ======== Column 1: Campaigns + Ledger tabs ======== */}
+        <div className="operator-desk__column">
+          <div className="od-col-header">
+            <span className="od-col-title">Campaigns</span>
+            <span className="od-count-chip">{filteredCampaigns.length}</span>
           </div>
-          <div className="grid two-column" style={{ marginBottom: 12 }}>
-            <label style={{ marginBottom: 0 }}>
-              Search
-              <input
-                value={campaignSearch}
-                onChange={(event) => setCampaignSearch(event.target.value)}
-                placeholder="Name, status, or segment id"
-              />
-            </label>
-            <div className="grid two-column" style={{ gap: 12 }}>
-              <label style={{ marginBottom: 0 }}>
-                Status
-                <select
-                  value={campaignStatusFilter}
-                  onChange={(event) => setCampaignStatusFilter(event.target.value as CampaignListStatusFilter)}
-                >
-                  <option value="all">all</option>
-                  <option value="draft">draft</option>
-                  <option value="review">review</option>
-                  <option value="ready">ready</option>
-                  <option value="paused">paused</option>
-                </select>
-              </label>
-              <label style={{ marginBottom: 0 }}>
-                Sort
-                <select value={campaignSort} onChange={(event) => setCampaignSort(event.target.value as CampaignListSort)}>
-                  <option value="name">name</option>
-                  <option value="status">status</option>
-                </select>
-              </label>
-            </div>
+          <div className="od-search">
+            <input className="od-search__input" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <div className="table-lite">
-            <div className="table-lite__head">
-              <span>Name</span>
-              <span>Status</span>
-            </div>
-            {visibleCampaigns.map((campaign) => (
-              <button
-                key={campaign.id}
-                type="button"
-                className="table-lite__row"
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  background:
-                    campaign.id === selectedCampaignId ? 'rgba(15, 23, 42, 0.06)' : 'transparent',
-                  color: 'inherit',
-                  border: 'none',
-                  borderRadius: 0,
-                  boxShadow: 'none',
-                  transform: 'none',
-                  padding: '12px 14px',
-                }}
-                onClick={() => setSelectedCampaignId(campaign.id)}
+          <div className="od-col-body" style={{ maxHeight: '40%' }}>
+            {loading && <div style={{ padding: 12 }}><span className="od-skeleton" style={{ height: 14, width: '60%' }} /></div>}
+            {filteredCampaigns.map((c) => (
+              <div
+                key={c.id}
+                className={`od-campaign-item${c.id === selectedCampaignId ? ' od-campaign-item--pinned' : ''}`}
+                onClick={() => setSelectedCampaignId(c.id)}
               >
-                <span>{campaign.name}</span>
-                <span>{campaign.status ?? 'n/a'}</span>
-              </button>
+                <span className="od-campaign-item__name">{c.name}</span>
+                <span className="od-campaign-item__meta"><StatusBadge status={c.status} /></span>
+              </div>
             ))}
-            {visibleCampaigns.length === 0 && <div className="table-lite__row">No campaigns match these controls.</div>}
+          </div>
+
+          {/* Ledger tabs */}
+          <div style={{ borderTop: '1px solid var(--od-border)', padding: '8px 10px 4px' }}>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {(['drafts', 'outbounds', 'events'] as LedgerTab[]).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={`od-filter-chip${ledgerTab === tab ? ' od-filter-chip--active' : ''}`}
+                  onClick={() => setLedgerTab(tab)}
+                  style={{ fontSize: 11 }}
+                >
+                  {tab} ({tab === 'drafts' ? drafts.length : tab === 'outbounds' ? outbounds.length : events.length})
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Ledger list */}
+          <div className="od-col-body">
+            {ledgerItems.length === 0 && (
+              <div className="od-empty" style={{ minHeight: 60 }}>
+                <span className="od-empty__text">No {ledgerTab}</span>
+              </div>
+            )}
+            {ledgerItems.slice(0, 100).map((item) => (
+              <div
+                key={item.id}
+                className={`od-campaign-item${item.id === selectedItemId ? ' od-campaign-item--pinned' : ''}`}
+                onClick={() => setSelectedItemId(item.id)}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <StatusBadge status={item.status ?? undefined} />
+                  {item.email_type && <span style={{ fontSize: 9, color: 'var(--od-text-muted)' }}>{item.email_type}</span>}
+                </div>
+                <span className="od-campaign-item__name" style={{ fontSize: 12 }} title={item.label}>{truncate(item.label, 40)}</span>
+                <div style={{ fontSize: 10, color: 'var(--od-text-muted)', display: 'flex', gap: 6 }}>
+                  {item.contact && <span>{truncate(item.contact, 20)}</span>}
+                  {item.company && <span>{truncate(item.company, 20)}</span>}
+                </div>
+              </div>
+            ))}
+            {ledgerItems.length > 100 && (
+              <div style={{ padding: '6px 10px', fontSize: 10, color: 'var(--od-text-muted)', textAlign: 'center' }}>
+                Showing 100 of {ledgerItems.length}
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="card">
-          {!companiesView ? (
-            <div>
-              <h2>Campaign detail</h2>
-              <p className="muted small">Select a campaign to load its companies.</p>
-              {detailError ? <Alert kind="error">{detailError}</Alert> : null}
+        <div className="od-resize-handle" onMouseDown={(e) => handleResizeStart(0, e)} />
+
+        {/* ======== Column 2: Audit + Companies ======== */}
+        <div className="operator-desk__column" style={{ background: 'var(--od-bg)' }}>
+          {!selectedCampaign ? (
+            <div className="od-placeholder">
+              <div className="od-placeholder__dash" />
+              <span className="od-placeholder__text">Select a campaign</span>
             </div>
           ) : (
-            <>
-              <div className="card__header">
-                <div>
-                  <h2>{companiesView.campaign.name}</h2>
-                  <div className="pill-row">
-                    <StatusPill status={companiesView.campaign.status} />
-                    <span className="pill">Segment {companiesView.campaign.segment_id}</span>
-                    <span className="pill">v{companiesView.campaign.segment_version}</span>
-                  </div>
+            <div className="od-col-body">
+              {/* Campaign info */}
+              <div className="od-context-block">
+                <div className="od-context-row">
+                  <span className="od-context-row__label">Campaign</span>
+                  <span className="od-context-row__value">{selectedCampaign.name}</span>
+                </div>
+                <div className="od-context-row">
+                  <span className="od-context-row__label">Status</span>
+                  <StatusBadge status={selectedCampaign.status} />
                 </div>
               </div>
 
-              <div className="grid two-column">
-                <div className="panel">
-                  <div className="panel__title">Composition</div>
-                  <div className="panel__content">
-                    <div className="pill-row">
-                      <span className="pill">{summary.companyCount} companies</span>
-                      <span className="pill">{summary.contactCount} contacts</span>
-                    </div>
+              {/* Audit summary */}
+              {auditView && (
+                <div className="od-context-block" style={{ borderTop: '1px solid var(--od-border)' }}>
+                  <h3 className="od-context-block__title">Audit</h3>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    <span className="od-count-chip">{auditView.summary.company_count} companies</span>
+                    <span className="od-count-chip">{auditView.summary.snapshot_contact_count} contacts</span>
+                    <span className="od-count-chip">{auditView.summary.draft_count} drafts</span>
+                    <span className="od-count-chip" style={{ color: auditView.summary.sent_draft_count > 0 ? 'var(--od-success)' : 'var(--od-text-muted)' }}>
+                      {auditView.summary.sent_draft_count} sent
+                    </span>
+                    <span className="od-count-chip" style={{ color: auditView.summary.outbound_sent_count > 0 ? 'var(--od-success)' : 'var(--od-text-muted)' }}>
+                      {auditView.summary.outbound_sent_count} outbounds
+                    </span>
+                    {auditView.summary.bounced_event_count > 0 && (
+                      <span className="od-count-chip" style={{ color: 'var(--od-error)' }}>{auditView.summary.bounced_event_count} bounced</span>
+                    )}
+                    {auditView.summary.replied_event_count > 0 && (
+                      <span className="od-count-chip" style={{ color: 'var(--od-success)' }}>{auditView.summary.replied_event_count} replied</span>
+                    )}
                   </div>
-                </div>
-                <div className="panel">
-                  <div className="panel__title">Research Coverage</div>
-                  <div className="panel__content">
-                    <div className="pill-row">
-                      <span className="pill pill--accent">{summary.enrichedCount} enriched</span>
-                      <span className="pill">{summary.freshCount} fresh</span>
-                      <span className="pill pill--warn">{summary.staleCount} stale</span>
-                      <span className="pill pill--warn">{summary.missingResearchCount} missing</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
 
-              {auditError ? <Alert kind="error">{auditError}</Alert> : null}
-              <CampaignAuditPanel audit={auditView} />
-
-              <div style={{ marginTop: 18 }}>
-                <div className="card__header" style={{ marginBottom: 8 }}>
-                  <div>
-                    <h4>Companies in campaign</h4>
-                    <p className="muted small">Filter and sort the campaign snapshot before reviewing drafts.</p>
-                  </div>
-                  <span className="pill">
-                    {visibleCompanies.length}/{companiesView.companies.length}
-                  </span>
-                </div>
-                <div className="grid two-column" style={{ marginBottom: 12 }}>
-                  <label style={{ marginBottom: 0 }}>
-                    Search
-                    <input
-                      value={companySearch}
-                      onChange={(event) => setCompanySearch(event.target.value)}
-                      placeholder="Company, website, region, provider"
-                    />
-                  </label>
-                  <div className="grid two-column" style={{ gap: 12 }}>
-                    <label style={{ marginBottom: 0 }}>
-                      Research
-                      <select
-                        value={companyResearchFilter}
-                        onChange={(event) => setCompanyResearchFilter(event.target.value as CompanyResearchFilter)}
-                      >
-                        <option value="all">all</option>
-                        <option value="fresh">fresh</option>
-                        <option value="stale">stale</option>
-                        <option value="missing">missing</option>
-                      </select>
-                    </label>
-                    <label style={{ marginBottom: 0 }}>
-                      Sort
-                      <select value={companySort} onChange={(event) => setCompanySort(event.target.value as CompanySort)}>
-                        <option value="name">name</option>
-                        <option value="contacts">contacts</option>
-                        <option value="updated">updated</option>
-                      </select>
-                    </label>
-                  </div>
-                </div>
-                <div className="table-lite" style={{ marginTop: 8 }}>
-                  <div className="table-lite__head">
-                    <span>Company</span>
-                    <span>Contacts</span>
-                    <span>Research</span>
-                    <span>Updated</span>
-                    <span>Region</span>
-                    <span>Employees</span>
-                  </div>
-                  {visibleCompanies.map((company) => (
-                    <div key={company.company_id} className="table-lite__row">
-                      <span>
-                        <strong>{company.company_name ?? company.company_id}</strong>
-                        <br />
-                        <span className="muted small">{company.website ?? company.company_description ?? 'No company context yet'}</span>
-                      </span>
-                      <span>{company.contact_count}</span>
-                      <span>
-                        {formatEnrichmentStateLabel(company.enrichment.status)}
-                        {company.enrichment.provider_hint ? (
-                          <>
-                            <br />
-                            <span className="muted small">{company.enrichment.provider_hint}</span>
-                          </>
-                        ) : null}
-                      </span>
-                      <span>{company.enrichment.last_updated_at ? company.enrichment.last_updated_at.slice(0, 10) : 'n/a'}</span>
-                      <span>{company.region ?? 'n/a'}</span>
-                      <span>{company.employee_count ?? 'n/a'}</span>
+                  {/* Issues */}
+                  {auditView.issues && (
+                    <div style={{ marginTop: 8 }}>
+                      {auditView.summary.snapshot_contacts_without_draft_count > 0 && (
+                        <div style={{ fontSize: 11, color: 'var(--od-warning)' }}>{auditView.summary.snapshot_contacts_without_draft_count} contacts without draft</div>
+                      )}
+                      {auditView.summary.drafts_missing_recipient_email_count > 0 && (
+                        <div style={{ fontSize: 11, color: 'var(--od-warning)' }}>{auditView.summary.drafts_missing_recipient_email_count} drafts missing recipient</div>
+                      )}
+                      {auditView.summary.duplicate_draft_pair_count > 0 && (
+                        <div style={{ fontSize: 11, color: 'var(--od-warning)' }}>{auditView.summary.duplicate_draft_pair_count} duplicate draft pairs</div>
+                      )}
                     </div>
-                  ))}
-                  {visibleCompanies.length === 0 && (
-                    <div className="table-lite__row">No companies match these controls.</div>
                   )}
                 </div>
-              </div>
+              )}
 
-              {draftError ? <Alert kind="error">{draftError}</Alert> : null}
-              <CampaignDraftReview
-                drafts={drafts}
-                selectedDraftId={selectedDraftId}
-                onSelectDraft={setSelectedDraftId}
-                activeFilter={draftFilter}
-                onFilterChange={setDraftFilter}
-                reviewBusyId={reviewBusyId}
-                onReview={handleReviewDraft}
-                linkedOutbound={linkedOutboundForDraft}
-                linkedEvent={linkedEventForDraft}
-                onOpenOutbound={handleOpenOutbound}
-                onOpenEvent={handleOpenEvent}
-              />
+              {/* Companies */}
+              {companiesView && (
+                <div className="od-context-block" style={{ borderTop: '1px solid var(--od-border)' }}>
+                  <h3 className="od-context-block__title">Companies ({companiesView.companies.length})</h3>
+                  <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                    {companiesView.companies.slice(0, 50).map((co) => (
+                      <div key={co.company_id} style={{ padding: '4px 0', borderBottom: '1px solid var(--od-border)', fontSize: 12 }}>
+                        <div style={{ fontWeight: 600, color: 'var(--od-text)' }}>{co.company_name ?? co.company_id}</div>
+                        <div style={{ display: 'flex', gap: 6, fontSize: 10, color: 'var(--od-text-muted)' }}>
+                          <span>{co.contact_count} contacts</span>
+                          <span style={{ color: co.enrichment.status === 'fresh' ? 'var(--od-success)' : co.enrichment.status === 'stale' ? 'var(--od-warning)' : 'var(--od-text-muted)' }}>
+                            {co.enrichment.status}
+                          </span>
+                          {co.region && <span>{co.region}</span>}
+                        </div>
+                      </div>
+                    ))}
+                    {companiesView.companies.length > 50 && (
+                      <div style={{ fontSize: 10, color: 'var(--od-text-muted)', padding: '6px 0', textAlign: 'center' }}>
+                        Showing 50 of {companiesView.companies.length}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
-              {outboundError ? <Alert kind="error">{outboundError}</Alert> : null}
-              <CampaignOutboundLedger
-                outbounds={outbounds}
-                selectedOutboundId={selectedOutboundId}
-                onSelectOutbound={setSelectedOutboundId}
-                activeFilter={outboundFilter}
-                onFilterChange={setOutboundFilter}
-                linkedDraft={linkedDraftForOutbound}
-                linkedEvent={linkedEventForOutbound}
-                onOpenDraft={handleOpenDraft}
-                onOpenEvent={handleOpenEvent}
-              />
+        <div className="od-resize-handle" onMouseDown={(e) => handleResizeStart(1, e)} />
 
-              {eventError ? <Alert kind="error">{eventError}</Alert> : null}
-              <CampaignEventLedger
-                events={events}
-                selectedEventId={selectedEventId}
-                onSelectEvent={setSelectedEventId}
-                activeFilter={eventFilter}
-                onFilterChange={setEventFilter}
-                linkedDraft={linkedDraftForEvent}
-                linkedOutbound={linkedOutboundForEvent}
-                onOpenDraft={handleOpenDraft}
-                onOpenOutbound={handleOpenOutbound}
-              />
-            </>
+        {/* ======== Column 3: Detail / Trace ======== */}
+        <div className="operator-desk__column" style={{ background: 'var(--od-bg)' }}>
+          {!selectedItem ? (
+            <div className="od-placeholder">
+              <div className="od-placeholder__dash" />
+              <span className="od-placeholder__text">Select an item from the ledger</span>
+            </div>
+          ) : (
+            <div className="od-col-body" style={{ padding: 12 }}>
+              {/* Draft detail */}
+              {selectedDraft && (
+                <div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
+                    <StatusBadge status={selectedDraft.status ?? undefined} />
+                    {selectedDraft.email_type && <span className="od-count-chip" style={{ fontSize: 9 }}>{selectedDraft.email_type}</span>}
+                    {selectedDraft.pattern_mode && <span className="od-count-chip" style={{ fontSize: 9 }}>{selectedDraft.pattern_mode}</span>}
+                  </div>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 4px', color: 'var(--od-text)' }}>{selectedDraft.subject ?? '—'}</h3>
+                  <div style={{ fontSize: 11, color: 'var(--od-text-muted)', marginBottom: 8 }}>
+                    {selectedDraft.contact_name && <span>{selectedDraft.contact_name}</span>}
+                    {selectedDraft.company_name && <span> · {selectedDraft.company_name}</span>}
+                  </div>
+                  {selectedDraft.recipient_email && (
+                    <div style={{ fontSize: 11, color: 'var(--od-text-muted)', marginBottom: 8 }}>
+                      To: {selectedDraft.recipient_email} ({selectedDraft.recipient_email_source ?? '?'})
+                    </div>
+                  )}
+                  <pre style={{ fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap', color: 'var(--od-text)', background: 'var(--od-card)', padding: 10, borderRadius: 6, border: '1px solid var(--od-border)', maxHeight: 300, overflowY: 'auto' }}>
+                    {selectedDraft.body ?? '—'}
+                  </pre>
+                  <div style={{ fontSize: 10, color: 'var(--od-text-muted)', marginTop: 6 }}>
+                    Updated: {formatDate(selectedDraft.updated_at)}
+                  </div>
+                  {/* Review actions */}
+                  {selectedDraft.status === 'generated' && (
+                    <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                      <button type="button" className="od-btn od-btn--approve" style={{ fontSize: 11, padding: '4px 12px' }} onClick={() => handleReview(selectedDraft.id, 'approved')}>Approve</button>
+                      <button type="button" className="od-btn od-btn--reject" style={{ fontSize: 11, padding: '4px 12px' }} onClick={() => handleReview(selectedDraft.id, 'rejected')}>Reject</button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Outbound detail */}
+              {selectedOutbound && (
+                <div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
+                    <StatusBadge status={selectedOutbound.status ?? undefined} />
+                    <span className="od-count-chip" style={{ fontSize: 9 }}>{selectedOutbound.provider}</span>
+                  </div>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 4px', color: 'var(--od-text)' }}>{selectedOutbound.subject ?? '—'}</h3>
+                  <div style={{ fontSize: 11, color: 'var(--od-text-muted)', marginBottom: 4 }}>
+                    {selectedOutbound.contact_name && <span>{selectedOutbound.contact_name}</span>}
+                    {selectedOutbound.company_name && <span> · {selectedOutbound.company_name}</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--od-text-muted)', marginBottom: 4 }}>
+                    From: {selectedOutbound.sender_identity ?? '—'}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--od-text-muted)', marginBottom: 4 }}>
+                    To: {selectedOutbound.recipient_email ?? '—'} ({selectedOutbound.recipient_email_source ?? '?'})
+                  </div>
+                  {selectedOutbound.error && (
+                    <div style={{ fontSize: 11, color: 'var(--od-error)', marginBottom: 4 }}>Error: {selectedOutbound.error}</div>
+                  )}
+                  <div style={{ fontSize: 10, color: 'var(--od-text-muted)', marginTop: 6 }}>
+                    Sent: {formatDate(selectedOutbound.sent_at)} · Created: {formatDate(selectedOutbound.created_at)}
+                  </div>
+                </div>
+              )}
+
+              {/* Event detail */}
+              {selectedEvent && (
+                <div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
+                    <StatusBadge status={selectedEvent.event_type ?? undefined} />
+                    {selectedEvent.outcome_classification && (
+                      <span className="od-count-chip" style={{ fontSize: 9, color: selectedEvent.outcome_classification === 'positive' ? 'var(--od-success)' : 'var(--od-error)' }}>
+                        {selectedEvent.outcome_classification}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--od-text-muted)', marginBottom: 4 }}>
+                    {selectedEvent.contact_name && <span>{selectedEvent.contact_name}</span>}
+                    {selectedEvent.company_name && <span> · {selectedEvent.company_name}</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--od-text-muted)', marginBottom: 4 }}>
+                    Subject: {selectedEvent.subject ?? '—'}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--od-text-muted)', marginBottom: 4 }}>
+                    Recipient: {selectedEvent.recipient_email ?? '—'}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--od-text-muted)', marginBottom: 4 }}>
+                    Sender: {selectedEvent.sender_identity ?? '—'}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--od-text-muted)', marginTop: 6 }}>
+                    Occurred: {formatDate(selectedEvent.occurred_at)} · Provider: {selectedEvent.provider ?? '—'}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
-    </section>
+    </div>
   );
 }
 

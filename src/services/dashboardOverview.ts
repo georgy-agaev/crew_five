@@ -29,6 +29,7 @@ type DashboardOutboundRow = {
 type DashboardEventRow = {
   id: string;
   event_type: string | null;
+  campaign_id?: string | null;
   reply_label?: string | null;
   handled_at?: string | null;
   occurred_at?: string | null;
@@ -115,6 +116,16 @@ function formatOutboundSubtitle(parts: Array<string | null | undefined>): string
   return filtered.length > 0 ? filtered.join(' · ') : null;
 }
 
+function isInboxReplyEvent(event: Pick<DashboardEventRow, 'event_type'>): boolean {
+  return (
+    event.event_type === 'reply' ||
+    event.event_type === 'replied' ||
+    event.event_type === 'bounced' ||
+    event.event_type === 'unsubscribed' ||
+    event.event_type === 'complaint'
+  );
+}
+
 export async function getDashboardOverview(client: SupabaseClient): Promise<DashboardOverview> {
   const [campaignsRes, draftsRes, sentDraftsRes, companiesRes] = await Promise.all([
     client.from('campaigns').select('id,name,status,updated_at'),
@@ -138,7 +149,7 @@ export async function getDashboardOverview(client: SupabaseClient): Promise<Dash
   try {
     const eventsRes = await client
       .from('email_events')
-      .select('id,event_type,reply_label,handled_at,occurred_at,draft_id')
+      .select('id,event_type,campaign_id,reply_label,handled_at,occurred_at,draft_id')
       .order('occurred_at', { ascending: false })
       .limit(20);
     if (!eventsRes.error) {
@@ -307,15 +318,17 @@ export async function getDashboardOverview(client: SupabaseClient): Promise<Dash
     subtitle: campaign.status ? `status: ${campaign.status}` : null,
     campaignId: campaign.id,
   }));
-  const replyActivity = events
-    .filter((event) => event.reply_label || event.event_type)
+  const linkedReplyEvents = events.filter(
+    (event) => typeof event.campaign_id === 'string' && event.campaign_id.trim().length > 0 && isInboxReplyEvent(event)
+  );
+  const replyActivity = linkedReplyEvents
     .map((event) => ({
       kind: 'reply' as const,
       id: event.id,
       timestamp: event.occurred_at ?? null,
       title: `Reply ${event.reply_label ?? event.event_type ?? 'event'}`,
       subtitle: event.draft_id ? `draft ${event.draft_id}` : null,
-      campaignId: null,
+      campaignId: event.campaign_id ?? null,
     }));
 
   return {
@@ -328,7 +341,7 @@ export async function getDashboardOverview(client: SupabaseClient): Promise<Dash
     },
     pending: {
       draftsOnReview: drafts.filter((draft) => draft.status === 'generated').length,
-      inboxReplies: events.filter((event) => Boolean(event.reply_label) && !event.handled_at).length,
+      inboxReplies: linkedReplyEvents.filter((event) => !event.handled_at).length,
       staleEnrichment,
       missingEnrichment,
     },

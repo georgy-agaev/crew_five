@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { runCampaignBumpAutoGeneration } from './campaignBumpAutoGeneration.js';
 import { evaluateCampaignSendCalendar, type CampaignSendCalendarReason } from './campaignSendCalendar.js';
 import { resolveCampaignSendPolicy, type CampaignSendPolicyInput } from './campaignSendPolicy.js';
 import {
@@ -24,6 +25,18 @@ export interface CampaignAutoSendTriggerRequest {
 export interface CampaignAutoSendSweepOptions {
   batchLimit?: number;
   now?: Date;
+  executeGenerateBumps?: (request: {
+    campaignId: string;
+    contactIds: string[];
+    limit?: number;
+    dryRun?: boolean;
+  }) => Promise<Record<string, unknown>>;
+  triggerGenerateBumps?: (request: {
+    campaignId: string;
+    contactIds: string[];
+    limit?: number;
+    dryRun?: boolean;
+  }) => Promise<Record<string, unknown>>;
   executeSendCampaign?: (
     request: CampaignAutoSendTriggerRequest
   ) => Promise<Record<string, unknown>>;
@@ -69,6 +82,16 @@ export interface CampaignAutoSendCampaignResult {
     eligibleCandidateCount: number;
     totalCandidateCount: number;
   };
+  generation: {
+    enabled: boolean;
+    triggered: boolean;
+    candidateCount: number;
+    eligibleCount: number;
+    requestedContactCount: number;
+    requestedContactIds: string[];
+    triggerResult?: Record<string, unknown>;
+    error?: string;
+  };
   calendar?: {
     allowed: boolean;
     campaignLocalTime: string;
@@ -100,6 +123,17 @@ function buildEmptySummary(): CampaignAutoSendSweepResult['summary'] {
     mixedTriggeredCount: 0,
     skippedCount: 0,
     errorCount: 0,
+  };
+}
+
+function buildEmptyGeneration(enabled: boolean): CampaignAutoSendCampaignResult['generation'] {
+  return {
+    enabled,
+    triggered: false,
+    candidateCount: 0,
+    eligibleCount: 0,
+    requestedContactCount: 0,
+    requestedContactIds: [],
   };
 }
 
@@ -259,9 +293,35 @@ export async function runCampaignAutoSendSweep(
           eligibleCandidateCount: 0,
           totalCandidateCount: 0,
         },
+        generation: buildEmptyGeneration(Boolean(campaign.auto_send_bump)),
         calendar,
       });
       continue;
+    }
+
+    let generation = buildEmptyGeneration(Boolean(campaign.auto_send_bump));
+    if (campaign.auto_send_bump) {
+      try {
+        const generationResult = await runCampaignBumpAutoGeneration(client, {
+          campaignId: campaign.id,
+          minDaysSinceIntro: campaign.bump_min_days_since_intro ?? 3,
+          limit: options.batchLimit,
+          ...(now ? { now } : {}),
+          ...(options.executeGenerateBumps ? { executeGenerateBumps: options.executeGenerateBumps } : {}),
+          ...(options.triggerGenerateBumps ? { triggerGenerateBumps: options.triggerGenerateBumps } : {}),
+        });
+        generation = {
+          enabled: true,
+          ...generationResult,
+        };
+      } catch (error) {
+        summary.errorCount += 1;
+        generation = {
+          ...generation,
+          enabled: true,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
     }
 
     const intro = await evaluateIntroAutoSend(client, campaign);
@@ -282,6 +342,7 @@ export async function runCampaignAutoSendSweep(
         triggerReason: null,
         intro,
         bump,
+        generation,
         calendar,
       });
       continue;
@@ -312,6 +373,7 @@ export async function runCampaignAutoSendSweep(
         triggerReason,
         intro,
         bump,
+        generation,
         calendar,
         triggerResult,
       });
@@ -327,6 +389,7 @@ export async function runCampaignAutoSendSweep(
         triggerReason,
         intro,
         bump,
+        generation,
         calendar,
         error: error instanceof Error ? error.message : String(error),
       });

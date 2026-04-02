@@ -34,6 +34,14 @@ export async function handleAnalyticsRoutes(
     if (!deps.listInboxReplies) {
       return { status: 501, body: { error: 'Inbox replies not configured' } };
     }
+    const categoryRaw = searchParams.get('category');
+    const category =
+      categoryRaw === 'positive' ||
+      categoryRaw === 'negative' ||
+      categoryRaw === 'bounce' ||
+      categoryRaw === 'unclassified'
+        ? categoryRaw
+        : undefined;
     const linkageRaw = searchParams.get('linkage');
     const linkage =
       linkageRaw === 'linked' || linkageRaw === 'unlinked' || linkageRaw === 'all'
@@ -44,6 +52,7 @@ export async function handleAnalyticsRoutes(
       body: await deps.listInboxReplies({
         campaignId: searchParams.get('campaignId') ?? undefined,
         replyLabel: searchParams.get('replyLabel') ?? undefined,
+        category,
         handled:
           searchParams.get('handled') === 'true'
             ? true

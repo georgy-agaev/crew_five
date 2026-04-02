@@ -251,7 +251,7 @@ export function ImportWorkspacePage({ isDark = false }: { isDark?: boolean }) {
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {/* Column 1: Upload + options */}
-        <div className="operator-desk__column" style={{ width: leftWidth, flexShrink: 0 }}>
+        <div className="operator-desk__column" style={{ width: leftWidth, flexShrink: 0, overflowY: 'auto' }}>
           <div className="od-col-header">
             <h2 className="od-col-title">Upload</h2>
           </div>
@@ -537,7 +537,7 @@ function ProcessingStatusBlock({
 
           {/* Per-company results */}
           {status.results && status.results.length > 0 && isTerminal && (
-            <div style={{ marginTop: 6 }}>
+            <div style={{ marginTop: 6, maxHeight: 200, overflowY: 'auto', border: '1px solid var(--od-border)', borderRadius: 8, padding: '6px 8px', background: 'var(--od-card)' }}>
               {status.results.map((r) => (
                 <div key={r.companyId} style={{ fontSize: 11, color: 'var(--od-text-muted)', padding: '2px 0' }}>
                   {r.company_name ?? r.companyId} — {r.status}

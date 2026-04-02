@@ -19,7 +19,6 @@ import {
   getCampaignNextWavePreview as getCampaignNextWavePreviewService,
 } from '../services/campaignNextWave.js';
 import { getCampaignRotationPreview as getCampaignRotationPreviewService } from '../services/campaignRotation.js';
-import { generateDrafts } from '../services/drafts.js';
 import {
   listDirectoryCompanies as listDirectoryCompaniesService,
   listDirectoryContacts as listDirectoryContactsService,
@@ -135,6 +134,14 @@ import {
   triggerProcessCompanies,
 } from './liveDeps/processCompaniesTrigger.js';
 import {
+  isGenerateDraftsTriggerConfigured,
+  triggerGenerateDrafts,
+} from './liveDeps/generateDraftsTrigger.js';
+import {
+  isGenerateBumpsTriggerConfigured,
+  triggerGenerateBumps,
+} from './liveDeps/generateBumpsTrigger.js';
+import {
   isProcessRepliesTriggerConfigured,
   triggerProcessReplies,
 } from './liveDeps/processRepliesTrigger.js';
@@ -166,7 +173,7 @@ export function createLiveDeps(
 ): AdapterDeps {
   const env = loadEnv();
   const supabase = opts.supabase ?? initSupabaseClient(env);
-  const { chatClient, aiClient } = createAiClient(opts.chatClient, opts.aiClient);
+  const { chatClient } = createAiClient(opts.chatClient, opts.aiClient);
   const exaClient = process.env.EXA_API_KEY ? (() => { try { return buildExaClientFromEnv(); } catch { return null; } })() : null;
   const smartlead = opts.smartlead ?? buildSmartleadClientFromEnv();
   const readyProviders = new Set<EnrichmentProviderId>(['mock']);
@@ -175,6 +182,8 @@ export function createLiveDeps(
   if (process.env.FIRECRAWL_API_KEY) readyProviders.add('firecrawl');
   if (process.env.ANYSITE_API_KEY) readyProviders.add('anysite');
   const sendCampaignTriggerConfigured = isSendCampaignTriggerConfigured();
+  const generateDraftsTriggerConfigured = isGenerateDraftsTriggerConfigured();
+  const generateBumpsTriggerConfigured = isGenerateBumpsTriggerConfigured();
   const directImapMcpSendConfigured = isImapMcpSendConfigured();
   const processRepliesTriggerConfigured = isProcessRepliesTriggerConfigured();
   const directImapMcpInboxConfigured = isImapMcpInboxConfigured();
@@ -293,6 +302,11 @@ export function createLiveDeps(
           runCampaignAutoSendSweep: async ({ batchLimit }: { batchLimit?: number }) =>
             runCampaignAutoSendSweepService(supabase, {
               batchLimit,
+              ...(generateBumpsTriggerConfigured
+                ? {
+                    triggerGenerateBumps,
+                  }
+                : {}),
               ...(directImapMcpSendConfigured
                 ? {
                   executeSendCampaign: async (request) => {
@@ -386,19 +400,22 @@ export function createLiveDeps(
         notes,
       }),
     generateDrafts: async ({ campaignId, dryRun, limit, interactionMode, dataQualityMode, icpProfileId, icpHypothesisId, coachPromptStep, explicitCoachPromptId, provider, model }) => {
-      let clientToUse: ChatClient = chatClient;
-      let modelConfig: { provider: string; model: string } | null = null;
-      if (provider || model) {
-        try {
-          modelConfig = resolveModelConfig({ provider, model, task: 'draft' });
-          clientToUse = buildChatClientForModel(modelConfig as any);
-        } catch {
-          clientToUse = chatClient;
-          modelConfig = null;
-        }
+      if (!generateDraftsTriggerConfigured) {
+        throw new Error('Outreach generate-drafts command is not configured (set OUTREACH_GENERATE_DRAFTS_CMD)');
       }
-      const localAiClient = clientToUse === chatClient ? aiClient : new AiClient(clientToUse);
-      return generateDrafts(supabase, localAiClient, { campaignId, dryRun, limit, interactionMode, dataQualityMode, icpProfileId, icpHypothesisId, coachPromptStep, explicitCoachPromptId, provider: modelConfig?.provider ?? provider, model: modelConfig?.model ?? model } as any);
+      return triggerGenerateDrafts({
+        campaignId,
+        dryRun,
+        limit,
+        interactionMode,
+        dataQualityMode,
+        icpProfileId,
+        icpHypothesisId,
+        coachPromptStep,
+        explicitCoachPromptId,
+        provider,
+        model,
+      });
     },
     sendSmartlead: async ({ dryRun, batchSize, campaignId, smartleadCampaignId, step, variantLabel }) => smartleadSendCommand(smartlead, supabase, { dryRun, batchSize, campaignId, smartleadCampaignId, step, variantLabel }),
     listEvents: async ({ since, limit }) => {
@@ -410,8 +427,8 @@ export function createLiveDeps(
       return data as EventRow[];
     },
     listReplyPatterns: async ({ since, topN }) => getReplyPatterns(supabase, { since, topN }),
-    listInboxReplies: async ({ campaignId, replyLabel, handled, limit, linkage }) =>
-      listInboxRepliesService(supabase, { campaignId, replyLabel, handled, limit, linkage }),
+    listInboxReplies: async ({ campaignId, replyLabel, category, handled, limit, linkage }) =>
+      listInboxRepliesService(supabase, { campaignId, replyLabel, category, handled, limit, linkage }),
     markInboxReplyHandled: async ({ replyId, handledBy }) =>
       markInboxReplyHandledService(supabase, { replyId, handledBy }),
     markInboxReplyUnhandled: async (replyId) =>

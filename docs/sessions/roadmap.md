@@ -140,6 +140,7 @@ The next roadmap priority is:
 
 - rolling out richer canonical generation context into the `Outreach` generation path
 - formalizing the project -> offer -> hypothesis -> segment -> campaign setup workflow
+- closing the bump loop with automatic bump generation + review + next-day send gate
 - cleaning up remaining operator inbox / visibility gaps rather than adding another large subsystem
 
 ### Current-stage priorities
@@ -155,11 +156,13 @@ The next roadmap priority is:
 5. canonical campaign setup flow (`project -> offer -> icp_hypothesis -> segment -> campaign`) for
    `Outreach` handoff / wizard alignment
    Status: Current-stage priority
-6. inbox operator filtering, pagination, and campaign-linkage visibility
+6. automatic bump generation + operator review + next-day send gate
    Status: Current-stage priority
-7. automated Playwright E2E refresh for current operator surfaces
+7. inbox operator filtering, pagination, and campaign-linkage visibility
    Status: Current-stage priority
-8. campaign execution exposure / offer-aware analytics UI cleanup
+8. automated Playwright E2E refresh for current operator surfaces
+   Status: Current-stage priority
+9. campaign execution exposure / offer-aware analytics UI cleanup
    Status: Current-stage polish priority
 9. processed company -> campaign wave attach
    Status: Completed
@@ -203,6 +206,7 @@ Still open in the current stage:
 
 - richer execution context for draft generation
 - canonical setup flow for new project / offer / hypothesis onboarding
+- automatic bump generation with review and next-day send gate
 - inbox operator filtering / pagination / linkage-noise cleanup
 - refreshed automated E2E for current operator surfaces
 - exposure / analytics UI cleanup and stale task cleanup

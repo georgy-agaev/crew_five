@@ -121,7 +121,7 @@ describe('App base URL notice', () => {
     const { default: App } = await loadApp();
     expect(resolveViewFromLocation({ search: '?view=campaign-ledger' } as any)).toBe('campaign-ledger');
     const html = renderToString(<App />);
-    expect(html).toContain('Campaign Ops');
+    expect(html).toContain('Campaign Ledger');
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });

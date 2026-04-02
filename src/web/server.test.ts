@@ -9,6 +9,7 @@ import {
   startInboxPollScheduler,
   startInboxPollSchedulerFromEnv,
 } from './server';
+import * as generateDraftsTrigger from './liveDeps/generateDraftsTrigger.js';
 
 const campaigns = [{ id: 'c1', name: 'One', status: 'draft' }];
 
@@ -1544,6 +1545,49 @@ describe('web adapter server', () => {
     vi.unstubAllEnvs();
   });
 
+  it('createLiveDeps routes draft generation through Outreach trigger when configured', async () => {
+    vi.stubEnv('SUPABASE_URL', 'http://example.com');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'key');
+    vi.stubEnv('OUTREACH_GENERATE_DRAFTS_CMD', 'outreach generate-drafts');
+
+    const triggerSpy = vi.spyOn(generateDraftsTrigger, 'triggerGenerateDrafts').mockResolvedValue({
+      generated: 2,
+      dryRun: true,
+      source: 'outreacher-generate-drafts',
+      requestedAt: '2026-04-01T10:00:00.000Z',
+      campaignId: 'c1',
+    } as any);
+
+    const liveDeps = createLiveDeps({
+      supabase: { from: vi.fn() } as any,
+      smartlead: {} as any,
+    });
+
+    const result = await liveDeps.generateDrafts({
+      campaignId: 'c1',
+      dryRun: true,
+      limit: 3,
+      interactionMode: 'express',
+      dataQualityMode: 'strict',
+    });
+
+    expect(triggerSpy).toHaveBeenCalledWith({
+      campaignId: 'c1',
+      dryRun: true,
+      limit: 3,
+      interactionMode: 'express',
+      dataQualityMode: 'strict',
+    });
+    expect(result).toMatchObject({
+      generated: 2,
+      dryRun: true,
+      source: 'outreacher-generate-drafts',
+      campaignId: 'c1',
+    });
+
+    vi.unstubAllEnvs();
+  });
+
   it('throws when Smartlead env missing in live mode', () => {
     vi.stubEnv('SUPABASE_URL', 'http://example.com');
     vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'key');
@@ -1617,6 +1661,41 @@ describe('web adapter server', () => {
     });
     expect((res.body as any).total).toBe(1);
     expect((res.body as any).replies[0].reply_text).toBe('Sounds interesting.');
+  });
+
+  it('routes inbox replies category and linkage filters', async () => {
+    const listInboxReplies = vi.fn(async () => ({ replies: [], total: 0 }));
+    await dispatch(
+      {
+        listCampaigns: vi.fn(),
+        listDrafts: vi.fn(),
+        generateDrafts: vi.fn(),
+        sendSmartlead: stubSendSmartlead(),
+        listEvents: vi.fn(),
+        listReplyPatterns: vi.fn(),
+        listInboxReplies,
+      } as any,
+      {
+        method: 'GET',
+        pathname: '/api/inbox/replies',
+        searchParams: new URLSearchParams({
+          category: 'bounce',
+          linkage: 'linked',
+          handled: 'false',
+          limit: '25',
+        }),
+      },
+      buildMeta({ mode: 'live' })
+    );
+
+    expect(listInboxReplies).toHaveBeenCalledWith({
+      campaignId: undefined,
+      replyLabel: undefined,
+      category: 'bounce',
+      handled: false,
+      limit: 25,
+      linkage: 'linked',
+    });
   });
 
   it('routes inbox handled-state updates', async () => {
