@@ -7,6 +7,9 @@ All notable changes to this project will be documented in this file.
 - `runCampaignAutoSendSweep` now executes automatic bump-draft generation before campaign send
   calendar gating. This keeps semi-automatic bump review flowing even outside the send window while
   preserving the existing calendar block for actual message sending.
+- `GET /api/inbox/replies` now pages `email_events` in chunks instead of issuing a single oversized
+  fetch. This fixes `linkage=linked` returning empty when linked replies were not present in the
+  first page and prevents `limit=1000` from crashing the endpoint.
 
 ## [0.2.62] - 2026-04-02
 ### Changed

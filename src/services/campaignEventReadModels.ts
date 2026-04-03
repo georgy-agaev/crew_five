@@ -69,6 +69,10 @@ export interface InboxRepliesView {
 
 export type InboxReplyCategory = 'positive' | 'negative' | 'bounce' | 'unclassified';
 
+const DEFAULT_INBOX_REPLIES_LIMIT = 200;
+const MAX_INBOX_REPLIES_LIMIT = 1000;
+const INBOX_REPLIES_PAGE_SIZE = 200;
+
 function mapInboxReplyCategory(reply: Pick<InboxReplyRecord, 'reply_label' | 'event_type'>): InboxReplyCategory {
   if (reply.reply_label === 'positive') return 'positive';
   if (reply.reply_label === 'negative') return 'negative';
@@ -85,6 +89,58 @@ function extractReplyText(payload: Record<string, unknown> | null): string | nul
     }
   }
   return null;
+}
+
+function normalizeInboxRepliesLimit(limit?: number): number {
+  if (typeof limit !== 'number' || !Number.isFinite(limit)) {
+    return DEFAULT_INBOX_REPLIES_LIMIT;
+  }
+
+  return Math.max(1, Math.min(MAX_INBOX_REPLIES_LIMIT, Math.trunc(limit)));
+}
+
+async function fetchInboxReplyEventPage(
+  client: SupabaseClient,
+  filters: {
+    limit?: number;
+    campaignId?: string;
+    replyLabel?: string;
+    category?: InboxReplyCategory;
+    handled?: boolean;
+    linkage?: 'all' | 'linked' | 'unlinked';
+  },
+  start: number,
+  pageSize: number
+): Promise<Array<Record<string, any>>> {
+  let query = client
+    .from('email_events')
+    .select(
+      'id,outbound_id,event_type,reply_label,handled_at,handled_by,outcome_classification,occurred_at,created_at,payload,draft_id'
+    )
+    .in('event_type', ['reply', 'replied', 'bounced', 'unsubscribed', 'complaint'])
+    .order('occurred_at', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (filters.replyLabel) {
+    query = query.eq('reply_label', filters.replyLabel);
+  }
+  if (typeof filters.handled === 'boolean') {
+    query = filters.handled ? query.not('handled_at', 'is', null) : query.is('handled_at', null);
+  }
+
+  const pagedQuery =
+    typeof (query as any).range === 'function'
+      ? (query as any).range(start, start + pageSize - 1)
+      : typeof (query as any).limit === 'function'
+        ? (query as any).limit(pageSize)
+        : query;
+
+  const { data, error } = await pagedQuery;
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as Array<Record<string, any>>;
 }
 
 export async function listCampaignEvents(client: SupabaseClient, campaignId: string): Promise<CampaignEventsView> {
@@ -161,31 +217,49 @@ export async function listInboxReplies(
     linkage?: 'all' | 'linked' | 'unlinked';
   } = {}
 ): Promise<InboxRepliesView> {
-  let query = client
-    .from('email_events')
-    .select(
-      'id,outbound_id,event_type,reply_label,handled_at,handled_by,outcome_classification,occurred_at,created_at,payload,draft_id'
-    )
-    .in('event_type', ['reply', 'replied', 'bounced', 'unsubscribed', 'complaint'])
-    .order('occurred_at', { ascending: false })
-    .order('created_at', { ascending: false });
+  const targetCount = normalizeInboxRepliesLimit(filters.limit);
+  const pageSize = Math.min(targetCount, INBOX_REPLIES_PAGE_SIZE);
+  const replies: InboxReplyRecord[] = [];
+  let start = 0;
 
-  if (filters.replyLabel) {
-    query = query.eq('reply_label', filters.replyLabel);
-  }
-  if (typeof filters.handled === 'boolean') {
-    query = filters.handled ? query.not('handled_at', 'is', null) : query.is('handled_at', null);
-  }
-  if (filters.limit) {
-    query = query.limit(filters.limit);
+  while (replies.length < targetCount) {
+    const eventRows = await fetchInboxReplyEventPage(client, filters, start, pageSize);
+    if (eventRows.length === 0) {
+      break;
+    }
+
+    const hydratedReplies = await hydrateInboxRepliesPage(client, eventRows, filters);
+    for (const reply of hydratedReplies) {
+      replies.push(reply);
+      if (replies.length >= targetCount) {
+        break;
+      }
+    }
+
+    if (eventRows.length < pageSize) {
+      break;
+    }
+    start += pageSize;
   }
 
-  const { data, error } = await query;
-  if (error) {
-    throw error;
-  }
+  return {
+    replies,
+    total: replies.length,
+  };
+}
 
-  const eventRows = (data ?? []) as Array<Record<string, any>>;
+async function hydrateInboxRepliesPage(
+  client: SupabaseClient,
+  eventRows: Array<Record<string, any>>,
+  filters: {
+    limit?: number;
+    campaignId?: string;
+    replyLabel?: string;
+    category?: InboxReplyCategory;
+    handled?: boolean;
+    linkage?: 'all' | 'linked' | 'unlinked';
+  }
+): Promise<InboxReplyRecord[]> {
   const outboundIds = Array.from(
     new Set(eventRows.map((row) => String(row.outbound_id ?? '')).filter(Boolean))
   );
@@ -330,7 +404,7 @@ export async function listInboxReplies(
     }
   }
 
-  const replies = eventRows
+  return eventRows
     .map((row) => {
       const outbound =
         typeof row.outbound_id === 'string' ? outboundsById.get(row.outbound_id) ?? null : null;
@@ -397,9 +471,4 @@ export async function listInboxReplies(
     })
     .filter((row): row is InboxReplyRecord => row !== null)
     .filter((row) => (filters.category ? mapInboxReplyCategory(row) === filters.category : true));
-
-  return {
-    replies,
-    total: replies.length,
-  };
 }

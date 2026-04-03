@@ -326,4 +326,213 @@ describe('campaignEventReadModels', () => {
     expect(positive.total).toBe(1);
     expect(positive.replies[0].id).toBe('evt-positive');
   });
+
+  it('keeps scanning later pages for linked replies instead of filtering only the first page', async () => {
+    const pages = [
+      [
+        {
+          id: 'evt-unlinked',
+          outbound_id: 'out-1',
+          event_type: 'reply',
+          reply_label: null,
+          handled_at: null,
+          handled_by: null,
+          occurred_at: '2026-03-18T21:00:00Z',
+          outcome_classification: null,
+          payload: { reply_text: 'newsletter' },
+          draft_id: null,
+        },
+      ],
+      [
+        {
+          id: 'evt-linked',
+          outbound_id: 'out-2',
+          event_type: 'replied',
+          reply_label: 'positive',
+          handled_at: null,
+          handled_by: null,
+          occurred_at: '2026-03-18T20:00:00Z',
+          outcome_classification: 'soft_interest',
+          payload: { reply_text: 'interested' },
+          draft_id: null,
+        },
+      ],
+      [],
+    ];
+
+    const emailEventsQuery = {
+      select: vi.fn(() => emailEventsQuery),
+      in: vi.fn(() => emailEventsQuery),
+      order: vi.fn(() => emailEventsQuery),
+      is: vi.fn(() => emailEventsQuery),
+      not: vi.fn(() => emailEventsQuery),
+      range: vi.fn(async (from: number) => ({
+        data: pages[from] ?? [],
+        error: null,
+      })),
+    };
+
+    const outboundRows = [
+      {
+        id: 'out-1',
+        campaign_id: null,
+        draft_id: null,
+        contact_id: null,
+        company_id: null,
+        sender_identity: 'inbox@acme.ai',
+        metadata: { recipient_email: 'noreply@example.com' },
+      },
+      {
+        id: 'out-2',
+        campaign_id: 'camp-1',
+        draft_id: null,
+        contact_id: null,
+        company_id: null,
+        sender_identity: 'sales@acme.ai',
+        metadata: { recipient_email: 'buyer@acme.ai' },
+      },
+    ];
+
+    let requestedOutboundIds: string[] = [];
+    let linkageMode: 'all' | 'linked' | 'unlinked' = 'all';
+    const emailOutboundQuery: any = {
+      select: vi.fn(() => emailOutboundQuery),
+      in: vi.fn((column: string, values: string[]) => {
+        if (column === 'id') {
+          requestedOutboundIds = values;
+        }
+        return emailOutboundQuery;
+      }),
+      eq: vi.fn(() => emailOutboundQuery),
+      is: vi.fn((column: string, value: any) => {
+        if (column === 'campaign_id' && value === null) {
+          linkageMode = 'unlinked';
+        }
+        return emailOutboundQuery;
+      }),
+      not: vi.fn((column: string, op: string, value: any) => {
+        if (column === 'campaign_id' && op === 'is' && value === null) {
+          linkageMode = 'linked';
+        }
+        return emailOutboundQuery;
+      }),
+      then: (onFulfilled: any, onRejected: any) =>
+        Promise.resolve({
+          data: outboundRows
+            .filter((row) => requestedOutboundIds.includes(row.id))
+            .filter((row) =>
+              linkageMode === 'linked'
+                ? row.campaign_id !== null
+                : linkageMode === 'unlinked'
+                  ? row.campaign_id === null
+                  : true
+            ),
+          error: null,
+        }).then(onFulfilled, onRejected),
+    };
+
+    const campaignsQuery = {
+      select: vi.fn(() => campaignsQuery),
+      in: vi.fn(async () => ({
+        data: [{ id: 'camp-1', name: 'Alpha' }],
+        error: null,
+      })),
+    };
+
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table === 'email_events') return emailEventsQuery;
+        if (table === 'email_outbound') return emailOutboundQuery;
+        if (table === 'campaigns') return campaignsQuery;
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    } as any;
+
+    const linked = await listInboxReplies(client, { linkage: 'linked', limit: 1 });
+
+    expect(emailEventsQuery.range).toHaveBeenNthCalledWith(1, 0, 0);
+    expect(emailEventsQuery.range).toHaveBeenNthCalledWith(2, 1, 1);
+    expect(linked.total).toBe(1);
+    expect(linked.replies[0].id).toBe('evt-linked');
+  });
+
+  it('supports limit=1000 via chunked paging instead of a single oversized fetch', async () => {
+    const eventRows = Array.from({ length: 600 }, (_, index) => ({
+      id: `evt-${index + 1}`,
+      outbound_id: `out-${index + 1}`,
+      event_type: 'replied',
+      reply_label: index % 2 === 0 ? 'positive' : null,
+      handled_at: null,
+      handled_by: null,
+      occurred_at: `2026-03-18T${String(index % 24).padStart(2, '0')}:00:00Z`,
+      outcome_classification: null,
+      payload: { reply_text: `reply-${index + 1}` },
+      draft_id: null,
+    }));
+
+    const emailEventsQuery = {
+      select: vi.fn(() => emailEventsQuery),
+      in: vi.fn(() => emailEventsQuery),
+      order: vi.fn(() => emailEventsQuery),
+      is: vi.fn(() => emailEventsQuery),
+      not: vi.fn(() => emailEventsQuery),
+      range: vi.fn(async (from: number, to: number) => ({
+        data: eventRows.slice(from, to + 1),
+        error: null,
+      })),
+    };
+
+    let requestedOutboundIds: string[] = [];
+    const emailOutboundQuery: any = {
+      select: vi.fn(() => emailOutboundQuery),
+      in: vi.fn((column: string, values: string[]) => {
+        if (column === 'id') {
+          requestedOutboundIds = values;
+        }
+        return emailOutboundQuery;
+      }),
+      eq: vi.fn(() => emailOutboundQuery),
+      is: vi.fn(() => emailOutboundQuery),
+      not: vi.fn(() => emailOutboundQuery),
+      then: (onFulfilled: any, onRejected: any) =>
+        Promise.resolve({
+          data: requestedOutboundIds.map((id) => ({
+            id,
+            campaign_id: 'camp-1',
+            draft_id: null,
+            contact_id: null,
+            company_id: null,
+            sender_identity: 'sales@acme.ai',
+            metadata: { recipient_email: `${id}@example.com` },
+          })),
+          error: null,
+        }).then(onFulfilled, onRejected),
+    };
+
+    const campaignsQuery = {
+      select: vi.fn(() => campaignsQuery),
+      in: vi.fn(async () => ({
+        data: [{ id: 'camp-1', name: 'Alpha' }],
+        error: null,
+      })),
+    };
+
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table === 'email_events') return emailEventsQuery;
+        if (table === 'email_outbound') return emailOutboundQuery;
+        if (table === 'campaigns') return campaignsQuery;
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    } as any;
+
+    const result = await listInboxReplies(client, { linkage: 'linked', limit: 1000 });
+
+    expect(result.total).toBe(600);
+    expect(result.replies).toHaveLength(600);
+    expect(emailEventsQuery.range).toHaveBeenNthCalledWith(1, 0, 199);
+    expect(emailEventsQuery.range).toHaveBeenNthCalledWith(2, 200, 399);
+    expect(emailEventsQuery.range).toHaveBeenNthCalledWith(3, 400, 599);
+    expect(emailEventsQuery.range).toHaveBeenNthCalledWith(4, 600, 799);
+  });
 });
