@@ -237,11 +237,22 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
     [listWidth]
   );
 
-  // Load all replies once on mount (and on reload). All filtering is client-side.
+  // Fetch replies using server-side filters for linkage, handled, category
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetchInboxReplies({ limit: 200 })
+    const opts: {
+      limit: number;
+      handled?: boolean;
+      linkage?: LinkageFilter;
+      category?: string;
+    } = { limit };
+    if (linkageFilter !== 'all') opts.linkage = linkageFilter;
+    if (handledFilter === 'unhandled') opts.handled = false;
+    else if (handledFilter === 'handled') opts.handled = true;
+    if (labelFilter !== 'all') opts.category = labelFilter;
+
+    fetchInboxReplies(opts)
       .then((view) => {
         if (cancelled) return;
         setReplies(view.replies);
@@ -257,9 +268,9 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [reloadKey]);
+  }, [linkageFilter, handledFilter, labelFilter, limit, reloadKey]);
 
-  // All filtering is client-side for instant responsiveness
+  // Server handles linkage + handled + category. Client handles campaign + search only.
   const { filteredReplies, replySummary, campaignNames, hasLocalFilters } = useMemo(() => {
     const normalizedQuery = normalizeSearchValue(searchQuery);
     const summary: ReplySummaryCounts = { all: 0, positive: 0, negative: 0, bounce: 0, unclassified: 0 };
@@ -267,22 +278,11 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
     const filtered: InboxReply[] = [];
 
     for (const reply of replies) {
-      // Linkage
-      if (linkageFilter === 'linked' && reply.campaign_id === null) continue;
-      if (linkageFilter === 'unlinked' && reply.campaign_id !== null) continue;
-
-      // Handled
-      if (handledFilter === 'unhandled' && reply.handled) continue;
-      if (handledFilter === 'handled' && !reply.handled) continue;
-
-      // Classify and count (after scope filters, before label filter)
       const cat = classifyReply(reply);
       summary.all += 1;
       if (cat !== 'all') summary[cat] += 1;
       if (reply.campaign_name) names.add(reply.campaign_name);
 
-      // Label + campaign + search
-      if (labelFilter !== 'all' && cat !== labelFilter) continue;
       if (campaignFilter !== 'all' && reply.campaign_name !== campaignFilter) continue;
       if (normalizedQuery && !matchesSearch(reply, normalizedQuery)) continue;
 
@@ -294,13 +294,10 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
       replySummary: summary,
       campaignNames: Array.from(names).sort(),
       hasLocalFilters:
-        linkageFilter !== 'linked' ||
-        handledFilter !== 'unhandled' ||
-        labelFilter !== 'all' ||
         campaignFilter !== 'all' ||
         normalizedQuery.length > 0,
     };
-  }, [replies, linkageFilter, handledFilter, labelFilter, campaignFilter, searchQuery]);
+  }, [replies, campaignFilter, searchQuery]);
 
   // Reset pagination when filters change
   const filteredCount = filteredReplies.length;

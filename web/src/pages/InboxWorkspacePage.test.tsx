@@ -67,15 +67,12 @@ function mockFetch() {
 describe('InboxWorkspacePage', () => {
   // Default filters: linkage=linked, handled=unhandled → only evt-1 visible
 
-  it('renders linked unhandled reply by default', async () => {
-    mockFetch();
+  it('fetches linked unhandled replies by default', async () => {
+    const spy = mockFetch();
     render(<InboxWorkspacePage />);
-    // evt-1 is linked + unhandled → visible
-    expect((await screen.findAllByText('Bianca Mock')).length).toBeGreaterThan(0);
-    // evt-2 is handled → hidden
-    expect(screen.queryByText('Alex Mock')).toBeNull();
-    // evt-3 is unlinked → hidden
-    expect(screen.queryByText('Charlie Bounce')).toBeNull();
+    await screen.findAllByText('Bianca Mock');
+    // Default filters: linkage=linked, handled=false
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ linkage: 'linked', handled: false }));
   });
 
   it('shows reply detail panel', async () => {
@@ -92,22 +89,15 @@ describe('InboxWorkspacePage', () => {
     expect(screen.getByText(/positive: 1/)).toBeTruthy();
   });
 
-  it('filters by label', async () => {
-    mockFetch();
+  it('filters by label via server category param', async () => {
+    const fetchSpy = mockFetch();
     render(<InboxWorkspacePage />);
     await screen.findAllByText('Bianca Mock');
 
-    // Click negative → no linked unhandled negatives
     fireEvent.click(screen.getByRole('button', { name: 'negative' }));
-    await waitFor(() => {
-      expect(screen.queryAllByText('Bianca Mock').length).toBe(0);
-    });
 
-    // Back to all labels
-    const allButtons = screen.getAllByRole('button', { name: 'all' });
-    fireEvent.click(allButtons[0]); // first "all" is the label filter
     await waitFor(() => {
-      expect(screen.getAllByText('Bianca Mock').length).toBeGreaterThan(0);
+      expect(fetchSpy).toHaveBeenCalledWith(expect.objectContaining({ category: 'negative' }));
     });
   });
 
@@ -165,7 +155,8 @@ describe('InboxWorkspacePage', () => {
     render(<InboxWorkspacePage />);
     await screen.findAllByText('Bianca Mock');
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ limit: 200 }));
+    // Default: linkage=linked, handled=false, no category
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ limit: 50, linkage: 'linked', handled: false }));
   });
 
   it('marks reply as handled', async () => {
