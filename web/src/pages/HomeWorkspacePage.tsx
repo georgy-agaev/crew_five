@@ -218,7 +218,7 @@ export function HomeWorkspacePage({ isDark = false }: { isDark?: boolean }) {
                             </div>
                           </>
                         ) : (
-                          <span style={{ fontSize: 11, color: 'var(--od-text-muted)' }}>Loading...</span>
+                          <span style={{ fontSize: 11, color: 'var(--od-error)' }}>Metrics unavailable</span>
                         )}
                       </a>
                     );

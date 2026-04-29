@@ -67,6 +67,26 @@ describe('HomeWorkspacePage', () => {
     expect(screen.getByText('Inbox')).toBeTruthy();
   });
 
+  it('shows an audit fallback for active campaigns when metrics fail to load', async () => {
+    vi.spyOn(apiClient, 'fetchDashboardOverview').mockResolvedValue(mockOverview);
+    vi.spyOn(apiClient, 'fetchCampaigns').mockResolvedValue([
+      {
+        id: 'camp-1',
+        name: 'ВКС-Less-30plus-2026-03',
+        status: 'sending',
+        segment_id: 'seg-1',
+        segment_version: 1,
+      } as any,
+    ]);
+    vi.spyOn(apiClient, 'fetchCampaignAudit').mockRejectedValue(new Error('Campaign audit load failed'));
+
+    render(<HomeWorkspacePage />);
+
+    expect(await screen.findByText('ВКС-Less-30plus-2026-03')).toBeTruthy();
+    expect(await screen.findByText('Metrics unavailable')).toBeTruthy();
+    expect(screen.queryByText('Loading...')).toBeNull();
+  });
+
   it('shows loading skeleton', () => {
     vi.spyOn(apiClient, 'fetchDashboardOverview').mockReturnValue(new Promise(() => {}));
     vi.spyOn(apiClient, 'fetchCampaigns').mockReturnValue(new Promise(() => {}));

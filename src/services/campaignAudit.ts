@@ -85,6 +85,30 @@ function chunkValues<T>(values: T[], size: number): T[][] {
 }
 
 const EMPLOYEE_QUERY_CHUNK_SIZE = 100;
+const SUPABASE_IN_FILTER_CHUNK_SIZE = 100;
+
+async function selectInChunks<Row>(
+  client: SupabaseClient,
+  table: string,
+  columns: string,
+  field: string,
+  values: string[]
+): Promise<Row[]> {
+  const uniqueValues = Array.from(new Set(values.filter(Boolean)));
+  if (uniqueValues.length === 0) {
+    return [];
+  }
+
+  const rows: Row[] = [];
+  for (const valuesChunk of chunkValues(uniqueValues, SUPABASE_IN_FILTER_CHUNK_SIZE)) {
+    const res = await (client.from(table) as any).select(columns).in(field, valuesChunk);
+    if (res.error) {
+      throw res.error;
+    }
+    rows.push(...((res.data ?? []) as Row[]));
+  }
+  return rows;
+}
 
 export async function getCampaignAudit(client: SupabaseClient, campaignId: string): Promise<CampaignAuditView> {
   const campaign = await getCampaignDetail(client, campaignId);
@@ -102,11 +126,14 @@ export async function getCampaignAudit(client: SupabaseClient, campaignId: strin
   );
   const companyNameById = new Map<string, string | null>();
   if (audienceCompanyIds.length > 0) {
-    const { data: companyNameRows } = await client
-      .from('companies')
-      .select('id,company_name')
-      .in('id', audienceCompanyIds);
-    for (const row of (companyNameRows ?? []) as Array<{ id: string; company_name: string | null }>) {
+    const companyNameRows = await selectInChunks<{ id: string; company_name: string | null }>(
+      client,
+      'companies',
+      'id,company_name',
+      'id',
+      audienceCompanyIds
+    );
+    for (const row of companyNameRows) {
       companyNameById.set(row.id, row.company_name ?? null);
     }
   }

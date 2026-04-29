@@ -24,6 +24,9 @@ All notable changes to this project will be documented in this file.
   model picker, a `Missing intros` company filter chip, and a `campaign:missing-intros` CLI helper.
 
 ### Fixed
+- Campaign audit, outbound, and event hydration now chunks large Supabase `.in(...)` lookups and
+  Home shows `Metrics unavailable` instead of a permanent `Loading...` state when an active
+  campaign audit fails.
 - Draft-generation jobs now auto-fail stale `created`/`running` rows after a configurable
   no-progress timeout (`DRAFT_GENERATION_JOB_STALE_MINUTES`, default `30`), preserving counters
   and unblocking retries after adapter restarts or Outreach/provider interruptions.

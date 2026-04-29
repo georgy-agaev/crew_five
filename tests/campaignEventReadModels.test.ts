@@ -113,4 +113,60 @@ describe('campaign event read models', () => {
       provider: 'imap_mcp',
     });
   });
+
+  it('chunks campaign event lookups for campaigns with many outbounds', async () => {
+    const campaignSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: 'camp-1',
+        name: 'Q1 Push',
+        status: 'sending',
+        segment_id: 'segment-1',
+        segment_version: 2,
+      },
+      error: null,
+    });
+    const campaignEq = vi.fn().mockReturnValue({ single: campaignSingle });
+    const campaignSelect = vi.fn().mockReturnValue({ eq: campaignEq });
+
+    const outboundRows = Array.from({ length: 101 }, (_, index) => ({
+      id: `out-${index}`,
+      status: 'sent',
+      provider: 'imap_mcp',
+      provider_message_id: null,
+      sender_identity: 'sales@example.com',
+      sent_at: '2026-03-15T10:00:00Z',
+      created_at: '2026-03-15T10:00:00Z',
+      error: null,
+      pattern_mode: 'direct',
+      metadata: {},
+      draft_id: null,
+      contact_id: null,
+      company_id: null,
+    }));
+    const outboundsOrderSentAt = vi.fn().mockResolvedValue({ data: outboundRows, error: null });
+    const outboundsEq = vi.fn().mockReturnValue({ order: outboundsOrderSentAt });
+    const outboundsSelect = vi.fn().mockReturnValue({ eq: outboundsEq });
+
+    const eventsIn = vi.fn().mockImplementation(() => ({
+      order: vi.fn().mockReturnValue({
+        order: vi.fn().mockResolvedValue({ data: [], error: null }),
+      }),
+    }));
+    const eventsSelect = vi.fn().mockReturnValue({ in: eventsIn });
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === 'campaigns') return { select: campaignSelect };
+        if (table === 'email_outbound') return { select: outboundsSelect };
+        if (table === 'email_events') return { select: eventsSelect };
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    } as any;
+
+    await listCampaignEvents(supabase, 'camp-1');
+
+    expect(eventsIn).toHaveBeenCalledTimes(2);
+    expect(eventsIn.mock.calls[0][1]).toHaveLength(100);
+    expect(eventsIn.mock.calls[1][1]).toHaveLength(1);
+  });
 });

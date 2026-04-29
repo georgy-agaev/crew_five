@@ -73,6 +73,44 @@ export type InboxReplyCategory = 'positive' | 'negative' | 'bounce' | 'unclassif
 const DEFAULT_INBOX_REPLIES_LIMIT = 200;
 const MAX_INBOX_REPLIES_LIMIT = 1000;
 const INBOX_REPLIES_PAGE_SIZE = 200;
+const SUPABASE_IN_FILTER_CHUNK_SIZE = 100;
+
+function timestampMs(value: string | null): number {
+  if (!value) return 0;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function chunkValues<T>(values: T[], size: number = SUPABASE_IN_FILTER_CHUNK_SIZE): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function selectEventsByOutboundIds(
+  client: SupabaseClient,
+  outboundIds: string[]
+): Promise<Array<Record<string, any>>> {
+  const rows: Array<Record<string, any>> = [];
+  for (const outboundIdsChunk of chunkValues(Array.from(new Set(outboundIds.filter(Boolean))))) {
+    const { data, error } = await client
+      .from('email_events')
+      .select(
+        'id,outbound_id,event_type,reply_label,outcome_classification,provider_event_id,occurred_at,created_at,payload,pattern_id,coach_prompt_id,draft_id'
+      )
+      .in('outbound_id', outboundIdsChunk)
+      .order('occurred_at', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+    rows.push(...((data ?? []) as Array<Record<string, any>>));
+  }
+  return rows;
+}
 
 function mapInboxReplyCategory(reply: Pick<InboxReplyRecord, 'reply_label' | 'event_type'>): InboxReplyCategory {
   if (reply.reply_label === 'positive') return 'positive';
@@ -151,56 +189,51 @@ export async function listCampaignEvents(client: SupabaseClient, campaignId: str
     return { campaign: outboundsView.campaign, events: [] };
   }
 
-  const { data, error } = await client
-    .from('email_events')
-    .select(
-      'id,outbound_id,event_type,reply_label,outcome_classification,provider_event_id,occurred_at,created_at,payload,pattern_id,coach_prompt_id,draft_id'
-    )
-    .in('outbound_id', outboundIds)
-    .order('occurred_at', { ascending: false })
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    throw error;
-  }
+  const rows = await selectEventsByOutboundIds(client, outboundIds);
 
   const outboundById = new Map(outboundsView.outbounds.map((outbound) => [outbound.id, outbound]));
-  const events = ((data ?? []) as Array<Record<string, any>>).map((row) => {
-    const outbound = outboundById.get(String(row.outbound_id ?? '')) ?? null;
-    const payload = row.payload && typeof row.payload === 'object' ? (row.payload as Record<string, unknown>) : null;
+  const events = rows
+    .map((row) => {
+      const outbound = outboundById.get(String(row.outbound_id ?? '')) ?? null;
+      const payload = row.payload && typeof row.payload === 'object' ? (row.payload as Record<string, unknown>) : null;
 
-    return {
-      id: String(row.id),
-      outbound_id: String(row.outbound_id),
-      event_type: typeof row.event_type === 'string' ? row.event_type : 'unknown',
-      reply_label: typeof row.reply_label === 'string' ? row.reply_label : null,
-      outcome_classification:
-        typeof row.outcome_classification === 'string' ? row.outcome_classification : null,
-      provider_event_id: typeof row.provider_event_id === 'string' ? row.provider_event_id : null,
-      occurred_at: typeof row.occurred_at === 'string' ? row.occurred_at : null,
-      created_at: typeof row.created_at === 'string' ? row.created_at : null,
-      pattern_id: typeof row.pattern_id === 'string' ? row.pattern_id : null,
-      coach_prompt_id: typeof row.coach_prompt_id === 'string' ? row.coach_prompt_id : null,
-      payload,
-      draft_id: typeof row.draft_id === 'string' ? row.draft_id : outbound?.draft_id ?? null,
-      draft_email_type: outbound?.draft_email_type ?? null,
-      draft_status: outbound?.draft_status ?? null,
-      subject: outbound?.subject ?? null,
-      provider: outbound?.provider ?? null,
-      provider_message_id: outbound?.provider_message_id ?? null,
-      sender_identity: outbound?.sender_identity ?? null,
-      sent_at: outbound?.sent_at ?? null,
-      recipient_email: outbound?.recipient_email ?? null,
-      recipient_email_source: outbound?.recipient_email_source ?? null,
-      recipient_email_kind: outbound?.recipient_email_kind ?? null,
-      contact_id: outbound?.contact_id ?? null,
-      contact_name: outbound?.contact_name ?? null,
-      contact_position: outbound?.contact_position ?? null,
-      company_id: outbound?.company_id ?? null,
-      company_name: outbound?.company_name ?? null,
-      company_website: outbound?.company_website ?? null,
-    } satisfies CampaignEventRecord;
-  });
+      return {
+        id: String(row.id),
+        outbound_id: String(row.outbound_id),
+        event_type: typeof row.event_type === 'string' ? row.event_type : 'unknown',
+        reply_label: typeof row.reply_label === 'string' ? row.reply_label : null,
+        outcome_classification:
+          typeof row.outcome_classification === 'string' ? row.outcome_classification : null,
+        provider_event_id: typeof row.provider_event_id === 'string' ? row.provider_event_id : null,
+        occurred_at: typeof row.occurred_at === 'string' ? row.occurred_at : null,
+        created_at: typeof row.created_at === 'string' ? row.created_at : null,
+        pattern_id: typeof row.pattern_id === 'string' ? row.pattern_id : null,
+        coach_prompt_id: typeof row.coach_prompt_id === 'string' ? row.coach_prompt_id : null,
+        payload,
+        draft_id: typeof row.draft_id === 'string' ? row.draft_id : outbound?.draft_id ?? null,
+        draft_email_type: outbound?.draft_email_type ?? null,
+        draft_status: outbound?.draft_status ?? null,
+        subject: outbound?.subject ?? null,
+        provider: outbound?.provider ?? null,
+        provider_message_id: outbound?.provider_message_id ?? null,
+        sender_identity: outbound?.sender_identity ?? null,
+        sent_at: outbound?.sent_at ?? null,
+        recipient_email: outbound?.recipient_email ?? null,
+        recipient_email_source: outbound?.recipient_email_source ?? null,
+        recipient_email_kind: outbound?.recipient_email_kind ?? null,
+        contact_id: outbound?.contact_id ?? null,
+        contact_name: outbound?.contact_name ?? null,
+        contact_position: outbound?.contact_position ?? null,
+        company_id: outbound?.company_id ?? null,
+        company_name: outbound?.company_name ?? null,
+        company_website: outbound?.company_website ?? null,
+      } satisfies CampaignEventRecord;
+    })
+    .sort((left, right) => {
+      const leftMs = timestampMs(left.occurred_at) || timestampMs(left.created_at);
+      const rightMs = timestampMs(right.occurred_at) || timestampMs(right.created_at);
+      return rightMs - leftMs;
+    });
 
   return {
     campaign: outboundsView.campaign,

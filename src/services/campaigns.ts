@@ -3,6 +3,39 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { CampaignStatus, getAllowedTransitions } from '../status.js';
 import { listCampaignAudience } from './campaignAudience.js';
 
+const SUPABASE_IN_FILTER_CHUNK_SIZE = 100;
+
+function chunkValues<T>(values: T[], size: number = SUPABASE_IN_FILTER_CHUNK_SIZE): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function selectInChunks<Row>(
+  client: SupabaseClient,
+  table: string,
+  columns: string,
+  field: string,
+  values: string[]
+): Promise<Row[]> {
+  const uniqueValues = Array.from(new Set(values.filter(Boolean)));
+  if (uniqueValues.length === 0) {
+    return [];
+  }
+
+  const rows: Row[] = [];
+  for (const valuesChunk of chunkValues(uniqueValues)) {
+    const res = await (client.from(table) as any).select(columns).in(field, valuesChunk);
+    if (res.error) {
+      throw res.error;
+    }
+    rows.push(...((res.data ?? []) as Row[]));
+  }
+  return rows;
+}
+
 export interface CampaignInput {
   name: string;
   segmentId: string;
@@ -474,16 +507,15 @@ export async function listCampaignOutbounds(client: SupabaseClient, campaignId: 
 
   const draftsById = new Map<string, { id: string; email_type?: string | null; status?: string | null; subject?: string | null }>();
   if (draftIds.length > 0) {
-    const { data: draftRows, error: draftError } = await client
-      .from('drafts')
-      .select('id,email_type,status,subject')
-      .in('id', draftIds);
+    const draftRows = await selectInChunks<Record<string, any>>(
+      client,
+      'drafts',
+      'id,email_type,status,subject',
+      'id',
+      draftIds
+    );
 
-    if (draftError) {
-      throw draftError;
-    }
-
-    for (const draft of (draftRows ?? []) as Array<Record<string, any>>) {
+    for (const draft of draftRows) {
       draftsById.set(String(draft.id), {
         id: String(draft.id),
         email_type: typeof draft.email_type === 'string' ? draft.email_type : null,
@@ -495,16 +527,15 @@ export async function listCampaignOutbounds(client: SupabaseClient, campaignId: 
 
   const contactsById = new Map<string, { id: string; full_name?: string | null; position?: string | null }>();
   if (contactIds.length > 0) {
-    const { data: contactRows, error: contactError } = await client
-      .from('employees')
-      .select('id,full_name,position')
-      .in('id', contactIds);
+    const contactRows = await selectInChunks<Record<string, any>>(
+      client,
+      'employees',
+      'id,full_name,position',
+      'id',
+      contactIds
+    );
 
-    if (contactError) {
-      throw contactError;
-    }
-
-    for (const contact of (contactRows ?? []) as Array<Record<string, any>>) {
+    for (const contact of contactRows) {
       contactsById.set(String(contact.id), {
         id: String(contact.id),
         full_name: typeof contact.full_name === 'string' ? contact.full_name : null,
@@ -515,16 +546,15 @@ export async function listCampaignOutbounds(client: SupabaseClient, campaignId: 
 
   const companiesById = new Map<string, { id: string; company_name?: string | null; website?: string | null }>();
   if (companyIds.length > 0) {
-    const { data: companyRows, error: companyError } = await client
-      .from('companies')
-      .select('id,company_name,website')
-      .in('id', companyIds);
+    const companyRows = await selectInChunks<Record<string, any>>(
+      client,
+      'companies',
+      'id,company_name,website',
+      'id',
+      companyIds
+    );
 
-    if (companyError) {
-      throw companyError;
-    }
-
-    for (const company of (companyRows ?? []) as Array<Record<string, any>>) {
+    for (const company of companyRows) {
       companiesById.set(String(company.id), {
         id: String(company.id),
         company_name: typeof company.company_name === 'string' ? company.company_name : null,
