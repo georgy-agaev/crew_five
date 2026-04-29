@@ -295,6 +295,68 @@ describe('web api client (live adapter)', () => {
     expect(body.explicitCoachPromptId).toBe('draft_intro_v1');
   });
 
+  it('triggerDraftGenerate passes batch company ids and drafts model', async () => {
+    const { triggerDraftGenerate } = await loadClient();
+    (fetch as any).mockResolvedValue({ ok: true, json: async () => ({ generated: 0, dryRun: true }) });
+    await triggerDraftGenerate('c1', {
+      companyIds: ['11111111-1111-4111-8111-111111111111'],
+      draftsModel: 'opus',
+    });
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body);
+    expect(body.companyIds).toEqual(['11111111-1111-4111-8111-111111111111']);
+    expect(body.draftsModel).toBe('opus');
+  });
+
+  it('startDraftGenerationJob returns async job envelope', async () => {
+    const { startDraftGenerationJob } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({ jobId: 'job-draft-1', status: 'running', campaignId: 'c1', dryRun: false }),
+    });
+    const data = await startDraftGenerationJob('c1', {
+      dryRun: false,
+      limit: 20,
+      contactIds: ['contact-1'],
+      draftsModel: 'opus',
+    });
+
+    const call = (fetch as any).mock.calls[0];
+    expect(call[0]).toBe('/api/drafts/generate');
+    expect(call[1].method).toBe('POST');
+    expect(JSON.parse(call[1].body)).toMatchObject({
+      campaignId: 'c1',
+      dryRun: false,
+      limit: 20,
+      contactIds: ['contact-1'],
+      draftsModel: 'opus',
+    });
+    expect(data.jobId).toBe('job-draft-1');
+  });
+
+  it('fetchDraftGenerationJobStatus hits polling endpoint', async () => {
+    const { fetchDraftGenerationJobStatus } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({ jobId: 'job-draft-1', status: 'running', generated: 3 }),
+    });
+    const data = await fetchDraftGenerationJobStatus('job-draft-1');
+
+    expect(fetch).toHaveBeenCalledWith('/api/drafts/generate/jobs/job-draft-1', expect.any(Object));
+    expect(data.generated).toBe(3);
+  });
+
+  it('fetchActiveDraftGenerationJob hits campaign recovery endpoint', async () => {
+    const { fetchActiveDraftGenerationJob } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({ jobId: 'job-draft-1', status: 'running', campaignId: 'c1' }),
+    });
+    const data = await fetchActiveDraftGenerationJob('c1');
+
+    expect(fetch).toHaveBeenCalledWith('/api/campaigns/c1/draft-generation-job/active', expect.any(Object));
+    expect(data?.jobId).toBe('job-draft-1');
+  });
+
   it('triggerSmartleadSend passes ids, batch size and dry-run', async () => {
     const { triggerSmartleadSend } = await loadClient();
     (fetch as any).mockResolvedValue({

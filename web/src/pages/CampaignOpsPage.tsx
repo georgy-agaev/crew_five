@@ -16,7 +16,6 @@ import {
   type CampaignOutbound,
   type DraftRow,
 } from '../apiClient';
-import { CampaignAuditPanel } from '../components/CampaignAuditPanel';
 import { getWorkspaceColors } from '../theme';
 import './CampaignOperatorDesk.css';
 

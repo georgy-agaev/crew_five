@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export type JobType = 'send' | 'enrich' | 'sim' | 'icp' | 'company_process';
+export type JobType = 'send' | 'enrich' | 'sim' | 'icp' | 'company_process' | 'draft_generation';
 
 export type JobStatus = 'created' | 'running' | 'completed' | 'failed' | 'not_implemented';
 
@@ -55,6 +55,7 @@ export async function updateJobStatus(
     .update({
       status,
       result: result ?? {},
+      updated_at: new Date().toISOString(),
     })
     .eq('id', jobId)
     .select()

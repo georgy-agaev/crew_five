@@ -11,6 +11,7 @@ import './CampaignOperatorDesk.css';
 
 const REPLY_LABELS = ['all', 'positive', 'negative', 'bounce', 'unclassified'] as const;
 type ReplyLabelFilter = (typeof REPLY_LABELS)[number];
+type ReplyCategoryFilter = Exclude<ReplyLabelFilter, 'all'>;
 type ReplySummaryCounts = Record<ReplyLabelFilter, number>;
 
 const LINKAGE_FILTERS = ['linked', 'all', 'unlinked'] as const;
@@ -75,23 +76,6 @@ function classifyReply(reply: InboxReply): ReplyLabelFilter {
   if (label === 'bounce' || reply.event_type === 'bounced') return 'bounce';
   if (label === 'unsubscribed' || reply.event_type === 'unsubscribed') return 'negative';
   return 'unclassified';
-}
-
-function buildReplySummary(replies: InboxReply[]): ReplySummaryCounts {
-  const summary: ReplySummaryCounts = {
-    all: replies.length,
-    positive: 0,
-    negative: 0,
-    bounce: 0,
-    unclassified: 0,
-  };
-
-  for (const reply of replies) {
-    const cat = classifyReply(reply);
-    if (cat !== 'all') summary[cat] += 1;
-  }
-
-  return summary;
 }
 
 const LABEL_BADGE_TITLES: Record<string, string> = {
@@ -245,7 +229,7 @@ export function InboxWorkspacePage({ isDark = false }: { isDark?: boolean }) {
       limit: number;
       handled?: boolean;
       linkage?: LinkageFilter;
-      category?: string;
+      category?: ReplyCategoryFilter;
     } = { limit };
     if (linkageFilter !== 'all') opts.linkage = linkageFilter;
     if (handledFilter === 'unhandled') opts.handled = false;

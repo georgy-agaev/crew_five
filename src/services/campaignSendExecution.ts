@@ -12,6 +12,8 @@ import { deriveContactSuppressionState } from './contactSuppression.js';
 import { recordEmailOutbound } from './emailOutboundRecorder.js';
 import { resolveRecipientEmail } from './recipientResolver.js';
 
+const SUPABASE_IN_FILTER_CHUNK_SIZE = 100;
+
 export type CampaignSendExecutionReason =
   | 'auto_send_intro'
   | 'auto_send_bump'
@@ -122,6 +124,36 @@ interface EligibleDraft {
   recipientEmail: string;
   recipientEmailSource: 'work' | 'generic' | 'missing';
   recipientEmailKind: 'corporate' | 'personal' | 'generic' | 'missing';
+}
+
+function chunkValues<T>(values: T[], size: number = SUPABASE_IN_FILTER_CHUNK_SIZE): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function selectInChunks<Row>(
+  client: SupabaseClient,
+  table: string,
+  columns: string,
+  field: string,
+  values: string[]
+): Promise<Row[]> {
+  if (values.length < 1) {
+    return [];
+  }
+
+  const rows: Row[] = [];
+  for (const chunk of chunkValues(values)) {
+    const res = await (client.from(table) as any).select(columns).in(field, chunk);
+    if (res.error) {
+      throw res.error;
+    }
+    rows.push(...((res.data ?? []) as Row[]));
+  }
+  return rows;
 }
 
 function formatErrorMessage(error: unknown) {
@@ -394,52 +426,57 @@ export async function executeCampaignSendRun(
 
   const employeesById = new Map<string, EmployeeRow>();
   if (contactIds.length > 0) {
-    const employeesRes = await client
-      .from('employees')
-      .select('id,work_email,work_email_status,generic_email,generic_email_status')
-      .in('id', contactIds);
-    if (employeesRes.error) {
-      throw employeesRes.error;
-    }
-    for (const row of (employeesRes.data ?? []) as EmployeeRow[]) {
+    const employeeRows = await selectInChunks<EmployeeRow>(
+      client,
+      'employees',
+      'id,work_email,work_email_status,generic_email,generic_email_status',
+      'id',
+      contactIds
+    );
+    for (const row of employeeRows) {
       employeesById.set(row.id, row);
     }
   }
 
   const companyCountriesById = new Map<string, string | null>();
   if (companyIds.length > 0) {
-    const companiesRes = await client.from('companies').select('id,country_code').in('id', companyIds);
-    if (companiesRes.error) {
-      throw companiesRes.error;
-    }
-    for (const row of (companiesRes.data ?? []) as CompanyRow[]) {
+    const companyRows = await selectInChunks<CompanyRow>(
+      client,
+      'companies',
+      'id,country_code',
+      'id',
+      companyIds
+    );
+    for (const row of companyRows) {
       companyCountriesById.set(row.id, typeof row.country_code === 'string' ? row.country_code : null);
     }
   }
 
   const outbounds: OutboundRow[] = [];
   if (contactIds.length > 0) {
-    const outboundsRes = await client
-      .from('email_outbound')
-      .select('id,contact_id,company_id,draft_id,status,sent_at')
-      .in('contact_id', contactIds);
-    if (outboundsRes.error) {
-      throw outboundsRes.error;
-    }
-    outbounds.push(...((outboundsRes.data ?? []) as OutboundRow[]));
+    outbounds.push(
+      ...(await selectInChunks<OutboundRow>(
+        client,
+        'email_outbound',
+        'id,contact_id,company_id,draft_id,status,sent_at',
+        'contact_id',
+        contactIds
+      ))
+    );
   }
   const outboundIds = outbounds.map((row) => row.id).filter((value): value is string => typeof value === 'string');
 
   const events: EventRow[] = [];
   if (outboundIds.length > 0) {
-    const eventsRes = await client
-      .from('email_events')
-      .select('outbound_id,event_type')
-      .in('outbound_id', outboundIds);
-    if (eventsRes.error) {
-      throw eventsRes.error;
-    }
-    events.push(...((eventsRes.data ?? []) as EventRow[]));
+    events.push(
+      ...(await selectInChunks<EventRow>(
+        client,
+        'email_events',
+        'outbound_id,event_type',
+        'outbound_id',
+        outboundIds
+      ))
+    );
   }
 
   const outboundDraftIds = Array.from(
@@ -447,11 +484,14 @@ export async function executeCampaignSendRun(
   );
   const draftEmailTypeById = new Map<string, string>();
   if (outboundDraftIds.length > 0) {
-    const draftTypesRes = await client.from('drafts').select('id,email_type').in('id', outboundDraftIds);
-    if (draftTypesRes.error) {
-      throw draftTypesRes.error;
-    }
-    for (const row of (draftTypesRes.data ?? []) as Array<Record<string, unknown>>) {
+    const draftTypeRows = await selectInChunks<Record<string, unknown>>(
+      client,
+      'drafts',
+      'id,email_type',
+      'id',
+      outboundDraftIds
+    );
+    for (const row of draftTypeRows) {
       const id = typeof row.id === 'string' ? row.id : null;
       if (!id) continue;
       draftEmailTypeById.set(id, typeof row.email_type === 'string' ? row.email_type : '');

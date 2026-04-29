@@ -12,6 +12,7 @@ import {
 import * as generateDraftsTrigger from './liveDeps/generateDraftsTrigger.js';
 
 const campaigns = [{ id: 'c1', name: 'One', status: 'draft' }];
+const draftJobStart = { jobId: 'job-draft-1', status: 'running' as const, campaignId: 'c1', dryRun: true };
 
 function stubSendSmartlead() {
   return vi.fn(async (payload: any) => ({
@@ -70,7 +71,7 @@ describe('web adapter server', () => {
   const deps = {
     listCampaigns: vi.fn(async () => campaigns),
     listDrafts: vi.fn(async () => []),
-    generateDrafts: vi.fn(async () => ({ generated: 0, dryRun: true })),
+    generateDrafts: vi.fn(async () => draftJobStart),
     sendSmartlead: stubSendSmartlead(),
     listEvents: vi.fn(async () => []),
     listReplyPatterns: vi.fn(async () => []),
@@ -1491,7 +1492,14 @@ describe('web adapter server', () => {
     const res = await dispatch(deps, {
       method: 'POST',
       pathname: '/api/drafts/generate',
-      body: { campaignId: 'c1', dryRun: true, interactionMode: 'express', dataQualityMode: 'strict' },
+      body: {
+        campaignId: 'c1',
+        dryRun: true,
+        interactionMode: 'express',
+        dataQualityMode: 'strict',
+        companyIds: ['11111111-1111-4111-8111-111111111111'],
+        draftsModel: 'opus',
+      },
     },
     buildMeta({ mode: 'live' }));
     expect(deps.generateDrafts).toHaveBeenCalledWith({
@@ -1499,8 +1507,104 @@ describe('web adapter server', () => {
       dryRun: true,
       interactionMode: 'express',
       dataQualityMode: 'strict',
+      companyIds: ['11111111-1111-4111-8111-111111111111'],
+      draftsModel: 'opus',
     });
     expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ jobId: 'job-draft-1', status: 'running' });
+  });
+
+  it('rejects invalid draft generation batch options', async () => {
+    const generateDrafts = vi.fn(async () => draftJobStart);
+    const res = await dispatch(
+      { ...deps, generateDrafts },
+      {
+        method: 'POST',
+        pathname: '/api/drafts/generate',
+        body: {
+          campaignId: 'c1',
+          dryRun: true,
+          companyIds: ['not-a-uuid'],
+          draftsModel: 'haiku',
+        },
+      },
+      buildMeta({ mode: 'live' })
+    );
+
+    expect(res.status).toBe(400);
+    expect(generateDrafts).not.toHaveBeenCalled();
+  });
+
+  it('routes draft generation job status polling', async () => {
+    const getDraftGenerationJobStatus = vi.fn(async (jobId: string) => ({
+      jobId,
+      status: 'running' as const,
+      campaignId: 'c1',
+      dryRun: false,
+      generated: 3,
+      failed: 0,
+      skipped: 2,
+      requestedContactCount: 5,
+      totalRecipients: 5,
+      lastEvent: 'draft_created',
+      skippedByReason: {},
+      skippedDetails: [],
+      errors: [],
+      result: {},
+      createdAt: '2026-04-28T10:00:00Z',
+      updatedAt: '2026-04-28T10:00:05Z',
+    }));
+
+    const res = await dispatch(
+      { ...deps, getDraftGenerationJobStatus },
+      {
+        method: 'GET',
+        pathname: '/api/drafts/generate/jobs/job-draft-1',
+      },
+      buildMeta({ mode: 'live' })
+    );
+
+    expect(getDraftGenerationJobStatus).toHaveBeenCalledWith('job-draft-1');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      jobId: 'job-draft-1',
+      generated: 3,
+      lastEvent: 'draft_created',
+    });
+  });
+
+  it('routes active draft generation job lookup for campaign recovery', async () => {
+    const findActiveDraftGenerationJob = vi.fn(async (campaignId: string) => ({
+      jobId: 'job-draft-1',
+      status: 'running' as const,
+      campaignId,
+      dryRun: false,
+      generated: 1,
+      failed: 0,
+      skipped: 0,
+      requestedContactCount: 20,
+      totalRecipients: 20,
+      lastEvent: 'started',
+      skippedByReason: {},
+      skippedDetails: [],
+      errors: [],
+      result: {},
+      createdAt: '2026-04-28T10:00:00Z',
+      updatedAt: '2026-04-28T10:00:02Z',
+    }));
+
+    const res = await dispatch(
+      { ...deps, findActiveDraftGenerationJob },
+      {
+        method: 'GET',
+        pathname: '/api/campaigns/c1/draft-generation-job/active',
+      },
+      buildMeta({ mode: 'live' })
+    );
+
+    expect(findActiveDraftGenerationJob).toHaveBeenCalledWith('c1');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ jobId: 'job-draft-1', campaignId: 'c1' });
   });
 
   it('listCampaigns uses live deps when provided', async () => {
@@ -1545,21 +1649,72 @@ describe('web adapter server', () => {
     vi.unstubAllEnvs();
   });
 
-  it('createLiveDeps routes draft generation through Outreach trigger when configured', async () => {
+  it('createLiveDeps starts draft generation as a job when configured', async () => {
     vi.stubEnv('SUPABASE_URL', 'http://example.com');
     vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'key');
     vi.stubEnv('OUTREACH_GENERATE_DRAFTS_CMD', 'outreach generate-drafts');
 
-    const triggerSpy = vi.spyOn(generateDraftsTrigger, 'triggerGenerateDrafts').mockResolvedValue({
-      generated: 2,
-      dryRun: true,
-      source: 'outreacher-generate-drafts',
-      requestedAt: '2026-04-01T10:00:00.000Z',
-      campaignId: 'c1',
-    } as any);
+    vi.spyOn(generateDraftsTrigger, 'triggerGenerateDrafts').mockResolvedValue({ generated: 0, dryRun: true } as any);
+    const maybeSingle = vi.fn(async () => ({ data: null, error: null }));
+    const jobsSelect = vi.fn(() => ({
+      eq: vi.fn(() => ({
+        in: vi.fn(() => ({
+          contains: vi.fn(() => ({
+            order: vi.fn(() => ({
+              limit: vi.fn(() => ({ maybeSingle })),
+            })),
+          })),
+        })),
+      })),
+    }));
+    const jobsInsert = vi.fn(() => ({
+      select: vi.fn(() => ({
+        single: vi.fn(async () => ({
+          data: {
+            id: 'job-draft-1',
+            type: 'draft_generation',
+            status: 'running',
+            segment_id: null,
+            segment_version: null,
+            payload: { campaignId: 'c1', dryRun: true },
+            result: {},
+            created_at: '2026-04-28T10:00:00Z',
+            updated_at: '2026-04-28T10:00:00Z',
+          },
+          error: null,
+        })),
+      })),
+    }));
+    const jobsUpdate = vi.fn(() => ({
+      eq: vi.fn(() => ({
+        select: vi.fn(() => ({
+          single: vi.fn(async () => ({
+            data: {
+              id: 'job-draft-1',
+              type: 'draft_generation',
+              status: 'running',
+              segment_id: null,
+              segment_version: null,
+              payload: { campaignId: 'c1', dryRun: true },
+              result: {},
+              created_at: '2026-04-28T10:00:00Z',
+              updated_at: '2026-04-28T10:00:00Z',
+            },
+            error: null,
+          })),
+        })),
+      })),
+    }));
 
     const liveDeps = createLiveDeps({
-      supabase: { from: vi.fn() } as any,
+      supabase: {
+        from: vi.fn((table: string) => {
+          if (table === 'jobs') {
+            return { select: jobsSelect, insert: jobsInsert, update: jobsUpdate };
+          }
+          return { select: vi.fn(() => ({ eq: vi.fn(() => ({ single: vi.fn(async () => ({ data: null, error: null })) })) })) };
+        }),
+      } as any,
       smartlead: {} as any,
     });
 
@@ -1567,22 +1722,16 @@ describe('web adapter server', () => {
       campaignId: 'c1',
       dryRun: true,
       limit: 3,
+      companyIds: ['11111111-1111-4111-8111-111111111111'],
+      draftsModel: 'opus',
       interactionMode: 'express',
       dataQualityMode: 'strict',
     });
 
-    expect(triggerSpy).toHaveBeenCalledWith({
-      campaignId: 'c1',
-      dryRun: true,
-      limit: 3,
-      interactionMode: 'express',
-      dataQualityMode: 'strict',
-    });
     expect(result).toMatchObject({
-      generated: 2,
+      jobId: 'job-draft-1',
+      status: 'running',
       dryRun: true,
-      source: 'outreacher-generate-drafts',
-      campaignId: 'c1',
     });
 
     vi.unstubAllEnvs();
@@ -2774,6 +2923,7 @@ describe('web adapter server', () => {
           message: 'Some approved drafts are missing a sendable recipient email',
         },
       ],
+      issues: [],
       summary: {
         mailboxAssignmentCount: 1,
         draftCount: 3,
@@ -2783,6 +2933,7 @@ describe('web adapter server', () => {
         sentDraftCount: 0,
         sendableApprovedDraftCount: 1,
         approvedMissingRecipientEmailCount: 1,
+        approvedSuppressedContactCount: 0,
       },
       senderPlan: {
         assignmentCount: 1,
@@ -2808,6 +2959,7 @@ describe('web adapter server', () => {
     expect(getCampaignSendPreflight).toHaveBeenCalledWith('camp-1');
     expect((res.body as any).readyToSend).toBe(false);
     expect((res.body as any).blockers[0].code).toBe('missing_recipient_email');
+    expect((res.body as any).issues).toEqual([]);
   });
 
   it('routes campaign send execution', async () => {

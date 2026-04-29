@@ -1,5 +1,7 @@
 import type { AdapterDeps, DispatchRequest, DispatchResponse } from '../types.js';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function getCampaignDomainErrorStatus(err: unknown): number {
   const code = typeof err === 'object' && err !== null ? (err as { code?: unknown }).code : undefined;
   if (
@@ -9,6 +11,42 @@ function getCampaignDomainErrorStatus(err: unknown): number {
     return 400;
   }
   return 500;
+}
+
+function validateDraftGenerateBody(body: Record<string, unknown>): { ok: true; body: Record<string, unknown> } | { ok: false; error: string } {
+  if (body.companyIds !== undefined) {
+    if (!Array.isArray(body.companyIds)) {
+      return { ok: false, error: 'companyIds must be an array of UUIDs' };
+    }
+    if (body.companyIds.length > 200) {
+      return { ok: false, error: 'companyIds must contain 200 or fewer UUIDs' };
+    }
+    if (!body.companyIds.every((value) => typeof value === 'string' && UUID_RE.test(value))) {
+      return { ok: false, error: 'companyIds must be an array of UUIDs' };
+    }
+  }
+
+  if (body.contactIds !== undefined) {
+    if (!Array.isArray(body.contactIds)) {
+      return { ok: false, error: 'contactIds must be an array of UUIDs' };
+    }
+    if (body.contactIds.length > 500) {
+      return { ok: false, error: 'contactIds must contain 500 or fewer UUIDs' };
+    }
+    if (!body.contactIds.every((value) => typeof value === 'string' && UUID_RE.test(value))) {
+      return { ok: false, error: 'contactIds must be an array of UUIDs' };
+    }
+  }
+
+  if (
+    body.draftsModel !== undefined &&
+    body.draftsModel !== 'sonnet' &&
+    body.draftsModel !== 'opus'
+  ) {
+    return { ok: false, error: 'draftsModel must be sonnet or opus' };
+  }
+
+  return { ok: true, body };
 }
 
 export async function handleCampaignRoutes(
@@ -683,7 +721,39 @@ export async function handleCampaignRoutes(
   }
 
   if (method === 'POST' && pathname === '/api/drafts/generate') {
-    return { status: 200, body: await deps.generateDrafts(req.body) };
+    const validation = validateDraftGenerateBody((req.body ?? {}) as Record<string, unknown>);
+    if (!validation.ok) {
+      return { status: 400, body: { error: validation.error } };
+    }
+    return { status: 200, body: await deps.generateDrafts(validation.body as Parameters<typeof deps.generateDrafts>[0]) };
+  }
+
+  if (method === 'GET' && pathname.startsWith('/api/drafts/generate/jobs/')) {
+    if (!deps.getDraftGenerationJobStatus) {
+      return { status: 501, body: { error: 'Draft generation job status is not configured' } };
+    }
+    const jobId = pathname.slice('/api/drafts/generate/jobs/'.length).replace(/\/$/, '');
+    if (!jobId) {
+      return { status: 400, body: { error: 'jobId is required' } };
+    }
+    const statusView = await deps.getDraftGenerationJobStatus(jobId);
+    if (!statusView) {
+      return { status: 404, body: { error: 'Draft generation job not found' } };
+    }
+    return { status: 200, body: statusView };
+  }
+
+  if (method === 'GET' && pathname.startsWith('/api/campaigns/') && pathname.endsWith('/draft-generation-job/active')) {
+    if (!deps.findActiveDraftGenerationJob) {
+      return { status: 501, body: { error: 'Draft generation active job lookup is not configured' } };
+    }
+    const campaignId = pathname
+      .slice('/api/campaigns/'.length, -'/draft-generation-job/active'.length)
+      .replace(/\/$/, '');
+    if (!campaignId) {
+      return { status: 400, body: { error: 'campaignId is required' } };
+    }
+    return { status: 200, body: await deps.findActiveDraftGenerationJob(campaignId) };
   }
 
   return null;

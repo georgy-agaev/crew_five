@@ -89,12 +89,16 @@ const BLOCK_REASON_LABELS: Record<string, Record<string, string>> = {
     bounced: 'Email bounced',
     unsubscribed: 'Unsubscribed',
     already_used: 'Already used in this campaign',
+    intro_exists: 'Intro already exists',
+    bump_exists: 'Bump already exists',
   },
   ru: {
     no_sendable_email: 'Нет отправляемого email',
     bounced: 'Email отскочил',
     unsubscribed: 'Отписка',
     already_used: 'Уже использован в этой кампании',
+    intro_exists: 'Intro уже есть',
+    bump_exists: 'Bump уже есть',
   },
 };
 

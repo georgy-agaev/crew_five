@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   deriveEmployeesFromCampaignCompany,
+  getMissingIntroCompanyIds,
   getDraftReviewActions,
   mergeUpdatedDraftRow,
 } from './CampaignOperatorDesk';
@@ -124,5 +125,39 @@ describe('CampaignOperatorDesk helpers', () => {
         reply_count: 0,
       }),
     ]);
+  });
+
+  it('finds companies with eligible contacts missing intro drafts', () => {
+    const companyIds = getMissingIntroCompanyIds([
+      {
+        company_id: 'company-missing',
+        employees: [
+          {
+            eligible_for_new_intro: true,
+            draft_counts: { intro: 0 },
+          },
+        ],
+      },
+      {
+        company_id: 'company-covered',
+        employees: [
+          {
+            eligible_for_new_intro: true,
+            draft_counts: { intro: 1 },
+          },
+        ],
+      },
+      {
+        company_id: 'company-ineligible',
+        employees: [
+          {
+            eligible_for_new_intro: false,
+            draft_counts: { intro: 0 },
+          },
+        ],
+      },
+    ] as any);
+
+    expect(companyIds).toEqual(['company-missing']);
   });
 });

@@ -16,11 +16,38 @@ import {
   runCampaignBumpAutoGeneration,
 } from '../src/services/campaignBumpAutoGeneration.js';
 
-function createClient(drafts: any[]) {
+function createClient(drafts: any[], employees?: any[]) {
+  const employeeRows =
+    employees ??
+    Array.from(
+      new Set(
+        drafts
+          .map((row) => row.contact_id)
+          .filter((value): value is string => typeof value === 'string')
+      )
+    ).map((id) => ({
+      id,
+      work_email: `${id}@example.com`,
+      work_email_status: 'valid',
+      generic_email: null,
+      generic_email_status: null,
+    }));
   return {
     from: vi.fn((table: string) => {
-      if (table !== 'drafts') {
+      if (table !== 'drafts' && table !== 'employees') {
         throw new Error(`Unexpected table ${table}`);
+      }
+      if (table === 'employees') {
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn((_field: string, values: string[]) =>
+              Promise.resolve({
+                data: employeeRows.filter((row) => values.includes(row.id)),
+                error: null,
+              })
+            ),
+          }),
+        };
       }
       return {
         select: vi.fn().mockReturnValue({
@@ -182,7 +209,22 @@ describe('campaignBumpAutoGeneration', () => {
 
     const triggerGenerateBumps = vi.fn().mockResolvedValue({ generated: 1, skipped: 0, failed: 0 });
 
-    const result = await runCampaignBumpAutoGeneration(createClient([]), {
+    const result = await runCampaignBumpAutoGeneration(createClient([], [
+      {
+        id: 'contact-gen-1',
+        work_email: 'contact-gen-1@example.com',
+        work_email_status: 'valid',
+        generic_email: null,
+        generic_email_status: null,
+      },
+      {
+        id: 'contact-gen-2',
+        work_email: 'contact-gen-2@example.com',
+        work_email_status: 'valid',
+        generic_email: null,
+        generic_email_status: null,
+      },
+    ]), {
       campaignId: 'camp-1',
       minDaysSinceIntro: 3,
       limit: 10,
@@ -202,6 +244,71 @@ describe('campaignBumpAutoGeneration', () => {
       requestedContactCount: 1,
       requestedContactIds: ['contact-gen-1'],
       triggerResult: { generated: 1, skipped: 0, failed: 0 },
+    });
+  });
+
+  it('blocks bump generation for contacts without a materialized recipient email', async () => {
+    vi.mocked(listCampaignFollowupCandidates).mockResolvedValue([
+      {
+        contact_id: 'contact-missing-email',
+        company_id: 'company-1',
+        intro_sent: true,
+        intro_sent_at: '2026-03-28T08:00:00Z',
+        intro_sender_identity: 'sales@example.com',
+        reply_received: false,
+        bounce: false,
+        unsubscribed: false,
+        bump_draft_exists: false,
+        bump_draft_approved: false,
+        bump_sent: false,
+        eligible: false,
+        days_since_intro: 4,
+        auto_reply: null,
+      },
+    ] as any);
+
+    const triggerGenerateBumps = vi.fn().mockResolvedValue({ generated: 1, skipped: 0 });
+    const client = createClient(
+      [],
+      [
+        {
+          id: 'contact-missing-email',
+          work_email: null,
+          work_email_status: null,
+          generic_email: null,
+          generic_email_status: null,
+        },
+      ]
+    );
+
+    const candidates = await listCampaignBumpGenerationCandidates(client, 'camp-1', {
+      minDaysSinceIntro: 3,
+      now: new Date('2026-04-01T10:00:00Z'),
+    });
+    const result = await runCampaignBumpAutoGeneration(client, {
+      campaignId: 'camp-1',
+      minDaysSinceIntro: 3,
+      limit: 10,
+      now: new Date('2026-04-01T10:00:00Z'),
+      triggerGenerateBumps,
+    });
+
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        contact_id: 'contact-missing-email',
+        recipient_email: null,
+        recipient_email_source: 'missing',
+        sendable: false,
+        eligible_for_generation: false,
+      }),
+    ]);
+    expect(triggerGenerateBumps).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      triggered: false,
+      candidateCount: 1,
+      eligibleCount: 0,
+      requestedContactCount: 0,
+      requestedContactIds: [],
     });
   });
 });

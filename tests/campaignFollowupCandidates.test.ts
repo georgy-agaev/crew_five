@@ -345,6 +345,189 @@ describe('campaignFollowupCandidates', () => {
     ]);
   });
 
+  it('uses the linked intro draft timestamp when a legacy sent outbound has no sent_at', async () => {
+    vi.mocked(getCampaignSendPolicy).mockResolvedValue({
+      campaignId: 'camp-legacy',
+      campaignName: 'Legacy Campaign',
+      campaignStatus: 'sending',
+      updatedAt: '2026-03-01T10:00:00Z',
+      sendTimezone: 'Europe/Moscow',
+      sendWindowStartHour: 9,
+      sendWindowEndHour: 17,
+      sendWeekdaysOnly: true,
+      sendDayCountMode: 'elapsed_days',
+      sendCalendarCountryCode: null,
+      sendCalendarSubdivisionCode: null,
+    } as any);
+
+    const drafts = [
+      {
+        id: 'draft-intro-legacy',
+        contact_id: 'contact-legacy',
+        company_id: 'company-legacy',
+        email_type: 'intro',
+        status: 'sent',
+        created_at: '2026-03-09T10:00:00Z',
+        updated_at: '2026-03-10T10:00:00Z',
+      },
+      {
+        id: 'draft-bump-legacy',
+        contact_id: 'contact-legacy',
+        company_id: 'company-legacy',
+        email_type: 'bump',
+        status: 'approved',
+      },
+    ];
+    const outbounds = [
+      {
+        id: 'out-intro-legacy',
+        campaign_id: 'camp-legacy',
+        contact_id: 'contact-legacy',
+        company_id: 'company-legacy',
+        draft_id: 'draft-intro-legacy',
+        status: 'sent',
+        sent_at: null,
+        sender_identity: 'sales-legacy@example.com',
+      },
+    ];
+
+    const client = {
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === 'drafts') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({ data: drafts, error: null }),
+            }),
+          };
+        }
+        if (table === 'email_outbound') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({ data: outbounds, error: null }),
+            }),
+          };
+        }
+        if (table === 'email_events') {
+          return {
+            select: vi.fn().mockReturnValue({
+              in: vi.fn().mockResolvedValue({ data: [], error: null }),
+            }),
+          };
+        }
+        if (table === 'companies') {
+          return {
+            select: vi.fn().mockReturnValue({
+              in: vi.fn().mockResolvedValue({ data: [{ id: 'company-legacy', country_code: 'RU' }], error: null }),
+            }),
+          };
+        }
+        throw new Error(`unexpected table ${table}`);
+      }),
+    } as any;
+
+    const rows = await listCampaignFollowupCandidates(client, 'camp-legacy', {
+      now: new Date('2026-03-16T10:00:00Z'),
+      minDaysSinceIntro: 3,
+    });
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        contact_id: 'contact-legacy',
+        intro_sent_at: '2026-03-10T10:00:00Z',
+        days_since_intro: 6,
+        eligible: true,
+      }),
+    ]);
+  });
+
+  it('chunks event and company lookups for large follow-up audiences', async () => {
+    vi.mocked(getCampaignSendPolicy).mockResolvedValue({
+      campaignId: 'camp-large',
+      campaignName: 'Large Campaign',
+      campaignStatus: 'sending',
+      updatedAt: '2026-03-01T10:00:00Z',
+      sendTimezone: 'Europe/Moscow',
+      sendWindowStartHour: 9,
+      sendWindowEndHour: 17,
+      sendWeekdaysOnly: true,
+      sendDayCountMode: 'elapsed_days',
+      sendCalendarCountryCode: null,
+      sendCalendarSubdivisionCode: null,
+    } as any);
+
+    const drafts = Array.from({ length: 205 }, (_, index) => ({
+      id: `draft-intro-${index}`,
+      contact_id: `contact-${index}`,
+      company_id: `company-${index}`,
+      email_type: 'intro',
+      status: 'sent',
+    }));
+    const outbounds = drafts.map((draft, index) => ({
+      id: `out-intro-${index}`,
+      campaign_id: 'camp-large',
+      contact_id: draft.contact_id,
+      company_id: draft.company_id,
+      draft_id: draft.id,
+      status: 'sent',
+      sent_at: '2026-03-10T10:00:00Z',
+      sender_identity: 'sales@example.com',
+    }));
+    const eventChunks: number[] = [];
+    const companyChunks: number[] = [];
+
+    const client = {
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === 'drafts') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({ data: drafts, error: null }),
+            }),
+          };
+        }
+        if (table === 'email_outbound') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({ data: outbounds, error: null }),
+            }),
+          };
+        }
+        if (table === 'email_events') {
+          return {
+            select: vi.fn().mockReturnValue({
+              in: vi.fn(async (_field: string, values: string[]) => {
+                eventChunks.push(values.length);
+                return { data: [], error: null };
+              }),
+            }),
+          };
+        }
+        if (table === 'companies') {
+          return {
+            select: vi.fn().mockReturnValue({
+              in: vi.fn(async (_field: string, values: string[]) => {
+                companyChunks.push(values.length);
+                return {
+                  data: values.map((id) => ({ id, country_code: 'RU' })),
+                  error: null,
+                };
+              }),
+            }),
+          };
+        }
+        throw new Error(`unexpected table ${table}`);
+      }),
+    } as any;
+
+    const rows = await listCampaignFollowupCandidates(client, 'camp-large', {
+      now: new Date('2026-03-16T10:00:00Z'),
+      minDaysSinceIntro: 3,
+    });
+
+    expect(rows).toHaveLength(205);
+    expect(eventChunks).toEqual([100, 100, 5]);
+    expect(companyChunks).toEqual([100, 100, 5]);
+  });
+
   it('uses campaign-country business days when the send policy opts in', async () => {
     vi.mocked(getCampaignSendPolicy).mockResolvedValue({
       campaignId: 'camp-2',

@@ -144,6 +144,9 @@ const translations: Record<string, Record<string, string>> = {
     edit: 'Edit',
     save: 'Save',
     saving: 'Saving...',
+    missingIntros: 'Missing intros',
+    selected: 'selected',
+    sendableTomorrow: 'Sendable tomorrow',
   },
   ru: {
     campaigns: 'Кампании',
@@ -219,6 +222,9 @@ const translations: Record<string, Record<string, string>> = {
     edit: 'Редактировать',
     save: 'Сохранить',
     saving: 'Сохранение...',
+    missingIntros: 'Нет intro',
+    selected: 'выбрано',
+    sendableTomorrow: 'Отправка завтра',
   },
 };
 
@@ -275,6 +281,16 @@ export function deriveEmployeesFromCampaignCompany(
     replied: employee.replied,
     reply_count: employee.reply_count,
   }));
+}
+
+export function getMissingIntroCompanyIds(companies: CampaignDetailCompany[]): string[] {
+  return companies
+    .filter((company) =>
+      company.employees.some(
+        (employee) => employee.eligible_for_new_intro && employee.draft_counts.intro === 0
+      )
+    )
+    .map((company) => company.company_id);
 }
 
 function formatDate(iso: string | null | undefined): string {
@@ -431,11 +447,13 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
   const [campaignSearch, setCampaignSearch] = useState('');
   const [companySearch, setCompanySearch] = useState('');
   const [companyResearchFilter, setCompanyResearchFilter] = useState<'all' | 'fresh' | 'stale' | 'missing'>('all');
+  const [companyIntroFilter, setCompanyIntroFilter] = useState<'all' | 'missing-intros'>('all');
   const [messageStatusFilter, setMessageStatusFilter] = useState<MessageStatusFilter>('all');
   const [messageSequenceFilter, setMessageSequenceFilter] = useState<MessageSequenceFilter>('all');
 
   // ---- Companies from API ----
   const [companies, setCompanies] = useState<CampaignDetailCompany[]>([]);
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState<Set<string>>(() => new Set());
 
   // ---- Drawer ----
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -572,6 +590,7 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
         setEvents([]);
         setPinnedCompanyId(null);
         setPinnedEmployeeId(null);
+        setSelectedCompanyIds(new Set());
       };
       // Defer the clear so it runs outside the effect body synchronously
       const t = setTimeout(clear, 0);
@@ -586,6 +605,7 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
         setLoadingCompanies(true);
         setPinnedCompanyId(null);
         setPinnedEmployeeId(null);
+        setSelectedCompanyIds(new Set());
       }
     }, 0);
 
@@ -615,6 +635,15 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
       clearTimeout(resetTimer);
     };
   }, [selectedCampaignId]);
+
+  useEffect(() => {
+    setSelectedCompanyIds((prev) => {
+      if (prev.size === 0) return prev;
+      const available = new Set(companies.map((company) => company.company_id));
+      const next = new Set([...prev].filter((companyId) => available.has(companyId)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [companies]);
 
   // ---- Reset pinned employee when active company changes (event handler pattern) ----
   // Handled inline in the company click handler instead of a separate effect
@@ -657,8 +686,31 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
     if (companyResearchFilter !== 'all') {
       result = result.filter((c) => c.enrichment.status === companyResearchFilter);
     }
+    if (companyIntroFilter === 'missing-intros') {
+      result = result.filter((c) =>
+        c.employees.some(
+          (employee) => employee.eligible_for_new_intro && employee.draft_counts.intro === 0
+        )
+      );
+    }
     return result;
-  }, [companies, companySearch, companyResearchFilter]);
+  }, [companies, companySearch, companyResearchFilter, companyIntroFilter]);
+
+  const missingIntroCompanyIds = useMemo(() => getMissingIntroCompanyIds(companies), [companies]);
+
+  const selectedCompanyIdList = useMemo(() => [...selectedCompanyIds], [selectedCompanyIds]);
+
+  const toggleCompanySelection = useCallback((companyId: string) => {
+    setSelectedCompanyIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(companyId)) {
+        next.delete(companyId);
+      } else {
+        next.add(companyId);
+      }
+      return next;
+    });
+  }, []);
 
   // ---- Active company object (for context card) ----
   const activeCompany = useMemo(
@@ -984,7 +1036,24 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
 
           {/* Send preflight */}
           <CampaignSendPreflightCard campaignId={selectedCampaignId ?? undefined} compact language={language} />
-          <CampaignDraftGenerateCard campaignId={selectedCampaignId ?? undefined} language={language} />
+          <CampaignDraftGenerateCard
+            campaignId={selectedCampaignId ?? undefined}
+            language={language}
+            selectedCompanyIds={selectedCompanyIdList}
+            missingIntroCompanyIds={missingIntroCompanyIds}
+            onGenerated={() => {
+              if (!selectedCampaignId) return;
+              fetchCampaignDetail(selectedCampaignId)
+                .then((v) => setCompanies(v.companies))
+                .catch(() => {});
+              fetchDrafts(selectedCampaignId, undefined, true)
+                .then((data) => setDrafts(data))
+                .catch(() => {});
+              fetchCampaignAudit(selectedCampaignId)
+                .then((data) => setAuditView(data))
+                .catch(() => {});
+            }}
+          />
           <CampaignBumpQueueCard campaignId={selectedCampaignId ?? undefined} language={language} />
           <CampaignAutoSendCard campaignId={selectedCampaignId ?? undefined} language={language} />
           <CampaignSendPolicyCard campaignId={selectedCampaignId ?? undefined} language={language} />
@@ -1002,6 +1071,11 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
             <span className="od-col-title">{t.companies}</span>
             {!loadingCompanies && selectedCampaignId && (
               <span className="od-count-chip">{filteredCompanies.length}</span>
+            )}
+            {selectedCompanyIds.size > 0 && (
+              <span className="od-count-chip" style={{ color: 'var(--od-orange)' }}>
+                {selectedCompanyIds.size} {t.selected}
+              </span>
             )}
             {selectedCampaignId && (
               <button
@@ -1043,6 +1117,12 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
                     {f === 'all' ? t.all : t[f] ?? f}
                   </button>
                 ))}
+                <button
+                  className={`od-filter-chip${companyIntroFilter === 'missing-intros' ? ' od-filter-chip--active' : ''}`}
+                  onClick={() => setCompanyIntroFilter((current) => current === 'missing-intros' ? 'all' : 'missing-intros')}
+                >
+                  {t.missingIntros} {missingIntroCompanyIds.length}
+                </button>
               </div>
 
               <div className="od-col-body">
@@ -1069,10 +1149,11 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
                   filteredCompanies.map((company) => {
                     const isHovered = companyHover.hoveredId === company.company_id;
                     const isPinned = pinnedCompanyId === company.company_id;
+                    const isSelected = selectedCompanyIds.has(company.company_id);
                     return (
                       <div
                         key={company.company_id}
-                        className={`od-company-item${isHovered ? ' od-company-item--hovered' : ''}${isPinned ? ' od-company-item--pinned' : ''}`}
+                        className={`od-company-item${isHovered ? ' od-company-item--hovered' : ''}${isPinned ? ' od-company-item--pinned' : ''}${isSelected ? ' od-company-item--selected' : ''}`}
                         onMouseEnter={() => companyHover.onMouseEnter(company.company_id)}
                         onMouseLeave={companyHover.onMouseLeave}
                         onClick={() => {
@@ -1080,9 +1161,19 @@ export default function CampaignOperatorDesk({ isDark, language }: CampaignOpera
                           setPinnedEmployeeId(null);
                         }}
                       >
-                        <span className="od-company-item__name" title={company.company_name ?? company.company_id}>
-                          {company.company_name ?? company.company_id}
-                        </span>
+                        <div className="od-company-item__main">
+                          <input
+                            type="checkbox"
+                            className="od-company-item__checkbox"
+                            checked={isSelected}
+                            aria-label={`${language === 'ru' ? 'Выбрать' : 'Select'} ${company.company_name ?? company.company_id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={() => toggleCompanySelection(company.company_id)}
+                          />
+                          <span className="od-company-item__name" title={company.company_name ?? company.company_id}>
+                            {company.company_name ?? company.company_id}
+                          </span>
+                        </div>
                         {company.website && (
                           <a
                             className="od-company-item__website"
@@ -1765,7 +1856,7 @@ function MessageCard({ draft, t, onApprove, onReject, onSave, onViewTrace }: Mes
                 return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
               })() && (
                 <span className="od-count-chip" style={{ fontSize: 9, color: 'var(--od-orange)' }}>
-                  {language === 'ru' ? 'Отправка завтра' : 'Sendable tomorrow'}
+                  {t.sendableTomorrow}
                 </span>
               )}
             </div>

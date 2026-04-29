@@ -214,7 +214,7 @@ async function evaluateIntroAutoSend(
   const preflight = await getCampaignSendPreflight(client, campaign.id);
   return {
     enabled: true,
-    shouldTrigger: preflight.readyToSend,
+    shouldTrigger: preflight.readyToSend && preflight.summary.sendableApprovedIntroDraftCount > 0,
     blockers: preflight.blockers.map((blocker) => blocker.code),
   };
 }

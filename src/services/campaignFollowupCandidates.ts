@@ -8,6 +8,7 @@ import {
 import { getCampaignSendPolicy } from './campaignSendPolicy.js';
 
 const DEFAULT_MIN_DAYS_SINCE_INTRO = 3;
+const SUPABASE_IN_FILTER_CHUNK_SIZE = 100;
 
 interface DraftRow {
   id: string;
@@ -15,6 +16,8 @@ interface DraftRow {
   company_id: string | null;
   email_type: string | null;
   status: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 interface OutboundRow {
@@ -38,6 +41,37 @@ interface EventRow {
 interface CompanyRow {
   id: string;
   country_code: string | null;
+}
+
+function chunkValues<T>(values: T[], size: number = SUPABASE_IN_FILTER_CHUNK_SIZE): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function selectInChunks<Row>(
+  client: SupabaseClient,
+  table: string,
+  columns: string,
+  field: string,
+  values: string[]
+): Promise<Row[]> {
+  const uniqueValues = Array.from(new Set(values.filter(Boolean)));
+  if (uniqueValues.length === 0) {
+    return [];
+  }
+
+  const rows: Row[] = [];
+  for (const valuesChunk of chunkValues(uniqueValues)) {
+    const res = await (client.from(table) as any).select(columns).in(field, valuesChunk);
+    if (res.error) {
+      throw res.error;
+    }
+    rows.push(...((res.data ?? []) as Row[]));
+  }
+  return rows;
 }
 
 export interface CampaignFollowupCandidate {
@@ -95,12 +129,23 @@ function getDaysSinceIntro(sentAt: string | null, now: Date): number | null {
   return Math.max(0, Math.floor(diffMs / (24 * 60 * 60 * 1000)));
 }
 
-function pickLatestSentOutbound(rows: OutboundRow[]): OutboundRow | null {
+function getOutboundSentAt(row: OutboundRow, draftById: Map<string, DraftRow>): string | null {
+  if (row.sent_at) {
+    return row.sent_at;
+  }
+  const draft = row.draft_id ? draftById.get(row.draft_id) : null;
+  return draft?.updated_at ?? draft?.created_at ?? null;
+}
+
+function pickLatestSentOutbound(
+  rows: OutboundRow[],
+  draftById: Map<string, DraftRow>
+): OutboundRow | null {
   return [...rows]
     .filter((row) => row.status === 'sent')
     .sort((left, right) => {
-      const leftDate = parseIsoDate(left.sent_at)?.getTime() ?? 0;
-      const rightDate = parseIsoDate(right.sent_at)?.getTime() ?? 0;
+      const leftDate = parseIsoDate(getOutboundSentAt(left, draftById))?.getTime() ?? 0;
+      const rightDate = parseIsoDate(getOutboundSentAt(right, draftById))?.getTime() ?? 0;
       return rightDate - leftDate;
     })[0] ?? null;
 }
@@ -135,7 +180,7 @@ export async function listCampaignFollowupCandidates(
 
   const draftsRes = await client
     .from('drafts')
-    .select('id,contact_id,company_id,email_type,status')
+    .select('id,contact_id,company_id,email_type,status,created_at,updated_at')
     .eq('campaign_id', campaignId);
   if (draftsRes.error) {
     throw draftsRes.error;
@@ -154,14 +199,15 @@ export async function listCampaignFollowupCandidates(
 
   const events: EventRow[] = [];
   if (outboundIds.length > 0) {
-    const eventsRes = await client
-      .from('email_events')
-      .select('outbound_id,event_type,occurred_at,payload')
-      .in('outbound_id', outboundIds);
-    if (eventsRes.error) {
-      throw eventsRes.error;
-    }
-    events.push(...((eventsRes.data ?? []) as EventRow[]));
+    events.push(
+      ...(await selectInChunks<EventRow>(
+        client,
+        'email_events',
+        'outbound_id,event_type,occurred_at,payload',
+        'outbound_id',
+        outboundIds
+      ))
+    );
   }
 
   const drafts = (draftsRes.data ?? []) as DraftRow[];
@@ -205,11 +251,14 @@ export async function listCampaignFollowupCandidates(
   );
   const companyCountriesById = new Map<string, string | null>();
   if (companyIds.length > 0) {
-    const companiesRes = await client.from('companies').select('id,country_code').in('id', companyIds);
-    if (companiesRes.error) {
-      throw companiesRes.error;
-    }
-    for (const row of (companiesRes.data ?? []) as CompanyRow[]) {
+    const companyRows = await selectInChunks<CompanyRow>(
+      client,
+      'companies',
+      'id,country_code',
+      'id',
+      companyIds
+    );
+    for (const row of companyRows) {
       companyCountriesById.set(row.id, typeof row.country_code === 'string' ? row.country_code : null);
     }
   }
@@ -221,10 +270,11 @@ export async function listCampaignFollowupCandidates(
       const draft = row.draft_id ? draftById.get(row.draft_id) : null;
       return draft?.email_type === 'intro';
     });
-    const introOutbound = pickLatestSentOutbound(introOutbounds);
+    const introOutbound = pickLatestSentOutbound(introOutbounds, draftById);
     if (!introOutbound) {
       continue;
     }
+    const introSentAt = getOutboundSentAt(introOutbound, draftById);
 
     const contactEvents = contactState.outbounds.flatMap((outbound) =>
       events.filter((event) => event.outbound_id === outbound.id)
@@ -238,7 +288,7 @@ export async function listCampaignFollowupCandidates(
       const draft = row.draft_id ? draftById.get(row.draft_id) : null;
       return draft?.email_type === 'bump' && row.status === 'sent';
     });
-    const daysSinceIntro = getDaysSinceIntro(introOutbound.sent_at, now);
+    const daysSinceIntro = getDaysSinceIntro(introSentAt, now);
     const companyCalendarOverride = getCompanyCalendarOverride(
       contactState.company_id,
       companyCountriesById
@@ -246,10 +296,10 @@ export async function listCampaignFollowupCandidates(
     const effectiveBusinessDaysSinceIntro =
       (sendPolicy.sendDayCountMode === 'business_days_campaign' ||
         sendPolicy.sendDayCountMode === 'business_days_recipient') &&
-      introOutbound.sent_at
+      introSentAt
         ? countCampaignBusinessDaysBetween(
             sendPolicy,
-            new Date(introOutbound.sent_at),
+            new Date(introSentAt),
             now,
             sendPolicy.sendDayCountMode === 'business_days_recipient'
               ? companyCalendarOverride
@@ -269,7 +319,7 @@ export async function listCampaignFollowupCandidates(
         ? companyCountriesById.get(contactState.company_id) ?? null
         : null,
       intro_sent: true,
-      intro_sent_at: introOutbound.sent_at,
+      intro_sent_at: introSentAt,
       intro_sender_identity: introOutbound.sender_identity,
       reply_received: suppression.replyReceived,
       bounce: suppression.bounced,

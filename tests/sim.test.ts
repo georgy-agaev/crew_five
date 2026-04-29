@@ -109,6 +109,7 @@ describe('sim service (Option 2 stub)', () => {
     expect(update).toHaveBeenCalledWith({
       status: 'not_implemented',
       result: { reason: 'custom reason' },
+      updated_at: expect.any(String),
     });
     expect(eq).toHaveBeenCalledWith('id', 'job-2');
     expect(updated.status).toBe('not_implemented');

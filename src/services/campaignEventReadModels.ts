@@ -6,6 +6,7 @@ export interface CampaignEventRecord {
   id: string;
   outbound_id: string;
   event_type: string;
+  reply_label: string | null;
   outcome_classification: string | null;
   provider_event_id: string | null;
   occurred_at: string | null;
@@ -153,7 +154,7 @@ export async function listCampaignEvents(client: SupabaseClient, campaignId: str
   const { data, error } = await client
     .from('email_events')
     .select(
-      'id,outbound_id,event_type,outcome_classification,provider_event_id,occurred_at,created_at,payload,pattern_id,coach_prompt_id,draft_id'
+      'id,outbound_id,event_type,reply_label,outcome_classification,provider_event_id,occurred_at,created_at,payload,pattern_id,coach_prompt_id,draft_id'
     )
     .in('outbound_id', outboundIds)
     .order('occurred_at', { ascending: false })
@@ -172,6 +173,7 @@ export async function listCampaignEvents(client: SupabaseClient, campaignId: str
       id: String(row.id),
       outbound_id: String(row.outbound_id),
       event_type: typeof row.event_type === 'string' ? row.event_type : 'unknown',
+      reply_label: typeof row.reply_label === 'string' ? row.reply_label : null,
       outcome_classification:
         typeof row.outcome_classification === 'string' ? row.outcome_classification : null,
       provider_event_id: typeof row.provider_event_id === 'string' ? row.provider_event_id : null,

@@ -285,6 +285,25 @@
   border-left-width: 3px;
 }
 
+.od-company-item--selected {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--od-orange) 36%, transparent);
+}
+
+.od-company-item__main {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.od-company-item__checkbox {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--od-orange);
+  cursor: pointer;
+}
+
 .od-company-item__name {
   font-size: 13px;
   font-weight: 600;

@@ -56,6 +56,8 @@ describe('runCampaignAutoSendSweep', () => {
         rejectedDraftCount: 0,
         sentDraftCount: 0,
         sendableApprovedDraftCount: 4,
+        sendableApprovedIntroDraftCount: 4,
+        sendableApprovedBumpDraftCount: 0,
         approvedMissingRecipientEmailCount: 0,
       },
       senderPlan: {
@@ -114,6 +116,8 @@ describe('runCampaignAutoSendSweep', () => {
         rejectedDraftCount: 0,
         sentDraftCount: 0,
         sendableApprovedDraftCount: 4,
+        sendableApprovedIntroDraftCount: 4,
+        sendableApprovedBumpDraftCount: 0,
         approvedMissingRecipientEmailCount: 0,
       },
       senderPlan: {
@@ -312,6 +316,8 @@ describe('runCampaignAutoSendSweep', () => {
         rejectedDraftCount: 0,
         sentDraftCount: 2,
         sendableApprovedDraftCount: 4,
+        sendableApprovedIntroDraftCount: 4,
+        sendableApprovedBumpDraftCount: 0,
         approvedMissingRecipientEmailCount: 0,
       },
       senderPlan: {
@@ -381,6 +387,8 @@ describe('runCampaignAutoSendSweep', () => {
           rejectedDraftCount: 0,
           sentDraftCount: 0,
           sendableApprovedDraftCount: 1,
+          sendableApprovedIntroDraftCount: 1,
+          sendableApprovedBumpDraftCount: 0,
           approvedMissingRecipientEmailCount: 0,
         },
         senderPlan: {
@@ -403,6 +411,8 @@ describe('runCampaignAutoSendSweep', () => {
           rejectedDraftCount: 0,
           sentDraftCount: 0,
           sendableApprovedDraftCount: 1,
+          sendableApprovedIntroDraftCount: 1,
+          sendableApprovedBumpDraftCount: 0,
           approvedMissingRecipientEmailCount: 0,
         },
         senderPlan: {
@@ -475,6 +485,8 @@ describe('runCampaignAutoSendSweep', () => {
         rejectedDraftCount: 0,
         sentDraftCount: 0,
         sendableApprovedDraftCount: 1,
+        sendableApprovedIntroDraftCount: 1,
+        sendableApprovedBumpDraftCount: 0,
         approvedMissingRecipientEmailCount: 0,
       },
       senderPlan: {

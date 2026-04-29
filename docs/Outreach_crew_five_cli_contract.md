@@ -402,6 +402,28 @@ Response shape:
       "message": "Some approved drafts target suppressed or already-used contacts"
     }
   ],
+  "issues": [
+    {
+      "code": "intro_already_sent",
+      "message": "Approved intro draft targets a contact that already received an intro",
+      "draftId": "draft-1",
+      "draftStatus": "approved",
+      "emailType": "intro",
+      "subject": "вопрос по переговорной",
+      "contactId": "contact-1",
+      "contactName": "Иван Иванов",
+      "contactPosition": "CEO",
+      "workEmail": null,
+      "workEmailStatus": "unknown",
+      "genericEmail": "info@example.ru",
+      "genericEmailStatus": "unknown",
+      "relatedOutboundId": "outbound-1",
+      "relatedDraftId": "draft-original-intro",
+      "relatedCampaignId": "camp-original",
+      "relatedCampaignName": "Original Campaign",
+      "relatedSentAt": "2026-03-31T11:18:28.055Z"
+    }
+  ],
   "summary": {
     "mailboxAssignmentCount": 1,
     "draftCount": 14,
@@ -410,6 +432,8 @@ Response shape:
     "rejectedDraftCount": 3,
     "sentDraftCount": 0,
     "sendableApprovedDraftCount": 7,
+    "sendableApprovedIntroDraftCount": 0,
+    "sendableApprovedBumpDraftCount": 7,
     "approvedMissingRecipientEmailCount": 2,
     "approvedSuppressedContactCount": 1
   },

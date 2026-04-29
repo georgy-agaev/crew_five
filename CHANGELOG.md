@@ -3,7 +3,35 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Added
+- Added an Outreach handoff for upgrading the bump-generation bridge from static template mode to
+  LLM batch-per-company generation while preserving the current `OUTREACH_GENERATE_BUMPS_CMD`
+  contract.
+- Added async draft-generation jobs: `/api/drafts/generate` now returns a job envelope, with
+  polling via `/api/drafts/generate/jobs/:jobId` and active campaign recovery via
+  `/api/campaigns/:id/draft-generation-job/active`.
+- Added Outreach JSONL progress integration for draft-generation jobs; live runs now pass
+  `--progress-jsonl` and update job counters/events while the generator is still running.
+- Added job-aware Campaign draft generation UI that polls progress, shows generated/skipped/failed
+  counters, recovers running jobs after navigation, and blocks duplicate campaign generation while a
+  job is active.
+- Added a live draft-generation progress meter and current-event line to the Campaign UI, showing
+  processed/total recipients plus the latest Outreach JSONL event while a job is running.
+- Added selected-company draft generation for the Outreach bridge: `/api/drafts/generate`,
+  `triggerDraftGenerate`, and the live `OUTREACH_GENERATE_DRAFTS_CMD` adapter now accept
+  optional `companyIds` and `draftsModel` (`sonnet`/`opus`) and forward them to the Outreach CLI.
+- Added Campaign Operator Desk controls for selected-company intro generation, an `opus`/`sonnet`
+  model picker, a `Missing intros` company filter chip, and a `campaign:missing-intros` CLI helper.
+
 ### Fixed
+- Draft-generation jobs now auto-fail stale `created`/`running` rows after a configurable
+  no-progress timeout (`DRAFT_GENERATION_JOB_STALE_MINUTES`, default `30`), preserving counters
+  and unblocking retries after adapter restarts or Outreach/provider interruptions.
+- Bump auto-generation now materializes recipient email state from `employees` before invoking
+  Outreach, blocking contacts without a sendable work or assigned generic email from entering the
+  bump generation allowlist.
+- Restored the Web build by aligning campaign event types with the existing `reply_label` API field
+  and removing stale unused Campaigns/Inbox UI code.
 - `runCampaignAutoSendSweep` now executes automatic bump-draft generation before campaign send
   calendar gating. This keeps semi-automatic bump review flowing even outside the send window while
   preserving the existing calendar block for actual message sending.
@@ -12,6 +40,44 @@ All notable changes to this project will be documented in this file.
   first page and prevents `limit=1000` from crashing the endpoint.
 - `Inbox V2` now consumes the canonical server-side inbox filters for `linkage`, `handled`, and
   `category` instead of preloading large reply sets and reproducing those filters client-side.
+- Campaign send execution now chunks large Supabase `.in(...)` lookups for send history/events,
+  fixing `Send now` failures on campaigns with hundreds of prior outbounds.
+- Send preflight now returns concrete `issues[]` for problematic drafts and chunks large employee
+  and event lookups, so operators can filter by missing email/review/suppression problems instead
+  of manually tracing blocked campaigns.
+- Live Outreach draft generation now quarantines newly generated intro drafts when the target
+  contact already has a sent intro, an active intro, or an active bump, preventing duplicate intro
+  drafts from entering review/send after broad company-scoped generation.
+- Live Outreach draft generation now prefilters intro scope before calling Outreach, narrowing
+  company-scoped requests to safe missing-intro companies and returning a zero-generation summary
+  without invoking Outreach when no safe targets remain.
+- Campaign detail `eligible_for_new_intro` now treats active intro and active bump drafts as block
+  reasons (`intro_exists`, `bump_exists`), keeping intro eligibility centralized for the Web UI and
+  Outreach orchestrator.
+- The live Outreach draft bridge now passes exact intro `eligibleContactIds` via
+  `--contact-ids-file` and treats post-generation quarantine as an assertion failure, so Outreach
+  receives a contact-level allowlist instead of a broad company-level scope.
+- Draft-generation preflight now hard-blocks contacts without both `sendable` and
+  `recipient_email` even if an upstream read-model invariant marks them eligible, preventing
+  no-email contacts from entering the Outreach allowlist and spending LLM tokens.
+- Centralized new-intro eligibility in a shared `introEligibility` predicate used by the campaign
+  detail read-model, keeping work and assigned generic recipients eligible while making missing
+  materialized recipients a hard `no_sendable_email` blocker.
+- Post-generation draft safety now also rejects newly generated intro drafts with no materialized
+  sendable recipient as `quarantine_email_missing`, while preserving assigned generic recipients.
+- Draft-generation jobs now preserve streamed generated/skipped/failed counters when a later
+  post-generation assertion fails, instead of collapsing the failed job summary to `0/0/1`.
+- Send preflight now checks previously sent intro messages globally by contact, not only inside the
+  current campaign, and exposes intro/bump sendable counts so auto-send does not choose the intro
+  path when only bump drafts are actionable.
+- Follow-up eligibility now handles legacy sent intro outbounds with `sent_at = null` by falling
+  back to the linked intro draft timestamp, so approved bump drafts are not incorrectly blocked as
+  "min days not reached".
+- Follow-up eligibility now chunks large `email_events` and company lookups, fixing
+  `GET /api/drafts?includeRecipientContext=true` server errors on campaigns with hundreds of sent
+  outbounds.
+- Send preflight `intro_already_sent` issues now include the related outbound/draft/campaign/date,
+  and the Web preflight card displays that source so cross-campaign already-sent blocks are visible.
 
 ## [0.2.62] - 2026-04-02
 ### Changed

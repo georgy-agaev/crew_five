@@ -45,6 +45,7 @@ export function createMockDeps(): AdapterDeps {
     },
   ];
   const mockImportProcessJobs = new Map<string, any>();
+  const mockDraftGenerationJobs = new Map<string, { campaignId: string; dryRun: boolean }>();
   const mockPromptRegistry = [
     { id: 'draft_intro_v1', step: 'draft', version: 'v1', rollout_status: 'active' },
     { id: 'icp_v1', step: 'icp', version: 'v1', rollout_status: 'active' },
@@ -249,6 +250,8 @@ export function createMockDeps(): AdapterDeps {
           blocked_bounced_contacts: 0,
           blocked_unsubscribed_contacts: 0,
           blocked_already_used_contacts: 0,
+          blocked_intro_exists_contacts: 0,
+          blocked_bump_exists_contacts: 0,
           contacts_with_drafts: 1,
           contacts_with_sent_outbound: 0,
         },
@@ -348,6 +351,23 @@ export function createMockDeps(): AdapterDeps {
           message: 'Some approved drafts are missing a sendable recipient email',
         },
       ],
+      issues: [
+        {
+          code: 'missing_recipient_email',
+          message: 'Approved draft is missing a sendable recipient email',
+          draftId: 'draft-missing-email',
+          draftStatus: 'approved',
+          emailType: 'intro',
+          subject: 'Intro',
+          contactId: 'contact-1',
+          contactName: 'Mock Contact',
+          contactPosition: 'Founder',
+          workEmail: null,
+          workEmailStatus: null,
+          genericEmail: null,
+          genericEmailStatus: null,
+        },
+      ],
       summary: {
         mailboxAssignmentCount: 1,
         draftCount: 2,
@@ -356,6 +376,8 @@ export function createMockDeps(): AdapterDeps {
         rejectedDraftCount: 0,
         sentDraftCount: 0,
         sendableApprovedDraftCount: 0,
+        sendableApprovedIntroDraftCount: 0,
+        sendableApprovedBumpDraftCount: 0,
         approvedMissingRecipientEmailCount: 1,
         approvedSuppressedContactCount: 0,
       },
@@ -1350,7 +1372,39 @@ export function createMockDeps(): AdapterDeps {
       mockPromptRegistry.push(created as any);
       return created;
     },
-    generateDrafts: async ({ dryRun }) => ({ generated: dryRun ? 0 : mockDrafts.length, dryRun: Boolean(dryRun), gracefulUsed: 0 }),
+    generateDrafts: async ({ campaignId, dryRun }) => {
+      const jobId = `job-draft-mock-${mockDraftGenerationJobs.size + 1}`;
+      const job = { campaignId, dryRun: Boolean(dryRun) };
+      mockDraftGenerationJobs.set(jobId, job);
+      return {
+        jobId,
+        status: 'running',
+        campaignId,
+        dryRun: job.dryRun,
+      };
+    },
+    getDraftGenerationJobStatus: async (jobId) => {
+      const job = mockDraftGenerationJobs.get(jobId) ?? { campaignId: 'mock-campaign', dryRun: false };
+      return {
+        jobId,
+        status: 'completed',
+        campaignId: job.campaignId,
+        dryRun: job.dryRun,
+        generated: mockDrafts.length,
+        failed: 0,
+        skipped: 0,
+        requestedContactCount: mockDrafts.length,
+        totalRecipients: mockDrafts.length,
+        lastEvent: 'completed',
+        skippedByReason: {},
+        skippedDetails: [],
+        errors: [],
+        result: { generated: mockDrafts.length, failed: 0, skipped: 0 },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    },
+    findActiveDraftGenerationJob: async () => null,
     sendSmartlead: async ({ dryRun, campaignId, smartleadCampaignId, batchSize }) => ({
       dryRun: Boolean(dryRun),
       campaignId,

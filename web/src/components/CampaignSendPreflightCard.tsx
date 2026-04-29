@@ -3,6 +3,7 @@ import {
   fetchCampaignSendPreflight,
   triggerCampaignSendExecution,
   type CampaignSendExecutionResult,
+  type CampaignSendPreflightIssue,
   type CampaignSendPreflightView,
 } from '../apiClient';
 
@@ -23,6 +24,16 @@ const translations: Record<string, Record<string, string>> = {
     sent: 'Sent',
     missingEmail: 'Missing email',
     suppressed: 'Suppressed',
+    issues: 'Issues',
+    allIssues: 'All issues',
+    generatedIssue: 'Needs review',
+    missingEmailIssue: 'Missing email',
+    suppressedIssue: 'Suppressed',
+    alreadySentIssue: 'Already sent',
+    sentEvidencePrefix: 'Sent in',
+    noIssues: 'No preflight issues',
+    unknownContact: 'Unknown contact',
+    noSubject: 'No subject',
     senderPlan: 'Sender plan',
     senders: 'senders',
     domains: 'Domains',
@@ -49,6 +60,16 @@ const translations: Record<string, Record<string, string>> = {
     sent: 'Отправлено',
     missingEmail: 'Нет email',
     suppressed: 'Подавлено',
+    issues: 'Проблемы',
+    allIssues: 'Все проблемы',
+    generatedIssue: 'Нужна проверка',
+    missingEmailIssue: 'Нет email',
+    suppressedIssue: 'Подавлено',
+    alreadySentIssue: 'Уже отправляли',
+    sentEvidencePrefix: 'Отправлено в',
+    noIssues: 'Проблем нет',
+    unknownContact: 'Контакт неизвестен',
+    noSubject: 'Без темы',
     senderPlan: 'Отправители',
     senders: 'отправителей',
     domains: 'Домены',
@@ -67,6 +88,34 @@ const translations: Record<string, Record<string, string>> = {
 
 function getT(language: string): Record<string, string> {
   return translations[language] ?? translations['en'];
+}
+
+type IssueFilter = 'all' | CampaignSendPreflightIssue['code'];
+
+function getIssueLabel(t: Record<string, string>, code: CampaignSendPreflightIssue['code']) {
+  if (code === 'generated_not_reviewed') return t.generatedIssue;
+  if (code === 'missing_recipient_email') return t.missingEmailIssue;
+  if (code === 'suppressed_contact') return t.suppressedIssue;
+  if (code === 'intro_already_sent') return t.alreadySentIssue;
+  return code;
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return null;
+  return value.slice(0, 10);
+}
+
+function getIssueEvidenceText(t: Record<string, string>, issue: CampaignSendPreflightIssue) {
+  if (issue.code !== 'intro_already_sent') {
+    return null;
+  }
+  const campaign = issue.relatedCampaignName || issue.relatedCampaignId;
+  const sentAt = formatDate(issue.relatedSentAt);
+  if (!campaign && !sentAt) {
+    return null;
+  }
+  const source = campaign ? `${t.sentEvidencePrefix} ${campaign}` : t.sentEvidencePrefix;
+  return [source, sentAt].filter(Boolean).join(' · ');
 }
 
 // ============================================================
@@ -89,6 +138,7 @@ export function CampaignSendPreflightCard({
   const [sendLoading, setSendLoading] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendResult, setSendResult] = useState<CampaignSendExecutionResult | null>(null);
+  const [issueFilter, setIssueFilter] = useState<IssueFilter>('all');
 
   useEffect(() => {
     if (!campaignId) {
@@ -151,7 +201,22 @@ export function CampaignSendPreflightCard({
 
   if (!data) return null;
 
-  const { readyToSend, blockers, summary, senderPlan } = data;
+  const { readyToSend, blockers, summary, senderPlan, issues = [] } = data;
+  const issueCounts = issues.reduce(
+    (acc, issue) => {
+      acc[issue.code] = (acc[issue.code] ?? 0) + 1;
+      return acc;
+    },
+    {} as Record<CampaignSendPreflightIssue['code'], number>
+  );
+  const issueFilters: Array<{ key: IssueFilter; label: string; count: number }> = [
+    { key: 'all', label: t.allIssues, count: issues.length },
+    { key: 'generated_not_reviewed', label: t.generatedIssue, count: issueCounts.generated_not_reviewed ?? 0 },
+    { key: 'missing_recipient_email', label: t.missingEmailIssue, count: issueCounts.missing_recipient_email ?? 0 },
+    { key: 'suppressed_contact', label: t.suppressedIssue, count: issueCounts.suppressed_contact ?? 0 },
+    { key: 'intro_already_sent', label: t.alreadySentIssue, count: issueCounts.intro_already_sent ?? 0 },
+  ].filter((item) => item.key === 'all' || item.count > 0);
+  const visibleIssues = issueFilter === 'all' ? issues : issues.filter((issue) => issue.code === issueFilter);
 
   const handleSendNow = async () => {
     if (!campaignId || sendLoading) return;
@@ -302,6 +367,68 @@ export function CampaignSendPreflightCard({
               } ${t.failedLabel} · ${sendResult.skippedCount ?? 0} ${t.skippedLabel}`}
             </div>
           )}
+        </div>
+      )}
+
+      {!compact && issues.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div className="od-context-row" style={{ marginBottom: 6 }}>
+            <span className="od-context-row__label">{t.issues}</span>
+            <span className="od-context-row__value">{issues.length}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+            {issueFilters.map((filter) => (
+              <button
+                key={filter.key}
+                type="button"
+                className="od-count-chip"
+                onClick={() => setIssueFilter(filter.key)}
+                style={{
+                  border: issueFilter === filter.key ? '1px solid var(--od-orange)' : undefined,
+                  color: issueFilter === filter.key ? 'var(--od-orange)' : undefined,
+                  cursor: 'pointer',
+                }}
+              >
+                {filter.label} {filter.count}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflow: 'auto' }}>
+            {visibleIssues.map((issue) => (
+              <div
+                key={`${issue.code}-${issue.draftId}`}
+                style={{
+                  border: '1px solid var(--od-border)',
+                  borderRadius: 8,
+                  padding: '7px 8px',
+                  background: 'var(--od-card)',
+                }}
+              >
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span className="od-count-chip" style={{ color: 'var(--od-warning)' }}>
+                    {getIssueLabel(t, issue.code)}
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--od-text)' }}>
+                    {issue.contactName || t.unknownContact}
+                  </span>
+                  {issue.contactPosition && (
+                    <span style={{ fontSize: 11, color: 'var(--od-text-muted)' }}>{issue.contactPosition}</span>
+                  )}
+                </div>
+                <div style={{ marginTop: 4, fontSize: 12, color: 'var(--od-text-muted)' }}>
+                  {issue.subject || t.noSubject}
+                </div>
+                <div style={{ marginTop: 3, fontSize: 11, color: 'var(--od-text-muted)' }}>
+                  {issue.workEmail || issue.genericEmail || issue.draftId}
+                </div>
+                {getIssueEvidenceText(t, issue) && (
+                  <div style={{ marginTop: 3, fontSize: 11, color: 'var(--od-orange)' }}>
+                    {getIssueEvidenceText(t, issue)}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

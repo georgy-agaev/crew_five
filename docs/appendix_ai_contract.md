@@ -1,6 +1,6 @@
 # Appendix A – AI Draft Generation Contract
 
-> Version: v0.2 (2025-11-27)
+> Version: v0.3 (2026-04-24)
 
 All components (CLI, Web UI, Supabase RPC, orchestrator services, AI SDK providers) must call the same function:
 
@@ -11,6 +11,21 @@ function generate_email_draft(
   pattern_mode: PatternMode,
   brief: EmailDraftRequest["brief"]
 ): Promise<EmailDraftResponse>
+```
+
+## Operational Wrapper Options
+
+The Outreach-owned draft-generation wrapper keeps the final stdout contract unchanged:
+`{"generated":N,"dryRun":bool,"failed":F,"skipped":S}`.
+
+Web/CLI adapters may pass these optional batch controls without changing
+`generate_email_draft` itself:
+
+```ts
+interface DraftGenerationBatchOptions {
+  companyIds?: string[];          // selected company UUIDs, max 200 in Web adapter validation
+  draftsModel?: "sonnet" | "opus"; // default is owned by the Outreach wrapper, currently opus
+}
 ```
 
 ## Request Types

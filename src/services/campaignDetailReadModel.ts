@@ -14,6 +14,7 @@ import {
   type EmailDeliverabilityStatus,
   type RecipientEmailSource,
 } from './recipientResolver.js';
+import { evaluateNewIntroEligibility, type IntroEligibilityBlockReason } from './introEligibility.js';
 import type { OfferRecord } from './offers.js';
 import type { ProjectRecord } from './projects.js';
 
@@ -94,7 +95,7 @@ export interface CampaignDetailEmployeeView {
   recipient_email: string | null;
   recipient_email_source: RecipientEmailSource;
   sendable: boolean;
-  block_reasons: Array<'no_sendable_email' | 'bounced' | 'unsubscribed' | 'already_used'>;
+  block_reasons: IntroEligibilityBlockReason[];
   eligible_for_new_intro: boolean;
   draft_counts: {
     total: number;
@@ -124,6 +125,8 @@ export interface CampaignDetailCompanyView extends CampaignCompanyRecord {
     blocked_bounced_contacts: number;
     blocked_unsubscribed_contacts: number;
     blocked_already_used_contacts: number;
+    blocked_intro_exists_contacts: number;
+    blocked_bump_exists_contacts: number;
     contacts_with_drafts: number;
     contacts_with_sent_outbound: number;
   };
@@ -367,11 +370,21 @@ export async function getCampaignReadModel(
     const sentCount = employeeOutbounds.filter((row) => row.status === 'sent').length;
     const suppression = deriveContactSuppressionState(employeeEvents);
     const alreadyUsed = sentCount > 0;
-    const blockReasons: CampaignDetailEmployeeView['block_reasons'] = [];
-    if (!recipient.sendable) blockReasons.push('no_sendable_email');
-    if (suppression.bounced) blockReasons.push('bounced');
-    if (suppression.unsubscribed) blockReasons.push('unsubscribed');
-    if (alreadyUsed) blockReasons.push('already_used');
+    const activeIntroExists = employeeDrafts.some(
+      (draft) => draft.email_type === 'intro' && ['generated', 'approved', 'sending', 'sent'].includes(String(draft.status ?? ''))
+    );
+    const activeBumpExists = employeeDrafts.some(
+      (draft) => draft.email_type === 'bump' && ['generated', 'approved', 'sending', 'sent'].includes(String(draft.status ?? ''))
+    );
+    const eligibility = evaluateNewIntroEligibility({
+      recipientEmail: recipient.recipientEmail,
+      sendable: recipient.sendable,
+      bounced: suppression.bounced,
+      unsubscribed: suppression.unsubscribed,
+      alreadyUsed,
+      activeIntroExists,
+      activeBumpExists,
+    });
 
     const row: CampaignDetailEmployeeView = {
       contact_id: contactId,
@@ -392,8 +405,8 @@ export async function getCampaignReadModel(
       recipient_email: recipient.recipientEmail,
       recipient_email_source: recipient.recipientEmailSource,
       sendable: recipient.sendable,
-      block_reasons: blockReasons,
-      eligible_for_new_intro: blockReasons.length === 0,
+      block_reasons: eligibility.blockReasons,
+      eligible_for_new_intro: eligibility.eligible,
       draft_counts: {
         total: employeeDrafts.length,
         intro: employeeDrafts.filter((draft) => draft.email_type === 'intro').length,
@@ -445,6 +458,12 @@ export async function getCampaignReadModel(
           ).length,
           blocked_already_used_contacts: employees.filter((employee) =>
             employee.block_reasons.includes('already_used')
+          ).length,
+          blocked_intro_exists_contacts: employees.filter((employee) =>
+            employee.block_reasons.includes('intro_exists')
+          ).length,
+          blocked_bump_exists_contacts: employees.filter((employee) =>
+            employee.block_reasons.includes('bump_exists')
           ).length,
           contacts_with_drafts: employees.filter((employee) => employee.draft_counts.total > 0).length,
           contacts_with_sent_outbound: employees.filter((employee) => employee.sent_count > 0).length,

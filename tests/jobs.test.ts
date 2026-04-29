@@ -70,6 +70,7 @@ describe('jobs service', () => {
     expect(update).toHaveBeenCalledWith({
       status: 'completed',
       result: { ok: true },
+      updated_at: expect.any(String),
     });
     expect(eq).toHaveBeenCalledWith('id', 'job-1');
     expect(updated.status).toBe('completed');

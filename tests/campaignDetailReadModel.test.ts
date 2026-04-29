@@ -504,7 +504,25 @@ describe('campaignDetailReadModel', () => {
         if (table === 'drafts') {
           return {
             select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+              eq: vi.fn().mockResolvedValue({
+                data: [
+                  {
+                    id: 'draft-intro-active',
+                    contact_id: 'contact-1',
+                    company_id: 'company-1',
+                    email_type: 'intro',
+                    status: 'generated',
+                  },
+                  {
+                    id: 'draft-bump-active',
+                    contact_id: 'contact-3',
+                    company_id: 'company-1',
+                    email_type: 'bump',
+                    status: 'approved',
+                  },
+                ],
+                error: null,
+              }),
             }),
           };
         }
@@ -647,7 +665,25 @@ describe('campaignDetailReadModel', () => {
         if (table === 'drafts') {
           return {
             select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+              eq: vi.fn().mockResolvedValue({
+                data: [
+                  {
+                    id: 'draft-intro-active',
+                    contact_id: 'contact-1',
+                    company_id: 'company-1',
+                    email_type: 'intro',
+                    status: 'generated',
+                  },
+                  {
+                    id: 'draft-bump-active',
+                    contact_id: 'contact-3',
+                    company_id: 'company-1',
+                    email_type: 'bump',
+                    status: 'approved',
+                  },
+                ],
+                error: null,
+              }),
             }),
           };
         }
@@ -783,7 +819,25 @@ describe('campaignDetailReadModel', () => {
         if (table === 'drafts') {
           return {
             select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+              eq: vi.fn().mockResolvedValue({
+                data: [
+                  {
+                    id: 'draft-intro-active',
+                    contact_id: 'contact-1',
+                    company_id: 'company-1',
+                    email_type: 'intro',
+                    status: 'generated',
+                  },
+                  {
+                    id: 'draft-bump-active',
+                    contact_id: 'contact-3',
+                    company_id: 'company-1',
+                    email_type: 'bump',
+                    status: 'approved',
+                  },
+                ],
+                error: null,
+              }),
             }),
           };
         }
@@ -937,7 +991,25 @@ describe('campaignDetailReadModel', () => {
         if (table === 'drafts') {
           return {
             select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+              eq: vi.fn().mockResolvedValue({
+                data: [
+                  {
+                    id: 'draft-intro-active',
+                    contact_id: 'contact-1',
+                    company_id: 'company-1',
+                    email_type: 'intro',
+                    status: 'generated',
+                  },
+                  {
+                    id: 'draft-bump-active',
+                    contact_id: 'contact-3',
+                    company_id: 'company-1',
+                    email_type: 'bump',
+                    status: 'approved',
+                  },
+                ],
+                error: null,
+              }),
             }),
           };
         }
@@ -1004,7 +1076,7 @@ describe('campaignDetailReadModel', () => {
 
     expect(noEmail).toMatchObject({
       sendable: false,
-      block_reasons: ['no_sendable_email'],
+      block_reasons: ['no_sendable_email', 'intro_exists'],
       eligible_for_new_intro: false,
     });
     expect(bounced).toMatchObject({
@@ -1014,7 +1086,7 @@ describe('campaignDetailReadModel', () => {
     });
     expect(alreadyUsed).toMatchObject({
       sendable: true,
-      block_reasons: ['already_used'],
+      block_reasons: ['already_used', 'bump_exists'],
       eligible_for_new_intro: false,
     });
     expect(company.composition_summary).toEqual({
@@ -1027,7 +1099,9 @@ describe('campaignDetailReadModel', () => {
       blocked_bounced_contacts: 1,
       blocked_unsubscribed_contacts: 1,
       blocked_already_used_contacts: 2,
-      contacts_with_drafts: 0,
+      blocked_intro_exists_contacts: 1,
+      blocked_bump_exists_contacts: 1,
+      contacts_with_drafts: 2,
       contacts_with_sent_outbound: 2,
     });
   });

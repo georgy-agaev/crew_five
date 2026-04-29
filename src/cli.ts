@@ -195,6 +195,30 @@ const defaultHandlers: CliHandlers = {
   segmentSnapshot: segmentSnapshotHandler,
 };
 
+export function listMissingIntroCompaniesFromDetail(detail: {
+  companies?: Array<{
+    company_id: string;
+    company_name?: string | null;
+    employees?: Array<{
+      eligible_for_new_intro?: boolean;
+      draft_counts?: { intro?: number | null } | null;
+    }>;
+  }>;
+}): Array<{ company_id: string; company_name: string | null; contacts_without_draft: number }> {
+  return (detail.companies ?? [])
+    .map((company) => {
+      const contactsWithoutDraft = (company.employees ?? []).filter(
+        (employee) => employee.eligible_for_new_intro && (employee.draft_counts?.intro ?? 0) === 0
+      ).length;
+      return {
+        company_id: company.company_id,
+        company_name: company.company_name ?? null,
+        contacts_without_draft: contactsWithoutDraft,
+      };
+    })
+    .filter((company) => company.contacts_without_draft > 0);
+}
+
 interface CliErrorPayload {
   code?: string;
   message: string;
@@ -510,6 +534,17 @@ export function createProgram(deps: CliDependencies) {
       wrapCliAction(async (options) => {
         const detail = await handlers.campaignDetailReadModel(deps.supabaseClient, options.campaignId);
         console.log(JSON.stringify(detail));
+      })
+    );
+
+  program
+    .command('campaign:missing-intros')
+    .requiredOption('--campaign-id <campaignId>', 'Campaign id to inspect')
+    .option('--error-format <format>', 'Error output format: text|json', 'text')
+    .action(
+      wrapCliAction(async (options) => {
+        const detail = await handlers.campaignDetailReadModel(deps.supabaseClient, options.campaignId);
+        console.log(JSON.stringify(listMissingIntroCompaniesFromDetail(detail)));
       })
     );
 

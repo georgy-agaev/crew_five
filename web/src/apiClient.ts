@@ -81,7 +81,14 @@ export interface CampaignDetailEmployee {
   recipient_email: string | null;
   recipient_email_source: 'work' | 'generic' | 'missing';
   sendable: boolean;
-  block_reasons: Array<'no_sendable_email' | 'bounced' | 'unsubscribed' | 'already_used'>;
+  block_reasons: Array<
+    | 'no_sendable_email'
+    | 'bounced'
+    | 'unsubscribed'
+    | 'already_used'
+    | 'intro_exists'
+    | 'bump_exists'
+  >;
   eligible_for_new_intro: boolean;
   draft_counts: {
     total: number;
@@ -134,6 +141,8 @@ export interface CampaignDetailCompany extends CampaignCompany {
     blocked_bounced_contacts: number;
     blocked_unsubscribed_contacts: number;
     blocked_already_used_contacts: number;
+    blocked_intro_exists_contacts: number;
+    blocked_bump_exists_contacts: number;
     contacts_with_drafts: number;
     contacts_with_sent_outbound: number;
   };
@@ -278,6 +287,7 @@ export interface CampaignEvent {
   id: string;
   outbound_id: string;
   event_type: string;
+  reply_label: string | null;
   outcome_classification: string | null;
   provider_event_id: string | null;
   occurred_at: string | null;
@@ -341,13 +351,69 @@ export interface DraftRow {
 }
 
 export interface DraftSummary {
+  status?: string;
+  campaign_id?: string;
+  requested_contact_count?: number;
   generated: number;
   dryRun: boolean;
   gracefulUsed?: number;
   failed?: number;
   skipped?: number;
   skippedNoEmail?: number;
+  skipped_by_reason?: Record<string, number>;
+  skipped_details?: Array<{
+    contact_id?: string | null;
+    company_id?: string | null;
+    reason?: string;
+    block_reasons?: string[];
+    strategy_rationale?: string | null;
+  }>;
+  duration_sec?: number;
+  errors?: unknown[];
   error?: string;
+  safety?: {
+    preflight?: {
+      requestedCompanyCount: number;
+      safeCompanyIds: string[];
+      eligibleContactIds: string[];
+      excludedCompanyIds: string[];
+      excludedContacts: Array<{
+        contactId: string;
+        companyId: string;
+        reasons: string[];
+      }>;
+    };
+    checkedCount: number;
+    quarantinedCount: number;
+    quarantined: Array<{
+      draftId: string;
+      contactId: string;
+      companyId: string | null;
+      reasons: string[];
+    }>;
+  };
+}
+
+export interface DraftGenerationJobStartResponse {
+  jobId: string;
+  status: 'created' | 'running' | 'completed' | 'failed' | 'not_implemented';
+  campaignId: string;
+  dryRun: boolean;
+}
+
+export interface DraftGenerationJobStatusResponse extends DraftGenerationJobStartResponse {
+  generated: number;
+  failed: number;
+  skipped: number;
+  requestedContactCount: number | null;
+  totalRecipients: number | null;
+  lastEvent: string | null;
+  skippedByReason: Record<string, number>;
+  skippedDetails: unknown[];
+  errors: unknown[];
+  result: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SendSummary {
@@ -731,11 +797,14 @@ export async function batchReviewDrafts(payload: {
   });
 }
 
-export async function triggerDraftGenerate(
+export async function startDraftGenerationJob(
   campaignId: string,
   opts: {
     dryRun?: boolean;
     limit?: number;
+    companyIds?: string[];
+    contactIds?: string[];
+    draftsModel?: 'sonnet' | 'opus';
     dataQualityMode?: 'strict' | 'graceful';
     interactionMode?: 'express' | 'coach';
     icpProfileId?: string;
@@ -745,11 +814,14 @@ export async function triggerDraftGenerate(
     coachPromptStep?: PromptStep;
     explicitCoachPromptId?: string;
   } = {}
-): Promise<DraftSummary> {
+): Promise<DraftGenerationJobStartResponse> {
   const body = {
     campaignId,
     dryRun: opts.dryRun ?? true,
     limit: opts.limit,
+    companyIds: opts.companyIds,
+    contactIds: opts.contactIds,
+    draftsModel: opts.draftsModel,
     dataQualityMode: opts.dataQualityMode,
     interactionMode: opts.interactionMode,
     icpProfileId: opts.icpProfileId,
@@ -759,10 +831,71 @@ export async function triggerDraftGenerate(
     coachPromptStep: opts.coachPromptStep,
     explicitCoachPromptId: opts.explicitCoachPromptId,
   };
-  return fetchJson<DraftSummary>('/drafts/generate', {
+  return fetchJson<DraftGenerationJobStartResponse>('/drafts/generate', {
     method: 'POST',
     body: JSON.stringify(body),
   });
+}
+
+export async function fetchDraftGenerationJobStatus(
+  jobId: string
+): Promise<DraftGenerationJobStatusResponse> {
+  return fetchJson<DraftGenerationJobStatusResponse>(`/drafts/generate/jobs/${jobId}`);
+}
+
+export async function fetchActiveDraftGenerationJob(
+  campaignId: string
+): Promise<DraftGenerationJobStatusResponse | null> {
+  return fetchJson<DraftGenerationJobStatusResponse | null>(
+    `/campaigns/${campaignId}/draft-generation-job/active`
+  );
+}
+
+function waitForDraftJobPoll(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function draftSummaryFromJobStatus(status: DraftGenerationJobStatusResponse): DraftSummary {
+  const result = status.result ?? {};
+  return {
+    ...(result as Record<string, unknown>),
+    generated: status.generated,
+    dryRun: status.dryRun,
+    failed: status.failed,
+    skipped: status.skipped,
+    requested_contact_count:
+      typeof result.requested_contact_count === 'number'
+        ? result.requested_contact_count
+        : status.requestedContactCount ?? undefined,
+    skipped_by_reason:
+      result.skipped_by_reason && typeof result.skipped_by_reason === 'object'
+        ? (result.skipped_by_reason as Record<string, number>)
+        : status.skippedByReason,
+    skipped_details: Array.isArray(result.skipped_details)
+      ? (result.skipped_details as DraftSummary['skipped_details'])
+      : undefined,
+    errors: status.errors,
+  } as DraftSummary;
+}
+
+export async function triggerDraftGenerate(
+  campaignId: string,
+  opts: Parameters<typeof startDraftGenerationJob>[1] = {}
+): Promise<DraftSummary> {
+  const started = await startDraftGenerationJob(campaignId, opts);
+  if (!(started as any).jobId) {
+    return started as unknown as DraftSummary;
+  }
+  for (let attempt = 0; attempt < 180; attempt += 1) {
+    const status = await fetchDraftGenerationJobStatus(started.jobId);
+    if (status.status === 'completed') return draftSummaryFromJobStatus(status);
+    if (status.status === 'failed') {
+      const message = status.errors[0] ? String(status.errors[0]) : 'Draft generation failed';
+      throw new Error(message);
+    }
+    await waitForDraftJobPoll(2000);
+  }
+  throw new Error('Draft generation timed out');
 }
 
 export async function triggerSmartleadSend(
@@ -1046,10 +1179,32 @@ export interface CampaignSendPreflightBlocker {
   message: string;
 }
 
+export interface CampaignSendPreflightIssue {
+  code: 'generated_not_reviewed' | 'missing_recipient_email' | 'suppressed_contact' | 'intro_already_sent';
+  message: string;
+  draftId: string;
+  draftStatus: string | null;
+  emailType: string | null;
+  subject: string | null;
+  contactId: string | null;
+  contactName: string | null;
+  contactPosition: string | null;
+  workEmail: string | null;
+  workEmailStatus: string | null;
+  genericEmail: string | null;
+  genericEmailStatus: string | null;
+  relatedOutboundId?: string | null;
+  relatedDraftId?: string | null;
+  relatedCampaignId?: string | null;
+  relatedCampaignName?: string | null;
+  relatedSentAt?: string | null;
+}
+
 export interface CampaignSendPreflightView {
   campaign: { id: string; name: string; status: string };
   readyToSend: boolean;
   blockers: CampaignSendPreflightBlocker[];
+  issues: CampaignSendPreflightIssue[];
   summary: {
     mailboxAssignmentCount: number;
     draftCount: number;
@@ -1058,6 +1213,8 @@ export interface CampaignSendPreflightView {
     rejectedDraftCount: number;
     sentDraftCount: number;
     sendableApprovedDraftCount: number;
+    sendableApprovedIntroDraftCount: number;
+    sendableApprovedBumpDraftCount: number;
     approvedMissingRecipientEmailCount: number;
     approvedSuppressedContactCount: number;
   };

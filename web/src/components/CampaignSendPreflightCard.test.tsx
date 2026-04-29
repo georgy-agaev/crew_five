@@ -18,8 +18,43 @@ const mockPreflight = {
     rejectedDraftCount: 0,
     sentDraftCount: 0,
     sendableApprovedDraftCount: 5,
+    sendableApprovedIntroDraftCount: 5,
+    sendableApprovedBumpDraftCount: 0,
     approvedMissingRecipientEmailCount: 3,
+    approvedSuppressedContactCount: 0,
   },
+  issues: [
+    {
+      code: 'missing_recipient_email',
+      message: 'Approved draft is missing a sendable recipient email',
+      draftId: 'draft-1',
+      draftStatus: 'approved',
+      emailType: 'intro',
+      subject: 'Hello Acme',
+      contactId: 'contact-1',
+      contactName: 'Anna Founder',
+      contactPosition: 'CEO',
+      workEmail: null,
+      workEmailStatus: null,
+      genericEmail: 'info@example.com',
+      genericEmailStatus: 'bounced',
+    },
+    {
+      code: 'generated_not_reviewed',
+      message: 'Generated draft must be approved or rejected before sending',
+      draftId: 'draft-2',
+      draftStatus: 'generated',
+      emailType: 'intro',
+      subject: 'Draft to review',
+      contactId: 'contact-2',
+      contactName: 'Ben Reviewer',
+      contactPosition: 'COO',
+      workEmail: 'ben@example.com',
+      workEmailStatus: 'valid',
+      genericEmail: null,
+      genericEmailStatus: null,
+    },
+  ],
   senderPlan: { assignmentCount: 0, domains: [] },
 };
 
@@ -32,6 +67,7 @@ const mockReady = {
     generatedDraftCount: 0,
     approvedMissingRecipientEmailCount: 0,
   },
+  issues: [],
   senderPlan: { assignmentCount: 2, domains: ['example.com', 'acme.io'] },
 };
 
@@ -69,6 +105,59 @@ describe('CampaignSendPreflightCard', () => {
     expect(screen.getByText('Approve or reject all generated drafts before sending')).toBeTruthy();
     expect(screen.getByText('14 drafts')).toBeTruthy();
     expect(screen.getByText('5 sendable')).toBeTruthy();
+  });
+
+  it('shows preflight issue filters with concrete draft context', async () => {
+    mockFetch.mockResolvedValue(mockPreflight);
+    render(<CampaignSendPreflightCard campaignId="camp-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Issues')).toBeTruthy();
+    });
+    expect(screen.getByRole('button', { name: 'All issues 2' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Missing email 1' })).toBeTruthy();
+    expect(screen.getByText('Anna Founder')).toBeTruthy();
+    expect(screen.getByText('Hello Acme')).toBeTruthy();
+
+    screen.getByRole('button', { name: 'Needs review 1' }).click();
+
+    await waitFor(() => {
+      expect(screen.getByText('Ben Reviewer')).toBeTruthy();
+      expect(screen.queryByText('Anna Founder')).toBeNull();
+    });
+  });
+
+  it('shows the source campaign for already-sent intro issues', async () => {
+    mockFetch.mockResolvedValue({
+      ...mockPreflight,
+      blockers: [{ code: 'suppressed_contact', message: 'Some approved drafts target suppressed or already-used contacts' }],
+      issues: [
+        {
+          code: 'intro_already_sent',
+          message: 'Approved intro draft targets a contact that already received an intro',
+          draftId: 'draft-repeat',
+          draftStatus: 'approved',
+          emailType: 'intro',
+          subject: 'Repeat intro',
+          contactId: 'contact-repeat',
+          contactName: 'Tanya Contact',
+          contactPosition: 'CEO',
+          workEmail: null,
+          workEmailStatus: null,
+          genericEmail: 'info@example.com',
+          genericEmailStatus: 'unknown',
+          relatedCampaignId: 'camp-source',
+          relatedCampaignName: 'Original Campaign',
+          relatedSentAt: '2026-03-31T11:18:28.055+00:00',
+        },
+      ],
+    } as any);
+    render(<CampaignSendPreflightCard campaignId="camp-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Tanya Contact')).toBeTruthy();
+    });
+    expect(screen.getByText('Sent in Original Campaign · 2026-03-31')).toBeTruthy();
   });
 
   it('shows ready state', async () => {

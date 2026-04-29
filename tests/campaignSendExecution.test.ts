@@ -118,9 +118,12 @@ function createClient(input: {
   });
   const outboundsSelect = vi.fn().mockReturnValue({ eq: outboundsEq, in: outboundsIn });
 
-  const eventsIn = vi.fn().mockResolvedValue({
-    data: input.events ?? [],
-    error: null,
+  const eventsIn = vi.fn((field: string, values: string[]) => {
+    const set = new Set(values);
+    return Promise.resolve({
+      data: (input.events ?? []).filter((row) => set.has(row[field])),
+      error: null,
+    });
   });
   const eventsSelect = vi.fn().mockReturnValue({ in: eventsIn });
 
@@ -151,6 +154,10 @@ function createClient(input: {
   return {
     client,
     draftStatusUpdates,
+    queries: {
+      draftsIn,
+      eventsIn,
+    },
   };
 }
 
@@ -170,6 +177,75 @@ describe('executeCampaignSendRun', () => {
       sendCalendarCountryCode: null,
       sendCalendarSubdivisionCode: null,
     } as any);
+  });
+
+  it('chunks large send history lookups before selecting events', async () => {
+    const count = 205;
+    const drafts = Array.from({ length: count }, (_, index) => ({
+      id: `draft-${index}`,
+      campaign_id: 'camp-large',
+      contact_id: `contact-${index}`,
+      company_id: `company-${index}`,
+      email_type: 'intro',
+      status: 'approved',
+      subject: `Hello ${index}`,
+      body: `Body ${index}`,
+      metadata: null,
+    }));
+    const outbounds = drafts.map((draft, index) => ({
+      id: `outbound-${index}`,
+      contact_id: draft.contact_id,
+      company_id: draft.company_id,
+      draft_id: draft.id,
+      status: 'sent',
+      sent_at: '2026-03-23T09:00:00Z',
+    }));
+    const events = outbounds.map((outbound) => ({
+      outbound_id: outbound.id,
+      event_type: 'sent',
+    }));
+
+    const { client, queries } = createClient({
+      mailboxAssignments: [
+        {
+          id: 'a-1',
+          campaign_id: 'camp-large',
+          mailbox_account_id: 'mbox-1',
+          sender_identity: 'sales@example.com',
+          provider: 'imap_mcp',
+          source: 'manual',
+          assigned_at: '2026-03-23T08:00:00Z',
+          metadata: null,
+        },
+      ],
+      drafts,
+      employees: drafts.map((draft, index) => ({
+        id: draft.contact_id,
+        work_email: `person-${index}@example.com`,
+        work_email_status: 'valid',
+        generic_email: null,
+        generic_email_status: null,
+      })),
+      companies: drafts.map((draft) => ({ id: draft.company_id, country_code: 'RU' })),
+      outbounds,
+      events,
+    });
+
+    const transport = { send: vi.fn() };
+
+    const result = await executeCampaignSendRun(client, transport, {
+      campaignId: 'camp-large',
+      reason: 'auto_send_intro',
+      batchLimit: 0,
+      now: new Date('2026-03-23T09:00:00Z'),
+    });
+
+    expect(result.selectedCount).toBe(0);
+    expect(transport.send).not.toHaveBeenCalled();
+    expect(queries.eventsIn).toHaveBeenCalledTimes(3);
+    expect(queries.eventsIn.mock.calls.map((call) => call[1].length)).toEqual([100, 100, 5]);
+    expect(queries.draftsIn).toHaveBeenCalledTimes(3);
+    expect(queries.draftsIn.mock.calls.map((call) => call[1].length)).toEqual([100, 100, 5]);
   });
 
   it('sends eligible approved intros with round-robin sender assignment', async () => {

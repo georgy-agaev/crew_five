@@ -55,6 +55,12 @@ import {
   startCompanyImportProcess as startCompanyImportProcessService,
 } from '../services/companyImportProcessing.js';
 import {
+  findActiveDraftGenerationJob as findActiveDraftGenerationJobService,
+  getDraftGenerationJobStatus as getDraftGenerationJobStatusService,
+  startDraftGenerationJob as startDraftGenerationJobService,
+  type DraftGenerationJobRequest,
+} from '../services/draftGenerationJobs.js';
+import {
   deleteDirectoryContact as deleteDirectoryContactService,
   markDirectoryContactInvalid as markDirectoryContactInvalidService,
 } from '../services/directoryContactMutations.js';
@@ -76,6 +82,10 @@ import {
   updateDraftStatuses as updateDraftStatusesService,
   updateDraftContent as updateDraftContentService,
 } from '../services/draftStore.js';
+import {
+  planSafeIntroGenerationScope,
+  quarantineUnsafeGeneratedIntroDrafts,
+} from '../services/draftGenerationSafety.js';
 import { getReplyPatterns } from '../services/emailEvents.js';
 import { processReplies as processRepliesService } from '../services/processReplies.js';
 import {
@@ -399,24 +409,83 @@ export function createLiveDeps(
         patternDefaults,
         notes,
       }),
-    generateDrafts: async ({ campaignId, dryRun, limit, interactionMode, dataQualityMode, icpProfileId, icpHypothesisId, coachPromptStep, explicitCoachPromptId, provider, model }) => {
-      if (!generateDraftsTriggerConfigured) {
-        throw new Error('Outreach generate-drafts command is not configured (set OUTREACH_GENERATE_DRAFTS_CMD)');
-      }
-      return triggerGenerateDrafts({
-        campaignId,
-        dryRun,
-        limit,
-        interactionMode,
-        dataQualityMode,
-        icpProfileId,
-        icpHypothesisId,
-        coachPromptStep,
-        explicitCoachPromptId,
-        provider,
-        model,
-      });
+    generateDrafts: async (request) => {
+      return startDraftGenerationJobService(
+        supabase,
+        request as DraftGenerationJobRequest,
+        async (
+          {
+            campaignId,
+            dryRun,
+            limit,
+            companyIds,
+            draftsModel,
+            interactionMode,
+            dataQualityMode,
+            icpProfileId,
+            icpHypothesisId,
+            coachPromptStep,
+            explicitCoachPromptId,
+            provider,
+            model,
+          },
+          reportProgress
+        ) => {
+          if (!generateDraftsTriggerConfigured) {
+            throw new Error('Outreach generate-drafts command is not configured (set OUTREACH_GENERATE_DRAFTS_CMD)');
+          }
+          const preflightScope = await planSafeIntroGenerationScope(supabase, { campaignId, companyIds });
+          const startedAt = new Date().toISOString();
+          const result = await triggerGenerateDrafts({
+            campaignId,
+            dryRun,
+            limit,
+            contactIds: preflightScope.eligibleContactIds,
+            draftsModel,
+            interactionMode,
+            dataQualityMode,
+            icpProfileId,
+            icpHypothesisId,
+            coachPromptStep,
+            explicitCoachPromptId,
+            provider,
+            model,
+            onProgress: reportProgress,
+          });
+          if (dryRun) {
+            return {
+              ...result,
+              safety: {
+                preflight: preflightScope,
+                checkedCount: 0,
+                quarantinedCount: 0,
+                quarantined: [],
+              },
+            };
+          }
+          const safety = await quarantineUnsafeGeneratedIntroDrafts(supabase, {
+            campaignId,
+            createdAfter: startedAt,
+          });
+          if (safety.quarantinedCount > 0) {
+            throw new Error(
+              `Draft generation safety assertion failed: Outreach generated ${safety.quarantinedCount} unsafe intro draft(s)`
+            );
+          }
+          return {
+            ...result,
+            safety: {
+              preflight: preflightScope,
+              ...safety,
+            },
+          };
+        }
+      );
     },
+    getDraftGenerationJobStatus: async (jobId) =>
+      getDraftGenerationJobStatusService(supabase, jobId),
+    findActiveDraftGenerationJob: async (campaignId) =>
+      findActiveDraftGenerationJobService(supabase, campaignId),
     sendSmartlead: async ({ dryRun, batchSize, campaignId, smartleadCampaignId, step, variantLabel }) => smartleadSendCommand(smartlead, supabase, { dryRun, batchSize, campaignId, smartleadCampaignId, step, variantLabel }),
     listEvents: async ({ since, limit }) => {
       let query = supabase.from('email_events').select('id,event_type,occurred_at').order('occurred_at', { ascending: false });

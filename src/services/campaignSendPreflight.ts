@@ -19,18 +19,29 @@ export type CampaignSendPreflightBlockerCode =
   | 'no_sendable_drafts'
   | 'campaign_paused';
 
+export type CampaignSendPreflightIssueCode =
+  | 'generated_not_reviewed'
+  | 'missing_recipient_email'
+  | 'suppressed_contact'
+  | 'intro_already_sent';
+
+const SUPABASE_IN_FILTER_CHUNK_SIZE = 100;
+
 interface DraftRow {
   id: string;
   status: string | null;
   contact_id: string | null;
   email_type: string | null;
+  subject: string | null;
 }
 
 interface OutboundRow {
   id: string;
+  campaign_id: string | null;
   contact_id: string | null;
   draft_id: string | null;
   status: string | null;
+  sent_at: string | null;
 }
 
 interface EventRow {
@@ -40,10 +51,17 @@ interface EventRow {
 
 interface EmployeeRow {
   id: string;
+  full_name: string | null;
+  position: string | null;
   work_email: string | null;
   work_email_status: EmailDeliverabilityStatus | null;
   generic_email: string | null;
   generic_email_status: EmailDeliverabilityStatus | null;
+}
+
+interface CampaignNameRow {
+  id: string;
+  name: string | null;
 }
 
 export interface CampaignSendPreflightBlocker {
@@ -51,10 +69,32 @@ export interface CampaignSendPreflightBlocker {
   message: string;
 }
 
+export interface CampaignSendPreflightIssue {
+  code: CampaignSendPreflightIssueCode;
+  message: string;
+  draftId: string;
+  draftStatus: string | null;
+  emailType: string | null;
+  subject: string | null;
+  contactId: string | null;
+  contactName: string | null;
+  contactPosition: string | null;
+  workEmail: string | null;
+  workEmailStatus: EmailDeliverabilityStatus | null;
+  genericEmail: string | null;
+  genericEmailStatus: EmailDeliverabilityStatus | null;
+  relatedOutboundId?: string | null;
+  relatedDraftId?: string | null;
+  relatedCampaignId?: string | null;
+  relatedCampaignName?: string | null;
+  relatedSentAt?: string | null;
+}
+
 export interface CampaignSendPreflightView {
   campaign: CampaignDetail;
   readyToSend: boolean;
   blockers: CampaignSendPreflightBlocker[];
+  issues: CampaignSendPreflightIssue[];
   summary: {
     mailboxAssignmentCount: number;
     draftCount: number;
@@ -63,10 +103,74 @@ export interface CampaignSendPreflightView {
     rejectedDraftCount: number;
     sentDraftCount: number;
     sendableApprovedDraftCount: number;
+    sendableApprovedIntroDraftCount: number;
+    sendableApprovedBumpDraftCount: number;
     approvedMissingRecipientEmailCount: number;
     approvedSuppressedContactCount: number;
   };
   senderPlan: CampaignMailboxAssignmentView['summary'];
+}
+
+function chunkValues<T>(values: T[], size: number = SUPABASE_IN_FILTER_CHUNK_SIZE): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function selectInChunks<Row>(
+  client: SupabaseClient,
+  table: string,
+  columns: string,
+  field: string,
+  values: string[]
+): Promise<Row[]> {
+  if (values.length < 1) {
+    return [];
+  }
+
+  const rows: Row[] = [];
+  for (const chunk of chunkValues(values)) {
+    const res = await (client.from(table) as any).select(columns).in(field, chunk);
+    if (res.error) {
+      throw res.error;
+    }
+    rows.push(...((res.data ?? []) as Row[]));
+  }
+  return rows;
+}
+
+function buildIssue(
+  code: CampaignSendPreflightIssueCode,
+  message: string,
+  draft: DraftRow,
+  employee: EmployeeRow | null,
+  related?: {
+    outbound?: OutboundRow | null;
+    campaignName?: string | null;
+  }
+): CampaignSendPreflightIssue {
+  return {
+    code,
+    message,
+    draftId: draft.id,
+    draftStatus: draft.status,
+    emailType: draft.email_type,
+    subject: draft.subject,
+    contactId: draft.contact_id,
+    contactName: employee?.full_name ?? null,
+    contactPosition: employee?.position ?? null,
+    workEmail: employee?.work_email ?? null,
+    workEmailStatus: employee?.work_email_status ?? null,
+    genericEmail: employee?.generic_email ?? null,
+    genericEmailStatus: employee?.generic_email_status ?? null,
+    relatedOutboundId: related?.outbound?.id ?? null,
+    relatedDraftId: related?.outbound?.draft_id ?? null,
+    relatedCampaignId: related?.outbound?.campaign_id ?? null,
+    relatedCampaignName: related?.campaignName ?? null,
+    relatedSentAt: related?.outbound?.sent_at ?? null,
+  };
 }
 
 function buildBlockers(input: {
@@ -133,7 +237,7 @@ export async function getCampaignSendPreflight(
 
   const draftsRes = await client
     .from('drafts')
-    .select('id,status,contact_id,email_type')
+    .select('id,status,contact_id,email_type,subject')
     .eq('campaign_id', campaignId);
   if (draftsRes.error) {
     throw draftsRes.error;
@@ -146,45 +250,84 @@ export async function getCampaignSendPreflight(
 
   const employeeById = new Map<string, EmployeeRow>();
   if (contactIds.length > 0) {
-    const employeesRes = await client
-      .from('employees')
-      .select('id,work_email,work_email_status,generic_email,generic_email_status')
-      .in('id', contactIds);
-    if (employeesRes.error) {
-      throw employeesRes.error;
-    }
-    for (const row of (employeesRes.data ?? []) as EmployeeRow[]) {
+    const employeeRows = await selectInChunks<EmployeeRow>(
+      client,
+      'employees',
+      'id,full_name,position,work_email,work_email_status,generic_email,generic_email_status',
+      'id',
+      contactIds
+    );
+    for (const row of employeeRows) {
       employeeById.set(row.id, row);
     }
   }
 
-  const outboundsRes = await client
-    .from('email_outbound')
-    .select('id,contact_id,draft_id,status')
-    .eq('campaign_id', campaignId);
-  if (outboundsRes.error) {
-    throw outboundsRes.error;
-  }
-
-  const outbounds = (outboundsRes.data ?? []) as OutboundRow[];
+  const outbounds =
+    contactIds.length > 0
+      ? await selectInChunks<OutboundRow>(
+          client,
+          'email_outbound',
+          'id,campaign_id,contact_id,draft_id,status,sent_at',
+          'contact_id',
+          contactIds
+        )
+      : [];
   const outboundIds = outbounds.map((row) => row.id).filter((value): value is string => typeof value === 'string');
   const events: EventRow[] = [];
   if (outboundIds.length > 0) {
-    const eventsRes = await client
-      .from('email_events')
-      .select('outbound_id,event_type')
-      .in('outbound_id', outboundIds);
-    if (eventsRes.error) {
-      throw eventsRes.error;
-    }
-    events.push(...((eventsRes.data ?? []) as EventRow[]));
+    events.push(
+      ...(await selectInChunks<EventRow>(
+        client,
+        'email_events',
+        'outbound_id,event_type',
+        'outbound_id',
+        outboundIds
+      ))
+    );
   }
 
   const approvedDrafts = drafts.filter((row) => row.status === 'approved');
   const generatedDraftCount = drafts.filter((row) => row.status === 'generated').length;
   const rejectedDraftCount = drafts.filter((row) => row.status === 'rejected').length;
   const sentDraftCount = drafts.filter((row) => row.status === 'sent').length;
-  const draftById = new Map(drafts.map((row) => [row.id, row]));
+  const outboundDraftIds = Array.from(
+    new Set(outbounds.map((row) => row.draft_id).filter((value): value is string => typeof value === 'string'))
+  );
+  const draftEmailTypeById = new Map<string, string | null>();
+  for (const draft of drafts) {
+    draftEmailTypeById.set(draft.id, draft.email_type);
+  }
+  const missingOutboundDraftIds = outboundDraftIds.filter((draftId) => !draftEmailTypeById.has(draftId));
+  if (missingOutboundDraftIds.length > 0) {
+    const outboundDraftRows = await selectInChunks<Record<string, unknown>>(
+      client,
+      'drafts',
+      'id,email_type',
+      'id',
+      missingOutboundDraftIds
+    );
+    for (const row of outboundDraftRows) {
+      const id = typeof row.id === 'string' ? row.id : null;
+      if (!id) continue;
+      draftEmailTypeById.set(id, typeof row.email_type === 'string' ? row.email_type : null);
+    }
+  }
+  const outboundCampaignIds = Array.from(
+    new Set(outbounds.map((row) => row.campaign_id).filter((value): value is string => typeof value === 'string'))
+  );
+  const campaignNameById = new Map<string, string | null>();
+  if (outboundCampaignIds.length > 0) {
+    const campaignRows = await selectInChunks<CampaignNameRow>(
+      client,
+      'campaigns',
+      'id,name',
+      'id',
+      outboundCampaignIds
+    );
+    for (const row of campaignRows) {
+      campaignNameById.set(row.id, row.name);
+    }
+  }
   const outboundsByContact = new Map<string, OutboundRow[]>();
   for (const row of outbounds) {
     if (!row.contact_id) continue;
@@ -201,8 +344,20 @@ export async function getCampaignSendPreflight(
   }
 
   let sendableApprovedDraftCount = 0;
+  let sendableApprovedIntroDraftCount = 0;
+  let sendableApprovedBumpDraftCount = 0;
   let approvedMissingRecipientEmailCount = 0;
   let approvedSuppressedContactCount = 0;
+  const issues: CampaignSendPreflightIssue[] = drafts
+    .filter((row) => row.status === 'generated')
+    .map((draft) =>
+      buildIssue(
+        'generated_not_reviewed',
+        'Generated draft must be approved or rejected before sending',
+        draft,
+        draft.contact_id ? employeeById.get(draft.contact_id) ?? null : null
+      )
+    );
 
   for (const draft of approvedDrafts) {
     const employee = draft.contact_id ? employeeById.get(draft.contact_id) : null;
@@ -215,25 +370,53 @@ export async function getCampaignSendPreflight(
 
     if (!recipient.sendable) {
       approvedMissingRecipientEmailCount += 1;
+      issues.push(
+        buildIssue(
+          'missing_recipient_email',
+          'Approved draft is missing a sendable recipient email',
+          draft,
+          employee ?? null
+        )
+      );
       continue;
     }
 
     const contactOutbounds = draft.contact_id ? outboundsByContact.get(draft.contact_id) ?? [] : [];
     const contactEvents = contactOutbounds.flatMap((row) => eventsByOutbound.get(row.id) ?? []);
     const suppression = deriveContactSuppressionState(contactEvents);
-    const introAlreadySent = draft.email_type === 'intro' && contactOutbounds.some((row) => {
+    const alreadySentIntroOutbound = draft.email_type === 'intro' ? contactOutbounds.find((row) => {
       if (row.status !== 'sent' || !row.draft_id) {
         return false;
       }
-      return draftById.get(row.draft_id)?.email_type === 'intro';
-    });
+      return draftEmailTypeById.get(row.draft_id) === 'intro';
+    }) ?? null : null;
 
-    if (suppression.suppressed || introAlreadySent) {
+    if (suppression.suppressed || alreadySentIntroOutbound) {
       approvedSuppressedContactCount += 1;
+      issues.push(
+        buildIssue(
+          suppression.suppressed ? 'suppressed_contact' : 'intro_already_sent',
+          suppression.suppressed
+            ? 'Approved draft targets a suppressed contact'
+            : 'Approved intro draft targets a contact that already received an intro',
+          draft,
+          employee ?? null,
+          alreadySentIntroOutbound
+            ? {
+                outbound: alreadySentIntroOutbound,
+                campaignName: alreadySentIntroOutbound.campaign_id
+                  ? campaignNameById.get(alreadySentIntroOutbound.campaign_id) ?? null
+                  : null,
+              }
+            : undefined
+        )
+      );
       continue;
     }
 
     sendableApprovedDraftCount += 1;
+    if (draft.email_type === 'intro') sendableApprovedIntroDraftCount += 1;
+    if (draft.email_type === 'bump') sendableApprovedBumpDraftCount += 1;
   }
 
   const summary = {
@@ -244,6 +427,8 @@ export async function getCampaignSendPreflight(
     rejectedDraftCount,
     sentDraftCount,
     sendableApprovedDraftCount,
+    sendableApprovedIntroDraftCount,
+    sendableApprovedBumpDraftCount,
     approvedMissingRecipientEmailCount,
     approvedSuppressedContactCount,
   };
@@ -261,6 +446,7 @@ export async function getCampaignSendPreflight(
     campaign,
     readyToSend: blockers.length === 0,
     blockers,
+    issues,
     summary,
     senderPlan: mailboxAssignment.summary,
   };

@@ -772,8 +772,8 @@ an operational execution preset for campaign waves.
 
 ### `public.jobs`
 
-**What it is**: background job tracking for async tasks (enrich/send/sim/icp), including payload + optional
-result.
+**What it is**: background job tracking for async tasks (enrich/send/sim/icp/draft generation),
+including payload + optional result.
 
 **Key facts**
 - Primary key: `id` (`uuid`, default `gen_random_uuid()`)
@@ -798,7 +798,7 @@ result.
 **Constraints**
 - `jobs_pkey`: `PRIMARY KEY (id)`
 - `jobs_segment_id_fkey`: `FOREIGN KEY (segment_id) REFERENCES segments(id) ON DELETE SET NULL`
-- `jobs_type_check`: `CHECK (type = ANY (ARRAY['send','enrich','sim','icp']))`
+- `jobs_type_check`: `CHECK (type = ANY (ARRAY['send','enrich','sim','icp','company_process','draft_generation']))`
 - `jobs_status_check`: `CHECK (status = ANY (ARRAY['created','running','completed','failed','not_implemented']))`
 
 **Indexes**

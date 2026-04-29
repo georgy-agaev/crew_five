@@ -785,6 +785,54 @@ describe('createProgram', () => {
     logSpy.mockRestore();
   });
 
+  it('runs campaign:missing-intros and prints companies with eligible contacts missing intro drafts', async () => {
+    const campaignDetailReadModel = vi.fn().mockResolvedValue({
+      companies: [
+        {
+          company_id: 'company-1',
+          company_name: 'Alpha',
+          employees: [
+            { eligible_for_new_intro: true, draft_counts: { intro: 0 } },
+            { eligible_for_new_intro: true, draft_counts: { intro: 1 } },
+          ],
+        },
+        {
+          company_id: 'company-2',
+          company_name: 'Beta',
+          employees: [
+            { eligible_for_new_intro: false, draft_counts: { intro: 0 } },
+          ],
+        },
+      ],
+    });
+    const supabaseClient = { from: vi.fn() } as any;
+    const program = createProgram({
+      supabaseClient,
+      aiClient: {} as any,
+      handlers: { campaignDetailReadModel } as any,
+    });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'gtm',
+      'campaign:missing-intros',
+      '--campaign-id',
+      'camp-1',
+      '--error-format',
+      'json',
+    ]);
+
+    expect(campaignDetailReadModel).toHaveBeenCalledWith(supabaseClient, 'camp-1');
+    const payload = JSON.parse((logSpy.mock.calls[0] as any)[0] as string);
+    expect(payload).toEqual([
+      { company_id: 'company-1', company_name: 'Alpha', contacts_without_draft: 1 },
+    ]);
+
+    logSpy.mockRestore();
+  });
+
   it('wires icp:discover with minimal args and returns summary json', async () => {
     const supabaseClient = {
       from: (table: string) => {
@@ -2895,6 +2943,7 @@ describe('createProgram', () => {
       },
       readyToSend: true,
       blockers: [],
+      issues: [],
       summary: {
         mailboxAssignmentCount: 1,
         draftCount: 5,
@@ -2904,6 +2953,7 @@ describe('createProgram', () => {
         sentDraftCount: 0,
         sendableApprovedDraftCount: 5,
         approvedMissingRecipientEmailCount: 0,
+        approvedSuppressedContactCount: 0,
       },
       senderPlan: {
         assignmentCount: 1,

@@ -307,7 +307,7 @@
     - `campaign`: operator-facing campaign detail (`id`, `name`, `status`,
       `segment_id`, `segment_version`, `created_at`, `updated_at`)
     - `events`: campaign-scoped event ledger rows including:
-      - `id`, `outbound_id`, `event_type`, `outcome_classification`
+      - `id`, `outbound_id`, `event_type`, `reply_label`, `outcome_classification`
       - `provider_event_id`, `occurred_at`, `created_at`
       - `pattern_id`, `coach_prompt_id`, `payload`
       - `draft_id`, `draft_email_type`, `draft_status`, `subject`
@@ -357,20 +357,67 @@
   - Returns: updated draft row.
   - Used by: `updateDraftContent` in `web/src/apiClient.ts`, powering inline draft edits in Campaigns.
 - `POST /api/drafts/generate`
-  - Body: JSON payload from `triggerDraftGenerate`, including:
+  - Body: JSON payload from `startDraftGenerationJob`, including:
     - `campaignId` (required),
     - `dryRun`, `limit`,
+    - `companyIds` (optional UUID array, max 200) for selected-company batch generation,
+    - `contactIds` (optional UUID array, max 500) for exact contact allowlisting,
+    - `draftsModel` (optional enum: `sonnet` or `opus`),
     - `dataQualityMode`, `interactionMode`,
     - ICP / coach prompt fields (`icpProfileId`, `icpHypothesisId`,
       `coachPromptStep`, `explicitCoachPromptId`),
     - provider/model hints.
   - Behaviour:
-    - In live mode this endpoint delegates draft generation to the Outreach-owned runtime via
-      `OUTREACH_GENERATE_DRAFTS_CMD`.
+    - Creates a `jobs` row with `type = 'draft_generation'` and returns immediately; the live
+      adapter then runs Outreach generation in a background microtask.
+    - If a `created`/`running` draft-generation job already exists for the same campaign, returns
+      that job envelope instead of starting a duplicate process.
+    - Stale `created`/`running` draft-generation jobs are failed lazily during duplicate checks
+      when they have not updated progress for `DRAFT_GENERATION_JOB_STALE_MINUTES` minutes
+      (default `30`; `0` disables the guard). This preserves existing counters, sets
+      `error_code = "draft_generation_stale_timeout"`, and allows a new generation attempt to
+      start after an adapter restart or Outreach/provider interruption.
+    - The job payload stores the generation request (`campaignId`, `limit`, `model`, `dryRun`,
+      `companyIds`, `contactIds`, `interactionMode`, `dataQualityMode`, and prompt/model hints).
+    - Before calling Outreach, the live adapter computes a contact-level intro safety scope and
+      passes `eligibleContactIds` to Outreach via `--contact-ids-file`; this includes an explicit
+      empty allowlist when no eligible contacts remain, allowing Outreach to return structured
+      skips without LLM calls.
+    - Intro eligibility comes from `campaign:detail` / `eligible_for_new_intro`; that field now
+      includes active draft blocks (`intro_exists`, `bump_exists`) alongside email/suppression/send
+      history blocks.
+    - When `companyIds` is present, the live adapter forwards it as
+      `--company-ids '<json>'`; when `draftsModel` is present, it forwards
+      `--drafts-model`.
+    - Post-generation quarantine is retained as an assertion. If it rejects any newly generated
+      intro draft after contact allowlisting, the adapter fails the request because Outreach
+      generated outside the safe scope.
     - `crew_five` acts as the web adapter/bridge only; it does not run local intro generation for
       this endpoint anymore.
-  - Returns: `{ generated, dryRun, gracefulUsed?, failed?, skipped?, error? }` summary.
-  - Used by: `triggerDraftGenerate`.
+  - Returns: `{ jobId, status, campaignId, dryRun }`.
+  - Used by: `startDraftGenerationJob`; `triggerDraftGenerate` remains as a compatibility helper
+    that starts a job and polls until completion.
+- `GET /api/drafts/generate/jobs/:jobId`
+  - Behaviour: reads a `draft_generation` job status.
+    - In live mode the Outreach bridge is invoked with `--progress-jsonl`; JSONL events update
+      `jobs.result` while the process is still running.
+    - Supported progress events include `started`, `company_started`, `recipient_started`,
+      `draft_created`, `skipped`, `failed`, and `completed`.
+    - If the job is still `created`/`running` but has not updated within the stale timeout, polling
+      marks it `failed` with `error_code = "draft_generation_stale_timeout"` and returns that
+      failed status instead of leaving the UI stuck in `Running...`.
+  - Returns:
+    `{ jobId, status, campaignId, dryRun, generated, failed, skipped, requestedContactCount,
+    totalRecipients, lastEvent, skippedByReason, skippedDetails, errors, result, createdAt,
+    updatedAt }`.
+    `result.progress_events` retains the latest streamed events for diagnostics; `totalRecipients`
+    comes from the `started.total_recipients` event when available.
+  - Used by: `fetchDraftGenerationJobStatus` and the Campaign draft generation polling UI.
+- `GET /api/campaigns/:id/draft-generation-job/active`
+  - Behaviour: finds a `created`/`running` draft-generation job for campaign recovery after page
+    navigation or reload. Stale jobs are auto-failed and therefore return `null`.
+  - Returns: the same job status shape as `GET /api/drafts/generate/jobs/:jobId`, or `null`.
+  - Used by: `fetchActiveDraftGenerationJob`.
 
 ### Segments and enrichment
 
@@ -749,6 +796,18 @@
         - `suppressed_contact`
         - `no_sendable_drafts`
         - `campaign_paused`
+    - `issues[]`
+      - concrete problematic draft rows for operator triage
+      - possible issue codes include:
+        - `generated_not_reviewed`
+        - `missing_recipient_email`
+        - `suppressed_contact`
+        - `intro_already_sent`
+      - each issue includes draft id/status/type/subject plus contact name, position, and resolved
+        work/generic email status fields
+      - `intro_already_sent` issues also include related sent evidence when available:
+        `relatedOutboundId`, `relatedDraftId`, `relatedCampaignId`, `relatedCampaignName`,
+        `relatedSentAt`
     - `summary.mailboxAssignmentCount`
     - `summary.draftCount`
     - `summary.approvedDraftCount`
@@ -756,14 +815,19 @@
     - `summary.rejectedDraftCount`
     - `summary.sentDraftCount`
     - `summary.sendableApprovedDraftCount`
+    - `summary.sendableApprovedIntroDraftCount`
+    - `summary.sendableApprovedBumpDraftCount`
     - `summary.approvedMissingRecipientEmailCount`
     - `summary.approvedSuppressedContactCount`
     - `senderPlan.assignmentCount`
     - `senderPlan.domains`
   - Behaviour:
     - uses canonical recipient resolution from `employees.work_email` / `generic_email`
+    - chunks large employee/outbound/event lookups to avoid oversized PostgREST `.in(...)` requests
     - blocks approved drafts that target bounced / unsubscribed / complaint contacts
-    - blocks repeated intro sends for already-used contacts
+    - blocks repeated intro sends for contacts that already received an intro in any campaign
+    - exposes type-specific sendable counts so auto-send can avoid choosing the intro path when
+      only bump drafts are actionable
   - Used by: `CampaignSendPreflightCard` in `Campaigns` / operator surfaces.
 - `POST /api/campaigns/:id/send`
   - Body:
@@ -937,8 +1001,11 @@ Component: `web/src/pages/WorkflowZeroPage.tsx`
   - `GET /api/contacts` – fetch contacts for selected company ids.
 - Campaign + draft generation:
   - `GET /api/campaigns` – list campaigns tied to segments.
-  - `POST /api/drafts/generate` – trigger Outreach draft generation for the selected campaign via
-    the web adapter bridge.
+  - `POST /api/drafts/generate` – start an async Outreach draft-generation job for the selected
+    campaign via the web adapter bridge.
+  - `GET /api/drafts/generate/jobs/:jobId` – poll draft-generation progress and final counters.
+  - `GET /api/campaigns/:id/draft-generation-job/active` – recover a running generation job after
+    navigation/reload.
 - Smartlead integration:
   - `GET /api/smartlead/campaigns` – available Smartlead campaigns.
   - `POST /api/smartlead/campaigns` – create Smartlead campaign (with

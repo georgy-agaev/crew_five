@@ -20,6 +20,10 @@ import type {
   CompanyImportProcessStartResult,
   CompanyImportProcessStatusView,
 } from '../services/companyImportProcessing.js';
+import type {
+  DraftGenerationJobStartResult,
+  DraftGenerationJobStatusView,
+} from '../services/draftGenerationJobs.js';
 import type { CompanyImportInput, CompanyImportResult } from '../services/companyStore.js';
 import type { CampaignLaunchPreviewResult, CampaignLaunchPreviewInput } from '../services/campaignLaunchPreview.js';
 import type { CampaignLaunchInput, CampaignLaunchResult } from '../services/campaignLaunch.js';
@@ -209,6 +213,30 @@ export type CampaignSendPreflightView = {
       | 'campaign_paused';
     message: string;
   }>;
+  issues: Array<{
+    code:
+      | 'generated_not_reviewed'
+      | 'missing_recipient_email'
+      | 'suppressed_contact'
+      | 'intro_already_sent';
+    message: string;
+    draftId: string;
+    draftStatus: string | null;
+    emailType: string | null;
+    subject: string | null;
+    contactId: string | null;
+    contactName: string | null;
+    contactPosition: string | null;
+    workEmail: string | null;
+    workEmailStatus: string | null;
+    genericEmail: string | null;
+    genericEmailStatus: string | null;
+    relatedOutboundId?: string | null;
+    relatedDraftId?: string | null;
+    relatedCampaignId?: string | null;
+    relatedCampaignName?: string | null;
+    relatedSentAt?: string | null;
+  }>;
   summary: {
     mailboxAssignmentCount: number;
     draftCount: number;
@@ -217,6 +245,8 @@ export type CampaignSendPreflightView = {
     rejectedDraftCount: number;
     sentDraftCount: number;
     sendableApprovedDraftCount: number;
+    sendableApprovedIntroDraftCount: number;
+    sendableApprovedBumpDraftCount: number;
     approvedMissingRecipientEmailCount: number;
     approvedSuppressedContactCount: number;
   };
@@ -257,13 +287,47 @@ export type DraftRow = {
 };
 
 export type DraftSummary = {
+  status?: string;
+  campaign_id?: string;
+  requested_contact_count?: number;
   generated: number;
   dryRun: boolean;
   gracefulUsed?: number;
   failed?: number;
   skipped?: number;
   skippedNoEmail?: number;
+  skipped_by_reason?: Record<string, number>;
+  skipped_details?: Array<{
+    contact_id?: string | null;
+    company_id?: string | null;
+    reason?: string;
+    block_reasons?: string[];
+    strategy_rationale?: string | null;
+  }>;
+  duration_sec?: number;
+  errors?: unknown[];
   error?: string;
+  safety?: {
+    preflight?: {
+      requestedCompanyCount: number;
+      safeCompanyIds: string[];
+      eligibleContactIds: string[];
+      excludedCompanyIds: string[];
+      excludedContacts: Array<{
+        contactId: string;
+        companyId: string;
+        reasons: string[];
+      }>;
+    };
+    checkedCount: number;
+    quarantinedCount: number;
+    quarantined: Array<{
+      draftId: string;
+      contactId: string;
+      companyId: string | null;
+      reasons: string[];
+    }>;
+  };
 };
 
 export type SendSummary = {
@@ -572,6 +636,9 @@ export type AdapterDeps = {
     campaignId: string;
     dryRun?: boolean;
     limit?: number;
+    companyIds?: string[];
+    contactIds?: string[];
+    draftsModel?: 'sonnet' | 'opus';
     interactionMode?: 'coach' | 'express';
     dataQualityMode?: 'strict' | 'graceful';
     icpProfileId?: string;
@@ -580,7 +647,9 @@ export type AdapterDeps = {
     explicitCoachPromptId?: string;
     provider?: string;
     model?: string;
-  }) => Promise<DraftSummary>;
+  }) => Promise<DraftGenerationJobStartResult>;
+  getDraftGenerationJobStatus?: (jobId: string) => Promise<DraftGenerationJobStatusView | null>;
+  findActiveDraftGenerationJob?: (campaignId: string) => Promise<DraftGenerationJobStatusView | null>;
   listLlmModels?: (provider: string) => Promise<LlmModelInfo[]>;
   sendSmartlead: (payload: {
     dryRun?: boolean;

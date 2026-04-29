@@ -6,8 +6,14 @@ import {
   type CampaignFollowupCandidatesOptions,
 } from './campaignFollowupCandidates.js';
 import { getCampaignSendPolicy } from './campaignSendPolicy.js';
+import {
+  resolveRecipientEmail,
+  type EmailDeliverabilityStatus,
+  type RecipientEmailSource,
+} from './recipientResolver.js';
 
 const DEFAULT_MIN_DAYS_SINCE_INTRO = 3;
+const SUPABASE_IN_FILTER_CHUNK_SIZE = 100;
 
 interface DraftRow {
   contact_id: string | null;
@@ -15,7 +21,18 @@ interface DraftRow {
   status: string | null;
 }
 
+interface EmployeeRow {
+  id: string;
+  work_email: string | null;
+  work_email_status: EmailDeliverabilityStatus | null;
+  generic_email: string | null;
+  generic_email_status: EmailDeliverabilityStatus | null;
+}
+
 export interface CampaignBumpGenerationCandidate extends CampaignFollowupCandidate {
+  recipient_email: string | null;
+  recipient_email_source: RecipientEmailSource;
+  sendable: boolean;
   active_bump_draft_exists: boolean;
   eligible_for_generation: boolean;
 }
@@ -71,6 +88,35 @@ function isDelayReached(
   return typeof candidate.days_since_intro === 'number' && candidate.days_since_intro >= minDaysSinceIntro;
 }
 
+function chunkValues<T>(values: T[], size: number = SUPABASE_IN_FILTER_CHUNK_SIZE): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function loadEmployeesById(
+  client: SupabaseClient,
+  contactIds: string[]
+): Promise<Map<string, EmployeeRow>> {
+  const uniqueContactIds = Array.from(new Set(contactIds.filter(Boolean)));
+  const employeesById = new Map<string, EmployeeRow>();
+  for (const contactIdsChunk of chunkValues(uniqueContactIds)) {
+    const { data, error } = await client
+      .from('employees')
+      .select('id,work_email,work_email_status,generic_email,generic_email_status')
+      .in('id', contactIdsChunk);
+    if (error) {
+      throw error;
+    }
+    for (const row of (data ?? []) as EmployeeRow[]) {
+      employeesById.set(row.id, row);
+    }
+  }
+  return employeesById;
+}
+
 export async function listCampaignBumpGenerationCandidates(
   client: SupabaseClient,
   campaignId: string,
@@ -92,11 +138,24 @@ export async function listCampaignBumpGenerationCandidates(
       .filter((row) => row.contact_id && isActiveBumpDraft(row))
       .map((row) => row.contact_id as string)
   );
+  const employeesById = await loadEmployeesById(
+    client,
+    followupCandidates.map((candidate) => candidate.contact_id)
+  );
 
   return followupCandidates.map((candidate) => {
+    const employee = employeesById.get(candidate.contact_id) ?? null;
+    const recipient = resolveRecipientEmail({
+      work_email: employee?.work_email,
+      work_email_status: employee?.work_email_status,
+      generic_email: employee?.generic_email,
+      generic_email_status: employee?.generic_email_status,
+    });
     const activeBumpDraftExists = activeDraftContacts.has(candidate.contact_id);
     const eligibleForGeneration =
       candidate.intro_sent &&
+      recipient.sendable &&
+      Boolean(recipient.recipientEmail) &&
       isDelayReached(candidate, sendPolicy.sendDayCountMode, minDaysSinceIntro) &&
       !candidate.reply_received &&
       !candidate.bounce &&
@@ -106,6 +165,9 @@ export async function listCampaignBumpGenerationCandidates(
 
     return {
       ...candidate,
+      recipient_email: recipient.recipientEmail,
+      recipient_email_source: recipient.recipientEmailSource,
+      sendable: recipient.sendable,
       active_bump_draft_exists: activeBumpDraftExists,
       eligible_for_generation: eligibleForGeneration,
     };
