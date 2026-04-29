@@ -110,6 +110,20 @@ describe('web api client (live adapter)', () => {
     expect(data.summary.snapshot_contact_count).toBe(7);
   });
 
+  it('fetchCampaignAudit can request summary-only audit payloads', async () => {
+    const { fetchCampaignAudit } = await loadClient();
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        campaign: { id: 'c1', name: 'C', segment_id: 's1', segment_version: 2 },
+        summary: { snapshot_contact_count: 7 },
+        issues: { snapshot_contacts_without_draft: [] },
+      }),
+    });
+    await fetchCampaignAudit('c1', { summaryOnly: true });
+    expect(fetch).toHaveBeenCalledWith('/api/campaigns/c1/audit?summaryOnly=true', expect.any(Object));
+  });
+
   it('fetchCampaignOutbounds hits campaign outbounds endpoint', async () => {
     const { fetchCampaignOutbounds } = await loadClient();
     (fetch as any).mockResolvedValue({

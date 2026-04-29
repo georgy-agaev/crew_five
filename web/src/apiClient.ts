@@ -695,8 +695,12 @@ export async function fetchCampaignDetail(campaignId: string): Promise<CampaignD
   return fetchJson<CampaignDetailView>(`/campaigns/${campaignId}/detail`);
 }
 
-export async function fetchCampaignAudit(campaignId: string): Promise<CampaignAuditView> {
-  return fetchJson<CampaignAuditView>(`/campaigns/${campaignId}/audit`);
+export async function fetchCampaignAudit(
+  campaignId: string,
+  options: { summaryOnly?: boolean } = {}
+): Promise<CampaignAuditView> {
+  const query = options.summaryOnly ? '?summaryOnly=true' : '';
+  return fetchJson<CampaignAuditView>(`/campaigns/${campaignId}/audit${query}`);
 }
 
 export async function fetchCampaignOutbounds(campaignId: string): Promise<CampaignOutboundsView> {

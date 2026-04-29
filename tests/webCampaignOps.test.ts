@@ -311,4 +311,54 @@ describe('web campaign ops endpoints', () => {
     expect((response.body as any).summary.snapshot_contact_count).toBe(7);
     expect((response.body as any).issues.drafts_missing_recipient_email[0].draft_id).toBe('draft-7');
   });
+
+  it('routes campaign audit summary-only endpoint', async () => {
+    const getCampaignAudit = vi.fn(async () => ({
+      campaign: {
+        id: 'camp-1',
+        name: 'Q1 Push',
+        status: 'sending',
+        segment_id: 'seg-1',
+        segment_version: 2,
+      },
+      summary: {
+        company_count: 3,
+        snapshot_contact_count: 7,
+      },
+      issues: {
+        snapshot_contacts_without_draft: [],
+        drafts_missing_recipient_email: [],
+        duplicate_drafts: [],
+        draft_company_mismatches: [],
+        sent_drafts_without_outbound: [],
+        outbounds_without_draft: [],
+        outbounds_missing_recipient_email: [],
+      },
+    }));
+
+    const response = await dispatch(
+      {
+        listCampaigns: vi.fn(async () => []),
+        getCampaignAudit,
+        listDrafts: vi.fn(async () => []),
+        generateDrafts: vi.fn(async () => ({ generated: 0, dryRun: true })),
+        sendSmartlead: vi.fn(async () => ({
+          dryRun: true,
+          campaignId: 'camp-1',
+          smartleadCampaignId: 'sl-1',
+          leadsPrepared: 0,
+          leadsPushed: 0,
+          sequencesPrepared: 0,
+          sequencesSynced: 0,
+          skippedContactsNoEmail: 0,
+        })),
+        listEvents: vi.fn(async () => []),
+        listReplyPatterns: vi.fn(async () => []),
+      },
+      { method: 'GET', pathname: '/api/campaigns/camp-1/audit', searchParams: new URLSearchParams('summaryOnly=true') }
+    );
+
+    expect(getCampaignAudit).toHaveBeenCalledWith('camp-1', { summaryOnly: true });
+    expect(response.status).toBe(200);
+  });
 });

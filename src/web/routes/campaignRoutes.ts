@@ -391,7 +391,11 @@ export async function handleCampaignRoutes(
       return { status: 400, body: { error: 'campaignId is required' } };
     }
     try {
-      return { status: 200, body: await deps.getCampaignAudit(campaignId) };
+      const summaryOnly = searchParams.get('summaryOnly') === 'true';
+      const audit = summaryOnly
+        ? await deps.getCampaignAudit(campaignId, { summaryOnly: true })
+        : await deps.getCampaignAudit(campaignId);
+      return { status: 200, body: audit };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Campaign audit load failed';
       return { status: 500, body: { error: message } };

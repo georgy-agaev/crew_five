@@ -113,7 +113,7 @@ export function HomeWorkspacePage({ isDark = false }: { isDark?: boolean }) {
         const cards = await Promise.all(
           active.map(async (campaign) => ({
             campaign,
-            audit: await fetchCampaignAudit(campaign.id).catch(() => null),
+            audit: await fetchCampaignAudit(campaign.id, { summaryOnly: true }).catch(() => null),
           }))
         );
         if (!cancelled) setActiveCampaigns(cards);

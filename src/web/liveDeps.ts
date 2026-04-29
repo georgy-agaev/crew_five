@@ -295,7 +295,7 @@ export function createLiveDeps(
       updateCampaignSendPolicyService(supabase, params),
     listCampaignCompanies: async (campaignId) => listCampaignCompaniesService(supabase, campaignId),
     getCampaignReadModel: async (campaignId) => getCampaignReadModelService(supabase, campaignId),
-    getCampaignAudit: async (campaignId) => getCampaignAuditService(supabase, campaignId),
+    getCampaignAudit: async (campaignId, options) => getCampaignAuditService(supabase, campaignId, options),
     getCampaignSendPreflight: async (campaignId) => getCampaignSendPreflightService(supabase, campaignId),
     ...(directImapMcpSendConfigured || sendCampaignTriggerConfigured
       ? {

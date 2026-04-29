@@ -27,6 +27,8 @@ All notable changes to this project will be documented in this file.
 - Campaign audit, outbound, and event hydration now chunks large Supabase `.in(...)` lookups and
   Home shows `Metrics unavailable` instead of a permanent `Loading...` state when an active
   campaign audit fails.
+- Home active campaign cards now request `GET /api/campaigns/:id/audit?summaryOnly=true`, avoiding
+  full audit drill-down payloads and duplicate event-ledger hydration on large sending campaigns.
 - Draft-generation jobs now auto-fail stale `created`/`running` rows after a configurable
   no-progress timeout (`DRAFT_GENERATION_JOB_STALE_MINUTES`, default `30`), preserving counters
   and unblocking retries after adapter restarts or Outreach/provider interruptions.

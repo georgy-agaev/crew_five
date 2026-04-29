@@ -437,7 +437,10 @@ export type AdapterDeps = {
   ) => Promise<CampaignSendPolicyView>;
   listCampaignCompanies?: (campaignId: string) => Promise<CampaignCompaniesView>;
   getCampaignReadModel?: (campaignId: string) => Promise<CampaignReadModel>;
-  getCampaignAudit?: (campaignId: string) => Promise<CampaignAuditView>;
+  getCampaignAudit?: (
+    campaignId: string,
+    options?: { summaryOnly?: boolean }
+  ) => Promise<CampaignAuditView>;
   getCampaignSendPreflight?: (campaignId: string) => Promise<CampaignSendPreflightView>;
   executeCampaignSend?: (params: {
     campaignId: string;

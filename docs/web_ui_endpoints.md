@@ -259,6 +259,9 @@
     - Returns an operator-readable summary with per-company status rows.
   - Used by: future `Import -> Process -> Attach` operator workflows.
 - `GET /api/campaigns/:campaignId/audit`
+  - Query params:
+    - `summaryOnly=true`: returns the same `summary` shape with empty `issues` arrays while
+      skipping drill-down issue hydration; used by `Home` active campaign cards.
   - Returns:
     - `campaign`: operator-facing campaign detail (`id`, `name`, `status`,
       `segment_id`, `segment_version`, `created_at`, `updated_at`)

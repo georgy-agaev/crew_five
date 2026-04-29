@@ -83,6 +83,7 @@ describe('HomeWorkspacePage', () => {
     render(<HomeWorkspacePage />);
 
     expect(await screen.findByText('ВКС-Less-30plus-2026-03')).toBeTruthy();
+    expect(apiClient.fetchCampaignAudit).toHaveBeenCalledWith('camp-1', { summaryOnly: true });
     expect(await screen.findByText('Metrics unavailable')).toBeTruthy();
     expect(screen.queryByText('Loading...')).toBeNull();
   });
