@@ -136,7 +136,32 @@ async function markDraftGenerationJobFailedIfStale(
     return job;
   }
   const failed = await updateJobStatus(client, job.id, 'failed', buildStaleFailureResult(job));
+  await moveGeneratingCampaignToReview(client, job);
   return options.returnFailedJob ? failed : null;
+}
+
+async function moveGeneratingCampaignToReview(
+  client: SupabaseClient,
+  job: JobRow
+): Promise<void> {
+  const payload = toPayload(job);
+  const campaignId = payload.campaignId ?? payload.campaign_id;
+  if (typeof campaignId !== 'string' || campaignId.trim().length === 0 || payload.dryRun === true) {
+    return;
+  }
+
+  try {
+    await client
+      .from('campaigns')
+      .update({
+        status: 'review',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', campaignId)
+      .eq('status', 'generating');
+  } catch {
+    // Job status is the source of truth for generation; campaign status recovery is best effort.
+  }
 }
 
 function appendLimited<T>(current: unknown, item: T, maxItems: number): T[] {
@@ -324,6 +349,7 @@ export async function startDraftGenerationJob(
           lastEvent: 'completed',
           completedAt: new Date().toISOString(),
         });
+        await moveGeneratingCampaignToReview(client, job);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const progressResult = await getDraftGenerationProgressResult(client, job);
@@ -338,6 +364,7 @@ export async function startDraftGenerationJob(
           lastEvent: 'failed',
           completedAt: new Date().toISOString(),
         });
+        await moveGeneratingCampaignToReview(client, job);
       }
     })();
   });

@@ -27,6 +27,9 @@ All notable changes to this project will be documented in this file.
 - Draft-generation jobs now auto-fail stale `created`/`running` rows after a configurable
   no-progress timeout (`DRAFT_GENERATION_JOB_STALE_MINUTES`, default `30`), preserving counters
   and unblocking retries after adapter restarts or Outreach/provider interruptions.
+- Draft-generation job completion/failure/stale recovery now moves campaigns stuck in
+  `generating` back to `review`, preventing Home from showing stale `GENERATING` campaign state
+  after the underlying job has ended.
 - Bump auto-generation now materializes recipient email state from `employees` before invoking
   Outreach, blocking contacts without a sendable work or assigned generic email from entering the
   bump generation allowlist.

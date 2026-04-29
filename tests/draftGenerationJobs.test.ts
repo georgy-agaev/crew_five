@@ -6,16 +6,45 @@ import {
   startDraftGenerationJob,
 } from '../src/services/draftGenerationJobs';
 
-function createJobsClient(seed: any[] = []) {
+function createJobsClient(seed: any[] = [], campaignSeed: any[] = []) {
   const jobs = new Map<string, any>();
+  const campaigns = new Map<string, any>();
   let seq = 0;
 
   for (const row of seed) {
     jobs.set(row.id, row);
   }
+  for (const row of campaignSeed) {
+    campaigns.set(row.id, row);
+  }
 
   const client = {
     from: vi.fn((table: string) => {
+      if (table === 'campaigns') {
+        return {
+          update: vi.fn((patch: any) => {
+            const filters: Record<string, unknown> = {};
+            const query = {
+              eq(field: string, value: unknown) {
+                filters[field] = value;
+                return query;
+              },
+              then(resolve: (value: { data: null; error: null }) => void) {
+                for (const [id, row] of campaigns.entries()) {
+                  const matches = Object.entries(filters).every(
+                    ([filterField, expected]) => row[filterField] === expected
+                  );
+                  if (matches) {
+                    campaigns.set(id, { ...row, ...patch });
+                  }
+                }
+                resolve({ data: null, error: null });
+              },
+            };
+            return query;
+          }),
+        };
+      }
       if (table !== 'jobs') throw new Error(`unexpected table ${table}`);
       return {
         insert: vi.fn((payload: any) => {
@@ -91,14 +120,14 @@ function createJobsClient(seed: any[] = []) {
     }),
   } as any;
 
-  return { client, jobs };
+  return { client, jobs, campaigns };
 }
 
 describe('draftGenerationJobs', () => {
   const freshTimestamp = () => new Date().toISOString();
 
   it('starts a draft generation job and completes it in the background', async () => {
-    const { client } = createJobsClient();
+    const { client, campaigns } = createJobsClient([], [{ id: 'camp-1', status: 'generating' }]);
     const runGeneration = vi.fn(async () => ({
       generated: 3,
       skipped: 2,
@@ -147,6 +176,7 @@ describe('draftGenerationJobs', () => {
       skippedByReason: { already_used: 2 },
     });
     expect(status?.skippedDetails).toHaveLength(1);
+    expect(campaigns.get('camp-1')).toMatchObject({ status: 'review' });
   });
 
   it('updates running job counters from streamed progress events', async () => {
@@ -344,25 +374,28 @@ describe('draftGenerationJobs', () => {
   });
 
   it('marks stale active campaign jobs failed and returns no active job', async () => {
-    const { client, jobs } = createJobsClient([
-      {
-        id: 'job-stale',
-        type: 'draft_generation',
-        status: 'running',
-        segment_id: null,
-        segment_version: null,
-        payload: { campaignId: 'camp-1', dryRun: false },
-        result: {
-          generated: 2,
-          failed: 0,
-          skipped: 3,
-          errors: [],
-          lastEvent: 'recipient_started',
+    const { client, jobs, campaigns } = createJobsClient(
+      [
+        {
+          id: 'job-stale',
+          type: 'draft_generation',
+          status: 'running',
+          segment_id: null,
+          segment_version: null,
+          payload: { campaignId: 'camp-1', dryRun: false },
+          result: {
+            generated: 2,
+            failed: 0,
+            skipped: 3,
+            errors: [],
+            lastEvent: 'recipient_started',
+          },
+          created_at: '2000-01-01T00:00:00Z',
+          updated_at: '2000-01-01T00:00:00Z',
         },
-        created_at: '2000-01-01T00:00:00Z',
-        updated_at: '2000-01-01T00:00:00Z',
-      },
-    ]);
+      ],
+      [{ id: 'camp-1', status: 'generating' }]
+    );
 
     const active = await findActiveDraftGenerationJob(client, 'camp-1');
     const stale = jobs.get('job-stale');
@@ -379,6 +412,7 @@ describe('draftGenerationJobs', () => {
       },
     });
     expect(stale.result.errors[0]).toContain('did not receive progress');
+    expect(campaigns.get('camp-1')).toMatchObject({ status: 'review' });
   });
 
   it('returns a failed status view when polling a stale job', async () => {
